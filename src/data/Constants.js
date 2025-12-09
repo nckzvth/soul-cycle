@@ -1,0 +1,1 @@
+export const SLOTS = ["weapon", "helmet", "chest", "legs", "gloves", "boots", "trinket"];
