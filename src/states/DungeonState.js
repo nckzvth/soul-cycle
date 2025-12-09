@@ -12,6 +12,7 @@ class DungeonState extends State {
     constructor(game) {
         super(game);
         this.boss = new Boss(400, 200);
+        this.enemies = [this.boss];
         this.shots = []; // For all projectiles in the scene
         this.townPortal = null;
         this.atkCd = 0;
@@ -25,6 +26,7 @@ class DungeonState extends State {
         this.game.p.x = 400;
         this.game.p.y = 500;
         this.boss = new Boss(400, 200);
+        this.enemies = [this.boss];
         this.shots = [];
         this.townPortal = null;
     }
@@ -116,6 +118,13 @@ class DungeonState extends State {
         this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
             this.game.stateManager.switchState(new TownState(this.game));
         });
+    }
+
+    findTarget(exclude) {
+        if (!this.boss.dead && this.boss !== exclude) {
+            return this.boss;
+        }
+        return null;
     }
 
     firePistol() {
