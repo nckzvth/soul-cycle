@@ -5,7 +5,7 @@ import Boss from '../entities/Boss.js';
 import Interactable from '../entities/Interactable.js';
 import { keys, mouse } from '../core/Input.js';
 import { dist2 } from '../core/Utils.js';
-import { Projectile as Proj } from '../entities/Projectile.js';
+import CombatSystem from '../systems/CombatSystem.js';
 import UI from '../systems/UI.js';
 
 class DungeonState extends State {
@@ -78,21 +78,16 @@ class DungeonState extends State {
         if (w && w.cls === "hammer") {
             if (mouse.down) {
                 this.hammerRad = Math.min(100, this.hammerRad + dt * 300);
-                this.runOrbit(dt);
+                CombatSystem.runOrbit(p, this, dt);
             } else {
                 if (this.hammerRad > 0) this.hammerRad -= dt * 400;
-            }
-            if (this.hammerRad > 20) {
-                if (!this.boss.dead && dist2(p.x, p.y, this.boss.x, this.boss.y) < (this.boss.r + 20)**2) {
-                    this.hit(this.boss, p.stats.dmg * 0.5);
-                }
             }
         }
 
         if (mouse.down && this.atkCd <= 0 && w) {
             let rate = 0.4 / (1 + p.stats.spd);
-            if (w.cls === "pistol") { this.firePistol(); this.atkCd = rate; }
-            else if (w.cls === "staff") { this.fireZap(); this.atkCd = rate * 1.5; }
+            if (w.cls === "pistol") { CombatSystem.firePistol(p, this); this.atkCd = rate; }
+            else if (w.cls === "staff") { CombatSystem.fireZap(p, this); this.atkCd = rate * 1.5; }
         }
 
 
@@ -102,15 +97,9 @@ class DungeonState extends State {
         }
     }
 
-    hit(target, dmg) {
-        if (target.dead) return;
-        target.hp -= dmg;
-        target.flash = 0.1;
-        if (target.hp <= 0) {
-            target.dead = true;
-            if (target === this.boss) {
-                this.onBossDeath();
-            }
+    onEnemyDeath(enemy) {
+        if (enemy === this.boss) {
+            this.onBossDeath();
         }
     }
 
@@ -119,6 +108,7 @@ class DungeonState extends State {
         this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
             this.game.stateManager.switchState(new TownState(this.game));
         });
+        CombatSystem.onRoomOrWaveClear(this);
     }
 
     findTarget(exclude, x, y) {
@@ -127,56 +117,6 @@ class DungeonState extends State {
         }
         return null;
     }
-
-    firePistol() {
-        const p = this.game.p;
-        const w = this.game.screenToWorld(mouse.x, mouse.y);
-        const a = Math.atan2(w.y - p.y, w.x - p.x);
-        this.shots.push(new Proj(this,
-            p.x, p.y, Math.cos(a) * 700, Math.sin(a) * 700, 1.5, p.stats.hexPierce || 0, p.stats.hexBounce || 0
-        ));
-    }
-
-    fireZap() {
-        const p = this.game.p;
-        const maxChains = 1 + (p.stats.chainCount || 0);
-        const range = 250 * (1 + (p.stats.chainJump || 0));
-        let curr = { x: p.x, y: p.y };
-        let visited = new Set();
-
-        for (let i = 0; i < maxChains; i++) {
-            let best = null, bestDist = range * range;
-            this.enemies.forEach(e => {
-                if (e.dead || visited.has(e)) return;
-                let d = dist2(curr.x, curr.y, e.x, e.y);
-                if (d < bestDist) { bestDist = d; best = e; }
-            });
-
-            if (best) {
-                visited.add(best);
-                this.hit(best, p.stats.dmg);
-                this.chains.push({ t: 0.15, pts: [{ x: curr.x, y: curr.y }, { x: best.x, y: best.y }] });
-                curr = best;
-            } else break;
-        }
-    }
-    
-    runOrbit(dt) {
-        const p = this.game.p;
-        const cnt = 1 + (p.stats.orbitBase || 0);
-        this.hammerAng += dt * 5;
-        for (let i = 0; i < cnt; i++) {
-            let a = this.hammerAng + (i * 6.28 / cnt);
-            let ox = p.x + Math.cos(a) * this.hammerRad;
-            let oy = p.y + Math.sin(a) * this.hammerRad;
-            this.enemies.forEach(e => {
-                if (!e.dead && dist2(ox, oy, e.x, e.y) < (15 + e.r) ** 2) {
-                    this.hit(e, p.stats.dmg * 0.6);
-                }
-            });
-        }
-    }
-
 
     render(ctx) {
         const p = this.game.p;

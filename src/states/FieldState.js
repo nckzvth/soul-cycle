@@ -3,12 +3,12 @@ import State from '../core/State.js';
 import { RNG, dist2, lerp } from "../core/Utils.js";
 import { SLOTS } from "../data/Constants.js";
 import { ITEMS } from "../data/Items.js";
-import { Projectile as Proj, Shockwave, StaticMine, Wisp } from "../entities/Projectile.js";
 import { LootDrop as Drop, SoulOrb as Soul } from "../entities/Pickups.js";
 import { keys, mouse } from "../core/Input.js";
 import UI from '../systems/UI.js';
 import Interactable from '../entities/Interactable.js';
 import DungeonState from './DungeonState.js';
+import CombatSystem from '../systems/CombatSystem.js';
 
 class FieldState extends State {
     constructor(game) {
@@ -75,32 +75,25 @@ class FieldState extends State {
         if (w && w.cls === "hammer") {
             if (mouse.down) {
                 this.hammerRad = Math.min(100, this.hammerRad + dt * 300);
-                this.runOrbit(dt);
+                CombatSystem.runOrbit(p, this, dt);
             } else {
                 if (this.hammerRad > 0) {
                     this.hammerRad -= dt * 400;
                     if (p.stats.singularity && this.hammerRad < 10 && this.hammerRad > 0) {
                         this.enemies.forEach(e => {
-                            if (dist2(p.x, p.y, e.x, e.y) < 250 * 250) { e.vx += (p.x - e.x) * 3; e.vy += (p.y - e.y) * 3; }
+                            if (!e.dead && dist2(p.x, p.y, e.x, e.y) < 250 * 250) {
+                                e.vx += (p.x - e.x) * 3; e.vy += (p.y - e.y) * 3;
+                            }
                         });
                     }
                 }
-            }
-            if (this.hammerRad > 20) {
-                this.enemies.forEach(e => {
-                    if (dist2(p.x, p.y, e.x, e.y) < 40 * 40 && e.iframes <= 0) {
-                        this.hit(e, p.stats.dmg * 0.5);
-                        e.vx += (e.x - p.x) * 5; e.vy += (e.y - p.y) * 5;
-                        e.iframes = 0.5;
-                    }
-                });
             }
         }
 
         if (mouse.down && this.atkCd <= 0 && w) {
             let rate = 0.4 / (1 + p.stats.spd);
-            if (w.cls === "pistol") { this.firePistol(); this.atkCd = rate; }
-            else if (w.cls === "staff") { this.fireZap(); this.atkCd = rate * 1.5; }
+            if (w.cls === "pistol") { CombatSystem.firePistol(p, this); this.atkCd = rate; }
+            else if (w.cls === "staff") { CombatSystem.fireZap(p, this); this.atkCd = rate * 1.5; }
         }
 
         // SPAWN
@@ -194,20 +187,10 @@ class FieldState extends State {
         ctx.fillRect(w / 2 - 100, h - 30, this.vesselProgress * 2, 20);
     }
 
-    hit(e, dmg) {
-        if (e.dead) return;
-        const p = this.game.p;
-        e.hp -= dmg; e.flash = 0.1;
-        let a = Math.atan2(e.y - p.y, e.x - p.x);
-        e.vx += Math.cos(a) * (p.stats.kb + 50);
-        e.vy += Math.sin(a) * (p.stats.kb + 50);
-        if (e.hp <= 0) { e.dead = true; this.onKill(e); }
-    }
-
-    onKill(e) {
-        this.souls.push(new Soul(e.x, e.y));
+    onEnemyDeath(enemy) {
+        this.souls.push(new Soul(enemy.x, enemy.y));
         if (Math.random() < 0.3) {
-            this.drops.push(new Drop(e.x, e.y, this.loot()));
+            this.drops.push(new Drop(enemy.x, enemy.y, this.loot()));
         }
         this.game.p.giveXp(10);
         this.vesselProgress = Math.min(100, this.vesselProgress + 1);
@@ -218,7 +201,7 @@ class FieldState extends State {
         let a = Math.random() * 6.28;
         let d = 450;
         let isDash = Math.random() < 0.2;
-        this.enemies.push({
+        const enemy = {
             x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: 0, vy: 0,
             hp: 20 + p.lvl * 5, hpMax: 20 + p.lvl * 5, r: 12, type: isDash ? 1 : 0,
             flash: 0, iframes: 0, dead: false,
@@ -255,6 +238,7 @@ class FieldState extends State {
                 }
 
                 if (dist < 20) {
+                    CombatSystem.onPlayerHit(this, fieldState);
                     let raw = 5 + pl.lvl;
                     pl.hp -= raw * dt;
                     if (pl.hp <= 0) {
@@ -281,7 +265,9 @@ class FieldState extends State {
                 ctx.fillStyle = "#0f0"; ctx.fillRect(-10, -20, 20 * (this.hp / this.hpMax), 4);
                 ctx.translate(-p.x, -p.y);
             }
-        });
+        };
+        this.enemies.push(enemy);
+        CombatSystem.onEnemySpawn(enemy, this);
     }
 
     findTarget(exclude, x, y) {
@@ -312,55 +298,6 @@ class FieldState extends State {
             for (let k in tpl.stats) stats[k] = Math.ceil(tpl.stats[k] * m);
             return { id: Math.random().toString(36), type, name: tpl.base, rarity, stats, cls: tpl.cls };
         } catch (e) { return { id: "err", type: "trinket", name: "Scrap", rarity: "common", stats: {} }; }
-    }
-
-    runOrbit(dt) {
-        const p = this.game.p;
-        const cnt = 1 + (p.stats.orbitBase || 0);
-        this.hammerAng += dt * 5;
-        for (let i = 0; i < cnt; i++) {
-            let a = this.hammerAng + (i * 6.28 / cnt);
-            let ox = p.x + Math.cos(a) * this.hammerRad;
-            let oy = p.y + Math.sin(a) * this.hammerRad;
-            this.enemies.forEach(e => {
-                if (!e.dead && dist2(ox, oy, e.x, e.y) < (15 + e.r) ** 2 && e.iframes <= 0) {
-                    this.hit(e, p.stats.dmg * 0.6); e.iframes = 0.2;
-                }
-            });
-        }
-    }
-
-    firePistol() {
-        const p = this.game.p;
-        const w = this.game.screenToWorld(mouse.x, mouse.y);
-        const a = Math.atan2(w.y - p.y, w.x - p.x);
-        this.shots.push(new Proj(this,
-            p.x, p.y, Math.cos(a) * 700, Math.sin(a) * 700, 1.5, p.stats.hexPierce || 0, p.stats.hexBounce || 0
-        ));
-    }
-
-    fireZap() {
-        const p = this.game.p;
-        const maxChains = 1 + (p.stats.chainCount || 0);
-        const range = 250 * (1 + (p.stats.chainJump || 0));
-        let curr = { x: p.x, y: p.y };
-        let visited = new Set();
-
-        for (let i = 0; i < maxChains; i++) {
-            let best = null, bestDist = range * range;
-            this.enemies.forEach(e => {
-                if (e.dead || visited.has(e)) return;
-                let d = dist2(curr.x, curr.y, e.x, e.y);
-                if (d < bestDist) { bestDist = d; best = e; }
-            });
-
-            if (best) {
-                visited.add(best);
-                this.hit(best, p.stats.dmg);
-                this.chains.push({ t: 0.15, pts: [{ x: curr.x, y: curr.y }, { x: best.x, y: best.y }] });
-                curr = best;
-            } else break;
-        }
     }
 }
 

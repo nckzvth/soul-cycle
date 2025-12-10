@@ -2,7 +2,7 @@ import { SLOTS } from "../data/Constants.js";
 import { SKILLS } from "../data/Skills.js";
 import { clamp } from "../core/Utils.js";
 import UI from "../systems/UI.js";
-import { Shockwave, StaticMine, Wisp } from "./Projectile.js";
+import CombatSystem from "../systems/CombatSystem.js";
 
 export default class PlayerObj {
     constructor() {
@@ -59,15 +59,15 @@ export default class PlayerObj {
     updatePerks(dt, state) {
         if (this.perks.might) {
             this.timers.might -= dt;
-            if (this.timers.might <= 0) { this.timers.might = 3.0; state.shots.push(new Shockwave(state, this.x, this.y, this.stats.dmg * 2)); }
+            if (this.timers.might <= 0) { this.timers.might = 3.0; CombatSystem.fireShockwave(this, state); }
         }
         if (this.perks.alacrity) {
             this.timers.alacrity -= dt;
-            if (this.timers.alacrity <= 0 && state.keysMoved) { this.timers.alacrity = 0.5; state.shots.push(new StaticMine(state, this.x, this.y, this.stats.dmg)); }
+            if (this.timers.alacrity <= 0) { this.timers.alacrity = 0.5; CombatSystem.fireStaticMine(this, state); }
         }
         if (this.perks.will) {
             this.timers.will -= dt;
-            if (this.timers.will <= 0) { this.timers.will = 1.5; state.shots.push(new Wisp(state, this.x, this.y, this.stats.dmg)); }
+            if (this.timers.will <= 0) { this.timers.will = 1.5; CombatSystem.fireWisp(this, state); }
         }
     }
 }

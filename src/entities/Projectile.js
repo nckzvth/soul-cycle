@@ -1,4 +1,5 @@
 import { dist2 } from "../core/Utils.js";
+import CombatSystem from "../systems/CombatSystem.js"; // Import CombatSystem
 
 export class Projectile {
     constructor(state, x, y, vx, vy, life, pierce = 0, bounce = 0) {
@@ -11,7 +12,8 @@ export class Projectile {
         // Collision
         for (let e of this.state.enemies) {
             if (!e.dead && !this.hitList.includes(e) && dist2(this.x, this.y, e.x, e.y) < (15 + e.r) ** 2) {
-                this.state.hit(e, this.state.game.p.stats.dmg);
+                // Call CombatSystem.hit instead of this.state.hit
+                CombatSystem.hit(e, this.state.game.p.stats.dmg, this.state.game.p, this.state);
                 this.hitList.push(e);
                 if (this.pierce > 0) this.pierce--;
                 else if (this.bounce > 0) {
@@ -37,7 +39,9 @@ export class Shockwave {
         this.r += dt * 400; this.life -= dt;
         this.state.enemies.forEach(e => {
             if (dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2 && !e.hitByWave) {
-                this.state.hit(e, this.dmg); e.kb = 30; e.hitByWave = true;
+                // Call CombatSystem.hit instead of this.state.hit
+                CombatSystem.hit(e, this.dmg, this.state.game.p, this.state);
+                e.kb = 30; e.hitByWave = true;
             }
         });
         return this.life > 0;
@@ -54,7 +58,10 @@ export class StaticMine {
     update(dt) {
         this.life -= dt;
         this.state.enemies.forEach(e => {
-            if (dist2(this.x, this.y, e.x, e.y) < 25 * 25) this.state.hit(e, this.dmg * 3 * dt);
+            if (dist2(this.x, this.y, e.x, e.y) < 25 * 25) {
+                // Call CombatSystem.hit instead of this.state.hit
+                CombatSystem.hit(e, this.dmg * 3 * dt, this.state.game.p, this.state);
+            }
         });
         return this.life > 0;
     }
@@ -70,7 +77,8 @@ export class Wisp {
             let angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
             this.x += Math.cos(angle) * 350 * dt; this.y += Math.sin(angle) * 350 * dt;
             if (dist2(this.x, this.y, this.target.x, this.target.y) < 20 * 20) {
-                this.state.hit(this.target, this.dmg * 1.5);
+                // Call CombatSystem.hit instead of this.state.hit
+                CombatSystem.hit(this.target, this.dmg * 1.5, this.state.game.p, this.state);
                 return false;
             }
         } else {
