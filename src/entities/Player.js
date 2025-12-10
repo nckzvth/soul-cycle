@@ -6,7 +6,7 @@ import CombatSystem from "../systems/CombatSystem.js";
 
 export default class PlayerObj {
     constructor() {
-        this.x = 0; this.y = 0; this.hp = 100; this.hpMax = 100; this.sta = 100;
+        this.x = 0; this.y = 0; this.r = 12; this.hp = 100; this.hpMax = 100; this.sta = 100;
         this.lvl = 1; this.xp = 0; this.souls = 0;
         this.inv = []; this.gear = {}; SLOTS.forEach(s => this.gear[s] = null);
         this.attr = { might: 0, alacrity: 0, will: 0, pts: 0 };
@@ -15,6 +15,7 @@ export default class PlayerObj {
         this.timers = { might: 0, alacrity: 0, will: 0 };
         this.skills = new Set(); this.stats = {};
         this.dashTimer = 0; this.dashVec = { x: 0, y: 0 };
+        this.rooted = 0; // Root timer
         this.recalc();
     }
     recalc() {
@@ -63,7 +64,7 @@ export default class PlayerObj {
         }
         if (this.perks.alacrity) {
             this.timers.alacrity -= dt;
-            if (this.timers.alacrity <= 0) { this.timers.alacrity = 0.5; CombatSystem.fireStaticMine(this, state); }
+            if (this.timers.alacrity <= 0 && state.keysMoved) { this.timers.alacrity = 0.5; CombatSystem.fireStaticMine(this, state); }
         }
         if (this.perks.will) {
             this.timers.will -= dt;

@@ -14,7 +14,13 @@ const CombatSystem = {
 
     hit(target, dmg, player, state) {
         if (target.dead) return;
-        target.hp -= dmg;
+        
+        let finalDmg = dmg;
+        if (target.isBuffed) {
+            finalDmg *= 0.5; // Example: 50% damage reduction
+        }
+
+        target.hp -= finalDmg;
         target.flash = 0.1;
 
         if (player) {
@@ -31,6 +37,10 @@ const CombatSystem = {
                 state.onEnemyDeath(target);
             }
         }
+    },
+
+    rootPlayer(player, duration) {
+        player.rooted = Math.max(player.rooted, duration);
     },
 
     firePistol(player, state) {
@@ -88,8 +98,8 @@ const CombatSystem = {
         state.shots.push(new Shockwave(state, player.x, player.y, player.stats.dmg * 2));
     },
 
-    fireStaticMine(player, state) {
-        state.shots.push(new StaticMine(state, player.x, player.y, player.stats.dmg));
+    fireStaticMine(player, state, x, y) {
+        state.shots.push(new StaticMine(state, x, y, player.stats.dmg));
     },
 
     fireWisp(player, state) {

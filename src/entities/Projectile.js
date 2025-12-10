@@ -1,5 +1,6 @@
 import { dist2 } from "../core/Utils.js";
 import CombatSystem from "../systems/CombatSystem.js"; // Import CombatSystem
+import UI from "../systems/UI.js";
 
 export class Projectile {
     constructor(state, x, y, vx, vy, life, pierce = 0, bounce = 0) {
@@ -53,6 +54,23 @@ export class Shockwave {
     }
 }
 
+export class RootWave {
+    constructor(state, x, y) { this.state = state; this.x = x; this.y = y; this.r = 0; this.life = 0.5; }
+    update(dt) {
+        this.r += dt * 400; this.life -= dt;
+        const p = this.state.game.p;
+        if (dist2(this.x, this.y, p.x, p.y) < (this.r + p.r) ** 2 && p.dashTimer <= 0) {
+            CombatSystem.rootPlayer(p, 2);
+        }
+        return this.life > 0;
+    }
+    draw(ctx, s) {
+        let p = s(this.x, this.y);
+        ctx.strokeStyle = `rgba(255,255,255,${this.life * 2})`;
+        ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.stroke();
+    }
+}
+
 export class StaticMine {
     constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.dmg = dmg; this.life = 3.0; }
     update(dt) {
@@ -87,4 +105,27 @@ export class Wisp {
         return this.life > 0;
     }
     draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = "#6b8cc4"; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 6.28); ctx.fill(); }
+}
+
+export class Hazard {
+    constructor(state, x, y, life) {
+        this.state = state;
+        this.x = x; this.y = y; this.life = life;
+    }
+    update(dt) {
+        this.life -= dt;
+        if (dist2(this.x, this.y, this.state.game.p.x, this.state.game.p.y) < (this.state.game.p.r + 5)**2) {
+            CombatSystem.onPlayerHit(this, this.state);
+            this.state.game.p.hp -= 10 * dt;
+            UI.dirty = true;
+        }
+        return this.life > 0;
+    }
+    draw(ctx, s) {
+        let p = s(this.x, this.y);
+        ctx.fillStyle = `rgba(255, 0, 0, ${this.life / 2})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 10, 0, 6.28);
+        ctx.fill();
+    }
 }

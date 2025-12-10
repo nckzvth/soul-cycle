@@ -99,16 +99,12 @@ class DungeonState extends State {
 
     onEnemyDeath(enemy) {
         if (enemy === this.boss) {
-            this.onBossDeath();
+            console.log("Boss defeated!");
+            this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
+                this.game.stateManager.switchState(new TownState(this.game));
+            });
+            CombatSystem.onRoomOrWaveClear(this);
         }
-    }
-
-    onBossDeath() {
-        console.log("Boss defeated!");
-        this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
-            this.game.stateManager.switchState(new TownState(this.game));
-        });
-        CombatSystem.onRoomOrWaveClear(this);
     }
 
     findTarget(exclude, x, y) {

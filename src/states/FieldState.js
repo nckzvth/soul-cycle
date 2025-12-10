@@ -9,6 +9,18 @@ import UI from '../systems/UI.js';
 import Interactable from '../entities/Interactable.js';
 import DungeonState from './DungeonState.js';
 import CombatSystem from '../systems/CombatSystem.js';
+import Telegraph from '../systems/Telegraph.js';
+import { Hazard, RootWave } from '../entities/Projectile.js';
+
+const WAVE_DURATION = 60; // 60 seconds per wave
+
+const SPAWN_TABLE = {
+    1: [{ type: 'walker', weight: 1, soulValue: 1 }],
+    2: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 1, soulValue: 2 }],
+    3: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 2, soulValue: 2 }, { type: 'spitter', weight: 1, soulValue: 2 }],
+    4: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 2, soulValue: 2 }, { type: 'spitter', weight: 2, soulValue: 2 }, { type: 'anchor', weight: 1, soulValue: 5 }],
+    5: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 2, soulValue: 2 }, { type: 'spitter', weight: 2, soulValue: 2 }, { type: 'anchor', weight: 2, soulValue: 5 }],
+};
 
 class FieldState extends State {
     constructor(game) {
@@ -21,13 +33,23 @@ class FieldState extends State {
         this.atkCd = 0;
         this.hammerRad = 0;
         this.hammerAng = 0;
-        this.vesselProgress = 0;
         this.dungeonPortal = null;
+
+        // Wave properties
+        this.waveIndex = 1;
+        this.waveTimer = WAVE_DURATION;
+        this.killsThisWave = 0;
+        this.soulGauge = 0;
+        this.soulGaugeThreshold = 10; // Initial threshold
     }
 
     enter() {
         console.log("Entering Field State");
-        this.vesselProgress = 0;
+        this.waveIndex = 1;
+        this.waveTimer = WAVE_DURATION;
+        this.killsThisWave = 0;
+        this.soulGauge = 0;
+        this.soulGaugeThreshold = 10;
         this.dungeonPortal = null;
     }
 
@@ -43,12 +65,35 @@ class FieldState extends State {
 
     update(dt) {
         const p = this.game.p;
-        p.updatePerks(dt, this);
+        if (p.rooted > 0) {
+            p.rooted -= dt;
+        } else {
+            p.updatePerks(dt, this);
+        }
+
+        // Wave logic
+        this.waveTimer -= dt;
+        if (this.waveTimer <= 0) {
+            if (this.waveIndex < 5) {
+                this.waveIndex++;
+                this.waveTimer = WAVE_DURATION;
+                this.killsThisWave = 0;
+                // Increase threshold based on wave index
+                this.soulGaugeThreshold = 10 * this.waveIndex;
+            } else if (!this.dungeonPortal) {
+                this.dungeonPortal = new Interactable(p.x + 100, p.y, 50, 50, () => {
+                    this.game.stateManager.switchState(new DungeonState(this.game));
+                });
+            }
+        }
 
         // MOVEMENT
         let mx = 0, my = 0;
-        if (keys["KeyW"]) my--; if (keys["KeyS"]) my++;
-        if (keys["KeyA"]) mx--; if (keys["KeyD"]) mx++;
+        if (p.rooted <= 0) {
+            if (keys["KeyW"]) my--; if (keys["KeyS"]) my++;
+            if (keys["KeyA"]) mx--; if (keys["KeyD"]) mx++;
+        }
+
 
         if (p.dashTimer > 0) {
             p.dashTimer -= dt;
@@ -97,10 +142,14 @@ class FieldState extends State {
         }
 
         // SPAWN
-        if (Math.random() < dt && this.enemies.length < 30) this.spawnEnemy();
+        const spawnRate = 1 + (this.waveIndex * 0.5);
+        if (Math.random() < dt * spawnRate && this.enemies.length < 30) this.spawnEnemy();
 
         // UPDATE ENTITIES
-        this.enemies = this.enemies.filter(e => e.update(dt, p, this));
+        Telegraph.update(dt);
+        this.enemies.forEach(e => e.update(dt, p, this));
+        this.enemies = this.enemies.filter(e => !e.dead);
+
 
         let activeShots = [];
         this.shots.forEach(b => { if (b.update(dt, this)) activeShots.push(b); });
@@ -109,13 +158,6 @@ class FieldState extends State {
         this.drops = this.drops.filter(d => d.update(dt, p));
         this.souls = this.souls.filter(s => s.update(dt, p));
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
-
-        // Dungeon Portal Logic
-        if (this.vesselProgress >= 100 && !this.dungeonPortal) {
-            this.dungeonPortal = new Interactable(p.x + 100, p.y, 50, 50, () => {
-                this.game.stateManager.switchState(new DungeonState(this.game));
-            });
-        }
 
         if (this.dungeonPortal && keys['KeyF'] && this.dungeonPortal.checkInteraction(p)) {
             this.dungeonPortal.onInteract();
@@ -136,6 +178,8 @@ class FieldState extends State {
         for (let x = 0; x < w; x += 50) { ctx.moveTo(x - ox, 0); ctx.lineTo(x - ox, h); }
         for (let y = 0; y < h; y += 50) { ctx.moveTo(0, y - oy); ctx.lineTo(w, y - oy); }
         ctx.stroke();
+
+        Telegraph.render(ctx, s);
 
         this.drops.forEach(d => d.draw(ctx, s));
 
@@ -180,66 +224,124 @@ class FieldState extends State {
             if (b.draw) b.draw(ctx, s);
         });
 
-        // UI for Soul Vessel
+        // Wave UI
+        ctx.fillStyle = 'white';
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Wave: ${this.waveIndex} / 5`, w / 2, 30);
+        ctx.fillText(`Time: ${Math.ceil(this.waveTimer)}`, w / 2, 60);
+        ctx.textAlign = 'start';
+
+        // Soul Gauge
         ctx.fillStyle = 'purple';
         ctx.fillRect(w / 2 - 100, h - 30, 200, 20);
         ctx.fillStyle = 'magenta';
-        ctx.fillRect(w / 2 - 100, h - 30, this.vesselProgress * 2, 20);
+        ctx.fillRect(w / 2 - 100, h - 30, (this.soulGauge / this.soulGaugeThreshold) * 200, 20);
     }
 
     onEnemyDeath(enemy) {
         this.souls.push(new Soul(enemy.x, enemy.y));
-        if (Math.random() < 0.3) {
+        if (enemy.isElite || Math.random() < 0.3) {
             this.drops.push(new Drop(enemy.x, enemy.y, this.loot()));
         }
-        this.game.p.giveXp(10);
-        this.vesselProgress = Math.min(100, this.vesselProgress + 1);
+        this.game.p.giveXp(10 * (enemy.isElite ? 3 : 1));
+        this.killsThisWave++;
+        this.soulGauge += enemy.soulValue || 1;
+        if (this.soulGauge >= this.soulGaugeThreshold) {
+            this.soulGauge = 0;
+            this.spawnElite();
+        }
     }
 
     spawnEnemy() {
         const p = this.game.p;
         let a = Math.random() * 6.28;
         let d = 450;
-        let isDash = Math.random() < 0.2;
-        const enemy = {
-            x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: 0, vy: 0,
-            hp: 20 + p.lvl * 5, hpMax: 20 + p.lvl * 5, r: 12, type: isDash ? 1 : 0,
-            flash: 0, iframes: 0, dead: false,
-            state: 0, timer: 0,
+
+        const waveSpawns = SPAWN_TABLE[this.waveIndex];
+        const totalWeight = waveSpawns.reduce((acc, s) => acc + s.weight, 0);
+        let rand = Math.random() * totalWeight;
+        let chosenSpawn;
+        for (const spawn of waveSpawns) {
+            rand -= spawn.weight;
+            if (rand <= 0) {
+                chosenSpawn = spawn;
+                break;
+            }
+        }
+
+        let enemy;
+        switch (chosenSpawn.type) {
+            case 'charger':
+                enemy = this.createCharger(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+            case 'spitter':
+                enemy = this.createSpitter(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+            case 'anchor':
+                enemy = this.createAnchor(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+            default: // walker
+                enemy = this.createWalker(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+        }
+        
+        enemy.soulValue = chosenSpawn.soulValue;
+        this.enemies.push(enemy);
+        CombatSystem.onEnemySpawn(enemy, this);
+    }
+
+    spawnElite() {
+        const p = this.game.p;
+        let a = Math.random() * 6.28;
+        let d = 450;
+        const waveSpawns = SPAWN_TABLE[this.waveIndex];
+        const chosenSpawn = waveSpawns[Math.floor(Math.random() * waveSpawns.length)];
+        
+        let elite;
+        switch (chosenSpawn.type) {
+            case 'charger':
+                elite = this.createCharger(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+            case 'spitter':
+                elite = this.createSpitter(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+            case 'anchor':
+                elite = this.createAnchor(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+            default: // walker
+                elite = this.createWalker(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+                break;
+        }
+
+        elite.hp *= 2;
+        elite.hpMax *= 2;
+        elite.r *= 1.5;
+        elite.soulValue *= 3;
+        elite.isElite = true;
+        this.enemies.push(elite);
+        CombatSystem.onEnemySpawn(elite, this);
+    }
+
+    createWalker(x, y) {
+        const p = this.game.p;
+        return {
+            x, y, vx: 0, vy: 0,
+            hp: 20 + p.lvl * 5, hpMax: 20 + p.lvl * 5, r: 12, type: 'walker',
+            flash: 0, iframes: 0, dead: false, eliteSkillCd: 5,
             update(dt, pl, fieldState) {
-                if (this.dead) return false;
+                if (this.dead) return;
                 this.flash -= dt; this.iframes -= dt;
-
-                if (!(this.type === 1 && this.state === 2)) {
-                    this.vx *= 0.92; this.vy *= 0.92;
-                }
+                this.vx *= 0.92; this.vy *= 0.92;
                 this.x += this.vx * dt; this.y += this.vy * dt;
-
                 let dx = pl.x - this.x, dy = pl.y - this.y;
                 let dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < 1) dist = 1;
-
-                if (this.type === 1) { // Dasher
-                    if (this.state === 0) { // Chase
-                        this.vx += (dx / dist) * 2000 * dt; this.vy += (dy / dist) * 2000 * dt;
-                        if (dist < 180) { this.state = 1; this.timer = 0.6; }
-                    } else if (this.state === 1) { // Charge
-                        this.vx *= 0.5; this.vy *= 0.5; this.timer -= dt;
-                        if (this.timer <= 0) {
-                            this.state = 2; this.timer = 0.4;
-                            let ang = Math.atan2(dy, dx);
-                            this.vx = Math.cos(ang) * 800; this.vy = Math.sin(ang) * 800;
-                        }
-                    } else { // Dash
-                        this.timer -= dt; if (this.timer <= 0) this.state = 0;
-                    }
-                } else { // Grunt
+                if (dist > 1) {
                     this.vx += (dx / dist) * 1500 * dt; this.vy += (dy / dist) * 1500 * dt;
                 }
-
                 if (dist < 20) {
                     CombatSystem.onPlayerHit(this, fieldState);
-                    let raw = 5 + pl.lvl;
+                    let raw = (this.isBuffed ? 7 : 5) + pl.lvl;
                     pl.hp -= raw * dt;
                     if (pl.hp <= 0) {
                         pl.hp = 0;
@@ -250,24 +352,208 @@ class FieldState extends State {
                     }
                     UI.dirty = true;
                 }
-                return true;
+                if (this.isElite) {
+                    this.eliteSkillCd -= dt;
+                    if (this.eliteSkillCd <= 0) {
+                        this.eliteSkillCd = 5;
+                        fieldState.shots.push(new RootWave(fieldState, this.x, this.y));
+                    }
+                }
             },
             draw(ctx, s) {
                 let p = s(this.x, this.y);
-                ctx.translate(p.x, p.y);
-                if (this.flash > 0) ctx.fillStyle = "#fff";
-                else ctx.fillStyle = this.type === 1 ? (this.state === 1 ? "#fff" : "#a0f") : "#c44e4e";
-
-                if (this.type === 1) { ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-8, 8); ctx.lineTo(-8, -8); ctx.fill(); }
-                else { ctx.beginPath(); ctx.arc(0, 0, 12, 0, 6.28); ctx.fill(); }
-
-                ctx.fillStyle = "#000"; ctx.fillRect(-10, -20, 20, 4);
-                ctx.fillStyle = "#0f0"; ctx.fillRect(-10, -20, 20 * (this.hp / this.hpMax), 4);
-                ctx.translate(-p.x, -p.y);
+                ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 ? "#fff" : "#c44e4e");
+                ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.fill();
+                ctx.fillStyle = "#000"; ctx.fillRect(p.x - 10, p.y - 20, 20, 4);
+                ctx.fillStyle = "#0f0"; ctx.fillRect(p.x - 10, p.y - 20, 20 * (this.hp / this.hpMax), 4);
             }
         };
-        this.enemies.push(enemy);
-        CombatSystem.onEnemySpawn(enemy, this);
+    }
+
+    createCharger(x, y) {
+        const p = this.game.p;
+        return {
+            x, y, vx: 0, vy: 0,
+            hp: 30 + p.lvl * 5, hpMax: 30 + p.lvl * 5, r: 12, type: 'charger',
+            flash: 0, iframes: 0, dead: false, state: 0, timer: 0,
+            update(dt, pl, fieldState) {
+                if (this.dead) return;
+                this.flash -= dt; this.iframes -= dt;
+
+                if (this.state !== 2) {
+                    this.vx *= 0.92; this.vy *= 0.92;
+                }
+                this.x += this.vx * dt; this.y += this.vy * dt;
+
+                let dx = pl.x - this.x, dy = pl.y - this.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 1) dist = 1;
+
+                if (this.state === 0) { // Chase
+                    this.vx += (dx / dist) * 2000 * dt; this.vy += (dy / dist) * 2000 * dt;
+                    if (dist < 180) { this.state = 1; this.timer = 0.6; }
+                } else if (this.state === 1) { // Charge
+                    this.vx *= 0.5; this.vy *= 0.5; this.timer -= dt;
+                    if (this.timer <= 0) {
+                        this.state = 2; this.timer = 0.4;
+                        let ang = Math.atan2(dy, dx);
+                        this.vx = Math.cos(ang) * 800; this.vy = Math.sin(ang) * 800;
+                        if (this.isElite) {
+                            Telegraph.create(this.x, this.y, 20, 500, 0.4, 'rect', ang + Math.PI / 2);
+                        }
+                    }
+                } else { // Dash
+                    this.timer -= dt; if (this.timer <= 0) this.state = 0;
+                    if (this.isElite) {
+                        fieldState.shots.push(new Hazard(fieldState, this.x, this.y, 2));
+                    }
+                }
+
+                if (dist < 20) {
+                    CombatSystem.onPlayerHit(this, fieldState);
+                    let raw = (this.isBuffed ? 12 : 8) + pl.lvl;
+                    pl.hp -= raw;
+                    if (pl.hp <= 0) {
+                        pl.hp = 0;
+                        fieldState.game.active = false;
+                        document.getElementById('screen_death').classList.add('active');
+                        document.getElementById('deathSouls').innerText = pl.souls;
+                        document.getElementById('deathLvl').innerText = pl.lvl;
+                    }
+                    UI.dirty = true;
+                }
+            },
+            draw(ctx, s) {
+                let p = s(this.x, this.y);
+                ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 ? "#fff" : (this.state === 1 ? "#fff" : "#a0f"));
+                ctx.beginPath(); ctx.moveTo(p.x + 10, p.y); ctx.lineTo(p.x - 8, p.y + 8); ctx.lineTo(p.x - 8, p.y - 8); ctx.fill();
+                ctx.fillStyle = "#000"; ctx.fillRect(p.x - 10, p.y - 20, 20, 4);
+                ctx.fillStyle = "#0f0"; ctx.fillRect(p.x - 10, p.y - 20, 20 * (this.hp / this.hpMax), 4);
+            }
+        };
+    }
+
+    createSpitter(x, y) {
+        const p = this.game.p;
+        return {
+            x, y, vx: 0, vy: 0,
+            hp: 15 + p.lvl * 5, hpMax: 15 + p.lvl * 5, r: 10, type: 'spitter',
+            flash: 0, iframes: 0, dead: false, shootCd: 2,
+            update(dt, pl, fieldState) {
+                if (this.dead) return;
+                this.flash -= dt; this.iframes -= dt;
+                this.shootCd -= dt;
+
+                let dx = pl.x - this.x, dy = pl.y - this.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 300) {
+                    this.vx += (dx / dist) * 500 * dt; this.vy += (dy / dist) * 500 * dt;
+                } else {
+                    this.vx *= 0.9; this.vy *= 0.9;
+                }
+                this.x += this.vx * dt; this.y += this.vy * dt;
+
+                if (this.shootCd <= 0) {
+                    this.shootCd = 3;
+                    let a = Math.atan2(dy, dx);
+                    if (this.isElite) {
+                        for (let i = 0; i < 8; i++) {
+                            let angle = (i / 8) * Math.PI * 2;
+                            fieldState.shots.push({
+                                x: this.x, y: this.y, vx: Math.cos(angle) * 200, vy: Math.sin(angle) * 200, life: 3,
+                                update: function(dt, state) {
+                                    this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt;
+                                    if (dist2(this.x, this.y, pl.x, pl.y) < (pl.r + 5)**2) {
+                                        CombatSystem.onPlayerHit(this, state);
+                                        let raw = (this.isBuffed ? 12 : 8) + pl.lvl;
+                                        pl.hp -= raw;
+                                        UI.dirty = true;
+                                        return false;
+                                    }
+                                    return this.life > 0;
+                                },
+                                draw: function(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = 'orange'; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 6.28); ctx.fill(); }
+                            });
+                        }
+                    } else {
+                        fieldState.shots.push({
+                            x: this.x, y: this.y, vx: Math.cos(a) * 200, vy: Math.sin(a) * 200, life: 3,
+                            update: function(dt, state) {
+                                this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt;
+                                if (dist2(this.x, this.y, pl.x, pl.y) < (pl.r + 5)**2) {
+                                    CombatSystem.onPlayerHit(this, state);
+                                    let raw = (this.isBuffed ? 12 : 8) + pl.lvl;
+                                    pl.hp -= raw;
+                                    UI.dirty = true;
+                                    return false;
+                                }
+                                return this.life > 0;
+                            },
+                            draw: function(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = 'orange'; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 6.28); ctx.fill(); }
+                        });
+                    }
+                }
+            },
+            draw(ctx, s) {
+                let p = s(this.x, this.y);
+                ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 ? "#fff" : "orange");
+                ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.fill();
+                ctx.fillStyle = "#000"; ctx.fillRect(p.x - 10, p.y - 20, 20, 4);
+                ctx.fillStyle = "#0f0"; ctx.fillRect(p.x - 10, p.y - 20, 20 * (this.hp / this.hpMax), 4);
+            }
+        };
+    }
+
+    createAnchor(x, y) {
+        const p = this.game.p;
+        return {
+            x, y, vx: 0, vy: 0,
+            hp: 50 + p.lvl * 10, hpMax: 50 + p.lvl * 10, r: 15, type: 'anchor',
+            flash: 0, iframes: 0, dead: false, auraRad: 100, eliteSkillCd: 5,
+            update(dt, pl, fieldState) {
+                if (this.dead) return;
+                this.flash -= dt; this.iframes -= dt;
+                
+                let dx = pl.x - this.x, dy = pl.y - this.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 200) { // Move towards player if not too close
+                    this.vx += (dx / dist) * 100 * dt;
+                    this.vy += (dy / dist) * 100 * dt;
+                }
+                this.vx *= 0.9; this.vy *= 0.9;
+                this.x += this.vx * dt; this.y += this.vy * dt;
+
+                fieldState.enemies.forEach(e => {
+                    if (e !== this && !e.dead) {
+                        e.isBuffed = dist2(this.x, this.y, e.x, e.y) < this.auraRad**2;
+                    }
+                });
+
+                if (this.isElite) {
+                    this.eliteSkillCd -= dt;
+                    if (this.eliteSkillCd <= 0) {
+                        this.eliteSkillCd = 5;
+                        Telegraph.create(this.x, this.y, this.auraRad * 2, this.auraRad * 2, 1, 'circle');
+                        setTimeout(() => {
+                            fieldState.enemies.forEach(e => {
+                                if (e !== this && !e.dead && e.isBuffed) {
+                                    e.hp = Math.min(e.hpMax, e.hp + 10);
+                                }
+                            });
+                        }, 1000);
+                    }
+                }
+            },
+            draw(ctx, s) {
+                let p = s(this.x, this.y);
+                ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 ? "#fff" : "#6b8cc4");
+                ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.fill();
+                ctx.strokeStyle = "rgba(107, 140, 196, 0.5)"; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(p.x, p.y, this.auraRad, 0, 6.28); ctx.stroke();
+                ctx.fillStyle = "#000"; ctx.fillRect(p.x - 10, p.y - 25, 20, 4);
+                ctx.fillStyle = "#0f0"; ctx.fillRect(p.x - 10, p.y - 25, 20 * (this.hp / this.hpMax), 4);
+            }
+        };
     }
 
     findTarget(exclude, x, y) {
