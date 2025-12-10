@@ -29,6 +29,7 @@ class DungeonState extends State {
         this.enemies = [this.boss];
         this.shots = [];
         this.townPortal = null;
+        this.game.p.recalc();
     }
 
     update(dt) {
@@ -120,7 +121,7 @@ class DungeonState extends State {
         });
     }
 
-    findTarget(exclude) {
+    findTarget(exclude, x, y) {
         if (!this.boss.dead && this.boss !== exclude) {
             return this.boss;
         }
@@ -131,25 +132,48 @@ class DungeonState extends State {
         const p = this.game.p;
         const w = this.game.screenToWorld(mouse.x, mouse.y);
         const a = Math.atan2(w.y - p.y, w.x - p.x);
-        // Note: Pistol shots in dungeon don't have pierce/bounce logic from field
-        this.shots.push(new Proj(this, p.x, p.y, Math.cos(a) * 700, Math.sin(a) * 700, 1.5));
+        this.shots.push(new Proj(this,
+            p.x, p.y, Math.cos(a) * 700, Math.sin(a) * 700, 1.5, p.stats.hexPierce || 0, p.stats.hexBounce || 0
+        ));
     }
 
     fireZap() {
         const p = this.game.p;
-        if (this.boss.dead) return;
-        this.hit(this.boss, p.stats.dmg);
-        this.chains.push({ t: 0.15, pts: [{ x: p.x, y: p.y }, { x: this.boss.x, y: this.boss.y }] });
+        const maxChains = 1 + (p.stats.chainCount || 0);
+        const range = 250 * (1 + (p.stats.chainJump || 0));
+        let curr = { x: p.x, y: p.y };
+        let visited = new Set();
+
+        for (let i = 0; i < maxChains; i++) {
+            let best = null, bestDist = range * range;
+            this.enemies.forEach(e => {
+                if (e.dead || visited.has(e)) return;
+                let d = dist2(curr.x, curr.y, e.x, e.y);
+                if (d < bestDist) { bestDist = d; best = e; }
+            });
+
+            if (best) {
+                visited.add(best);
+                this.hit(best, p.stats.dmg);
+                this.chains.push({ t: 0.15, pts: [{ x: curr.x, y: curr.y }, { x: best.x, y: best.y }] });
+                curr = best;
+            } else break;
+        }
     }
     
     runOrbit(dt) {
         const p = this.game.p;
+        const cnt = 1 + (p.stats.orbitBase || 0);
         this.hammerAng += dt * 5;
-        let a = this.hammerAng;
-        let ox = p.x + Math.cos(a) * this.hammerRad;
-        let oy = p.y + Math.sin(a) * this.hammerRad;
-        if (!this.boss.dead && dist2(ox, oy, this.boss.x, this.boss.y) < (15 + this.boss.r) ** 2) {
-            this.hit(this.boss, p.stats.dmg * 0.6);
+        for (let i = 0; i < cnt; i++) {
+            let a = this.hammerAng + (i * 6.28 / cnt);
+            let ox = p.x + Math.cos(a) * this.hammerRad;
+            let oy = p.y + Math.sin(a) * this.hammerRad;
+            this.enemies.forEach(e => {
+                if (!e.dead && dist2(ox, oy, e.x, e.y) < (15 + e.r) ** 2) {
+                    this.hit(e, p.stats.dmg * 0.6);
+                }
+            });
         }
     }
 
@@ -191,9 +215,12 @@ class DungeonState extends State {
         ctx.fill();
         
         if (this.hammerRad > 0) {
-            let a = this.hammerAng;
-            ctx.fillStyle = "#e87b7b"; ctx.beginPath();
-            ctx.arc(pc.x + Math.cos(a) * this.hammerRad, pc.y + Math.sin(a) * this.hammerRad, 8, 0, 6.28); ctx.fill();
+            const cnt = 1 + (p.stats.orbitBase || 0);
+            for (let i = 0; i < cnt; i++) {
+                let a = this.hammerAng + (i * 6.28 / cnt);
+                ctx.fillStyle = "#e87b7b"; ctx.beginPath();
+                ctx.arc(pc.x + Math.cos(a) * this.hammerRad, pc.y + Math.sin(a) * this.hammerRad, 8, 0, 6.28); ctx.fill();
+            }
         }
 
 
