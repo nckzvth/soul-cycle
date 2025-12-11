@@ -9,7 +9,11 @@ import DungeonState from "../states/DungeonState.js";
 const CombatSystem = {
     // Event hooks
     onEnemySpawn: (enemy, state) => {},
-    onPlayerHit: (source, state) => {},
+    onPlayerHit: (source, state) => {
+        // This function was empty, causing enemies to not deal damage initially.
+        // The logic is now handled directly in each enemy's handlePlayerCollision method.
+        // This hook can be used for global effects that trigger when the player is hit.
+    },
     onRoomOrWaveClear: (state) => {},
 
     hit(target, dmg, player, state) {
@@ -20,8 +24,7 @@ const CombatSystem = {
             finalDmg *= 0.5; // Example: 50% damage reduction
         }
 
-        target.hp -= finalDmg;
-        target.flash = 0.1;
+        target.takeDamage(finalDmg);
 
         if (player) {
             let a = Math.atan2(target.y - player.y, target.x - player.x);
@@ -81,11 +84,11 @@ const CombatSystem = {
 
     runOrbit(player, state, dt) {
         const cnt = 1 + (player.stats.orbitBase || 0);
-        state.hammerAng += dt * 5;
+        player.hammerAng += dt * 5;
         for (let i = 0; i < cnt; i++) {
-            let a = state.hammerAng + (i * 6.28 / cnt);
-            let ox = player.x + Math.cos(a) * state.hammerRad;
-            let oy = player.y + Math.sin(a) * state.hammerRad;
+            let a = player.hammerAng + (i * 6.28 / cnt);
+            let ox = player.x + Math.cos(a) * player.hammerRad;
+            let oy = player.y + Math.sin(a) * player.hammerRad;
             state.enemies.forEach(e => {
                 if (!e.dead && dist2(ox, oy, e.x, e.y) < (15 + e.r) ** 2) {
                     this.hit(e, player.stats.dmg * 0.6, player, state);

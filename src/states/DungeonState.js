@@ -1,97 +1,55 @@
-// src/states/DungeonState.js
 import State from '../core/State.js';
 import TownState from './TownState.js';
 import Boss from '../entities/Boss.js';
 import Interactable from '../entities/Interactable.js';
-import { keys, mouse } from '../core/Input.js';
-import { dist2 } from '../core/Utils.js';
+import { keys } from '../core/Input.js';
 import CombatSystem from '../systems/CombatSystem.js';
-import UI from '../systems/UI.js';
 
 class DungeonState extends State {
     constructor(game) {
         super(game);
-        this.boss = new Boss(400, 200);
-        this.enemies = [this.boss];
-        this.shots = []; // For all projectiles in the scene
+        this.boss = null;
+        this.enemies = [];
+        this.shots = []; 
         this.townPortal = null;
-        this.atkCd = 0;
-        this.hammerRad = 0;
-        this.hammerAng = 0;
         this.chains = [];
+        // Room bounds
+        this.bounds = { x: 0, y: 0, w: 800, h: 600 };
     }
 
     enter() {
         console.log("Entering Dungeon State");
-        this.game.p.x = 400;
-        this.game.p.y = 500;
+        const p = this.game.p;
+        // Encapsulated Teleport
+        p.teleport(400, 500);
+        p.recalc();
+
         this.boss = new Boss(400, 200);
         this.enemies = [this.boss];
         this.shots = [];
         this.townPortal = null;
-        this.game.p.recalc();
     }
 
     update(dt) {
         const p = this.game.p;
-        p.updatePerks(dt, this);
 
-        // Player movement
-        let mx = 0, my = 0;
-        if (keys["KeyW"]) my--; if (keys["KeyS"]) my++;
-        if (keys["KeyA"]) mx--; if (keys["KeyD"]) mx++;
+        // 1. UPDATE PLAYER (Combat Enabled)
+        p.update(dt, this, true);
 
-        if (p.dashTimer > 0) {
-            p.dashTimer -= dt;
-            p.x += p.dashVec.x * 800 * dt;
-            p.y += p.dashVec.y * 800 * dt;
-        } else {
-            if (mx || my) {
-                let l = Math.sqrt(mx * mx + my * my);
-                mx /= l; my /= l;
-            }
-            if (keys["Space"] && p.sta >= 20 && (mx || my)) {
-                p.sta -= 20; p.dashTimer = 0.2; p.dashVec = { x: mx, y: my };
-            } else {
-                let spd = 180 * (1 + p.stats.move);
-                p.x += mx * spd * dt; p.y += my * spd * dt;
-            }
-        }
-        p.sta = Math.min(100, p.sta + dt * 15);
+        // 2. WALLS (Clamp Position)
+        p.x = Math.max(this.bounds.x + 12, Math.min(this.bounds.w - 12, p.x));
+        p.y = Math.max(this.bounds.y + 12, Math.min(this.bounds.h - 12, p.y));
 
-        // Keep player within bounds
-        p.x = Math.max(12, Math.min(788, p.x));
-        p.y = Math.max(12, Math.min(588, p.y));
-
-        // Update boss and projectiles
+        // 3. BOSS/ENEMIES
         if (!this.boss.dead) {
             this.boss.update(dt, p, this);
         }
+        
+        // 4. PROJECTILES
         this.shots = this.shots.filter(s => s.update(dt, this));
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
 
-
-        // Player attacks
-        if (this.atkCd > 0) this.atkCd -= dt;
-        const w = p.gear.weapon;
-
-        if (w && w.cls === "hammer") {
-            if (mouse.down) {
-                this.hammerRad = Math.min(100, this.hammerRad + dt * 300);
-                CombatSystem.runOrbit(p, this, dt);
-            } else {
-                if (this.hammerRad > 0) this.hammerRad -= dt * 400;
-            }
-        }
-
-        if (mouse.down && this.atkCd <= 0 && w) {
-            let rate = 0.4 / (1 + p.stats.spd);
-            if (w.cls === "pistol") { CombatSystem.firePistol(p, this); this.atkCd = rate; }
-            else if (w.cls === "staff") { CombatSystem.fireZap(p, this); this.atkCd = rate * 1.5; }
-        }
-
-
-        // Portal interaction
+        // 5. INTERACTION
         if (this.townPortal && keys['KeyF'] && this.townPortal.checkInteraction(p)) {
             this.townPortal.onInteract();
         }
@@ -116,67 +74,40 @@ class DungeonState extends State {
 
     render(ctx) {
         const p = this.game.p;
-        const canvas = this.game.canvas;
-        const w = canvas.width;
-        const h = canvas.height;
-
-        // The dungeon is a fixed screen, no camera scroll
+        const w = ctx.canvas.width, h = ctx.canvas.height;
+        // Static Camera
         const s = (x, y) => ({ x, y });
 
-        ctx.fillStyle = '#4a2a5a';
-        ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = 'white';
-        ctx.strokeRect(0, 0, w, h);
+        ctx.fillStyle = '#4a2a5a'; ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = 'white'; ctx.strokeRect(0, 0, w, h);
 
-        if (!this.boss.dead) {
-            this.boss.draw(ctx, s);
-        }
-
+        if (!this.boss.dead) this.boss.draw(ctx, s);
         this.shots.forEach(shot => shot.draw(ctx, s));
         
+        // Chains
         ctx.lineWidth = 2; ctx.strokeStyle = "#a0ebff";
         this.chains.forEach(c => {
-            if (c.pts.length < 2) return;
-            ctx.beginPath(); ctx.moveTo(s(c.pts[0].x, c.pts[0].y).x, s(c.pts[0].x, c.pts[0].y).y);
-            ctx.lineTo(s(c.pts[1].x, c.pts[1].y).x, s(c.pts[1].x, c.pts[1].y).y);
+            let p1 = s(c.pts[0].x, c.pts[0].y);
+            let p2 = s(c.pts[1].x, c.pts[1].y);
+            ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
             ctx.globalAlpha = c.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
         });
 
+        p.draw(ctx, s);
 
-        // Draw Player
-        let pc = s(p.x, p.y);
-        ctx.fillStyle = "#6aae9d";
-        ctx.beginPath();
-        ctx.arc(pc.x, pc.y, 12, 0, 6.28);
-        ctx.fill();
-        
-        if (this.hammerRad > 0) {
-            const cnt = 1 + (p.stats.orbitBase || 0);
-            for (let i = 0; i < cnt; i++) {
-                let a = this.hammerAng + (i * 6.28 / cnt);
-                ctx.fillStyle = "#e87b7b"; ctx.beginPath();
-                ctx.arc(pc.x + Math.cos(a) * this.hammerRad, pc.y + Math.sin(a) * this.hammerRad, 8, 0, 6.28); ctx.fill();
-            }
-        }
-
-
+        // Portal
         if (this.townPortal) {
             this.townPortal.draw(ctx);
             if (this.townPortal.checkInteraction(p)) {
-                ctx.fillStyle = 'white';
-                ctx.font = '24px sans-serif';
-                ctx.textAlign = 'center';
+                ctx.fillStyle = 'white'; ctx.font = '24px sans-serif';
                 ctx.fillText("[F] to return to Town", w / 2, h - 50);
-                ctx.textAlign = 'start';
             }
         }
 
-        // Boss HP Bar
+        // Boss UI
         if (!this.boss.dead) {
-            ctx.fillStyle = 'red';
-            ctx.fillRect(w / 2 - 250, 20, 500 * (this.boss.hp / this.boss.hpMax), 20);
-            ctx.strokeStyle = 'white';
-            ctx.strokeRect(w / 2 - 250, 20, 500, 20);
+            ctx.fillStyle = 'red'; ctx.fillRect(w / 2 - 250, 20, 500 * (this.boss.hp / this.boss.hpMax), 20);
+            ctx.strokeStyle = 'white'; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
         }
     }
 }
