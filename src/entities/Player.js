@@ -244,6 +244,7 @@ export default class PlayerObj {
 
             const kills = this.killStats?.currentSession ?? 0;
             document.getElementById('deathKills').innerText = kills;
+            Game.paused = true;
         }
     }
 

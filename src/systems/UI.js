@@ -24,6 +24,8 @@ const UI = {
     },
     render() {
         let p = Game.p;
+        if (!p) return; // in case called before startGame()
+
         document.getElementById("uiLvl").innerText = p.lvl;
         document.getElementById("uiSouls").innerText = p.souls;
         document.getElementById("uiXp").innerText = Math.floor(p.xp);
@@ -32,15 +34,18 @@ const UI = {
         document.getElementById("hpBar").style.width = (p.hp / p.hpMax * 100) + "%";
         document.getElementById("txtSta").innerText = `${Math.ceil(p.sta)}/100`;
         document.getElementById("staBar").style.width = p.sta + "%";
-        
-        const killCounter = document.getElementById("uiKills");
-        const state = Game.stateManager?.currentState || Game.state;
 
-        if (state && state.showKillCounter) {
-            killCounter.parentElement.style.display = 'flex';
-            killCounter.innerText = p.killStats.currentSession;
-        } else {
-            killCounter.parentElement.style.display = 'none';
+        // Kill counter: always visible, always driven by player
+        const killCounter = document.getElementById("uiKills");
+        if (killCounter) {
+            const state = Game.stateManager?.currentState || Game.state;
+            if (state && state.showKillCounter) {
+                killCounter.parentElement.style.display = 'flex';
+                const kc = p.killStats?.currentSession ?? 0;
+                killCounter.innerText = kc;
+            } else {
+                killCounter.parentElement.style.display = 'none';
+            }
         }
     },
     toggle(id) {

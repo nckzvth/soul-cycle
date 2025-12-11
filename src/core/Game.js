@@ -13,7 +13,6 @@ const Game = {
     time: 0,
     paused: false,
     lastTime: 0,
-    active: false,
     canvas: null,
     ctx: null,
 
@@ -38,13 +37,18 @@ const Game = {
         this.stateManager = new GameStateManager(this);
         this.stateManager.switchState(new TownState(this));
         
-        this.active = true;
+        this.paused = false;
         this.lastTime = performance.now();
         requestAnimationFrame(this.loop.bind(this));
     },
 
+    restart() {
+        document.getElementById('screen_death').classList.remove('active');
+        this.stateManager.switchState(new TownState(this));
+        this.paused = false;
+    },
+
     loop(now) {
-        if (!this.active) return;
         let dt = (now - this.lastTime) / 1000;
         this.lastTime = now;
         if (dt > 0.1) dt = 0.1;
@@ -61,10 +65,7 @@ const Game = {
     render() {
         if (!this.canvas) return;
         this.stateManager.render(this.ctx);
-        if (UI.dirty) {
-            UI.render();
-            UI.dirty = false;
-        }
+        UI.render(); // always update HUD
     },
 
     screenToWorld(sx, sy) {

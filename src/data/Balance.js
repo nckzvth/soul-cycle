@@ -69,8 +69,8 @@ export const BALANCE = {
         spawnRatePerWave: 0.5,
 
         // Soul gauge
-        baseSoulGaugeThreshold: 10,   // wave 1
-        soulGaugeThresholdPerWave: 10 // waveIndex * this => current behaviour
+        baseSoulGaugeThreshold: 20,   // wave 1
+        soulGaugeThresholdPerWave: 20 // waveIndex * this => current behaviour
     },
 
     enemies: {
