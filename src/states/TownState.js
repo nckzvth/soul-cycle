@@ -11,6 +11,7 @@ class TownState extends State {
         });
         // Empty array for safety if perks trigger
         this.shots = []; 
+        this.showKillCounter = false;
     }
 
     enter() {
@@ -20,6 +21,9 @@ class TownState extends State {
         // Encapsulated Reset
         p.teleport(400, 300);
         p.fullHeal();
+        p.resetKillSession();
+        console.log(`Lifetime kills: ${p.killStats.lifetime}`);
+        this.showKillCounter = false;
     }
 
     update(dt) {

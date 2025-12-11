@@ -4,6 +4,8 @@ import { clamp } from "../core/Utils.js";
 import { keys, mouse } from "../core/Input.js";
 import UI from "../systems/UI.js";
 import CombatSystem from "../systems/CombatSystem.js";
+import { BALANCE } from "../data/Balance.js";
+import Game from "../core/Game.js";
 
 export default class PlayerObj {
     constructor() {
@@ -15,6 +17,14 @@ export default class PlayerObj {
         // Stats
         this.hp = 100; this.hpMax = 100; this.sta = 100;
         this.lvl = 1; this.xp = 0; this.souls = 0;
+
+        // Kill tracking
+        this.killStats = {
+            currentSession: 0,   // resets when returning to town
+            lifetime: 0,         // never reset (unless you wipe profile)
+            nonEliteSession: 0,
+            bossesSession: 0
+        };
         
         // Inventory
         this.inv = []; 
@@ -55,7 +65,6 @@ export default class PlayerObj {
         // 1. Handle Status Effects
         if (this.rooted > 0) {
             this.rooted -= dt;
-            return; // Hard stop on actions
         }
 
         // 2. Handle Passive Perks
@@ -63,13 +72,15 @@ export default class PlayerObj {
 
         // 3. Cooldowns & Regen
         if (this.atkCd > 0) this.atkCd -= dt;
-        this.sta = Math.min(100, this.sta + dt * 15);
+        this.sta = Math.min(100, this.sta + dt * BALANCE.player.stamRegenPerSec);
 
         // 4. Movement
-        if (this.dashTimer > 0) {
-            this.processDash(dt);
-        } else {
-            this.processMovement(dt);
+        if (this.rooted <= 0) {
+            if (this.dashTimer > 0) {
+                this.processDash(dt);
+            } else {
+                this.processMovement(dt);
+            }
         }
         
         // 5. Combat
@@ -112,13 +123,13 @@ export default class PlayerObj {
         }
 
         // Dash Trigger
-        if (keys["Space"] && this.sta >= 20 && (mx || my)) {
-            this.sta -= 20; 
-            this.dashTimer = 0.2; 
+        if (keys["Space"] && this.sta >= BALANCE.player.dashCost && (mx || my)) {
+            this.sta -= BALANCE.player.dashCost;
+            this.dashTimer = BALANCE.player.dashDuration;
             this.dashVec = { x: mx, y: my };
         } else {
             // Standard Walk
-            let spd = 180 * (1 + this.stats.move);
+            let spd = BALANCE.player.walkBaseSpeed * (1 + this.stats.move);
             this.x += mx * spd * dt; 
             this.y += my * spd * dt;
         }
@@ -127,8 +138,8 @@ export default class PlayerObj {
     processDash(dt) {
         this.dashTimer -= dt;
         // Dash speed is fixed high velocity
-        this.x += this.dashVec.x * 800 * dt; 
-        this.y += this.dashVec.y * 800 * dt;
+        this.x += this.dashVec.x * BALANCE.player.dashSpeed * dt; 
+        this.y += this.dashVec.y * BALANCE.player.dashSpeed * dt;
     }
 
     processCombat(dt, scene) {
@@ -138,26 +149,29 @@ export default class PlayerObj {
         // Hammer Orbit
         if (w.cls === "hammer") {
             if (mouse.down) {
-                this.hammerRad = Math.min(100, this.hammerRad + dt * 300); // Expand
-                CombatSystem.runOrbit(this, scene, dt); 
+                this.hammerRad = Math.min(
+                    BALANCE.player.hammerMaxRadius,
+                    this.hammerRad + dt * BALANCE.player.hammerExpandSpeed
+                );
+                CombatSystem.runOrbit(this, scene, dt);
             } else {
                 if (this.hammerRad > 0) {
-                    this.hammerRad -= dt * 400; // Decay
-                    CombatSystem.runOrbit(this, scene, dt); // Keep orbiting while decaying
+                    this.hammerRad -= dt * BALANCE.player.hammerDecaySpeed;
+                    CombatSystem.runOrbit(this, scene, dt);
                 }
             }
         }
 
         // Shooting (Pistol/Staff) - Don't shoot while dashing
         if (mouse.down && this.atkCd <= 0 && this.dashTimer <= 0) {
-            let rate = 0.4 / (1 + this.stats.spd);
+            let rate = BALANCE.player.pistolBaseRate / (1 + this.stats.spd);
             
             if (w.cls === "pistol") {
                 CombatSystem.firePistol(this, scene);
                 this.atkCd = rate;
             } else if (w.cls === "staff") {
                 CombatSystem.fireZap(this, scene);
-                this.atkCd = rate * 1.5;
+                this.atkCd = rate * BALANCE.player.staffRateMult;
             }
         }
     }
@@ -171,14 +185,29 @@ export default class PlayerObj {
         }
         this.totalAttr = t;
 
-        let s = { hp: 80 + (this.lvl * 5), dmg: 5, crit: 0.05, spd: 0, move: 0, regen: 0.5, soulGain: 1, kb: 0, area: 1 };
-        s.dmg += t.might * 0.5; s.kb += t.might * 3;
-        s.spd += t.alacrity * 0.03; s.move += t.alacrity * 0.02;
-        s.area += t.will * 0.05; s.soulGain += t.will * 0.1;
+        const bp = BALANCE.player;
+        let s = {
+            hp: bp.baseHp + (this.lvl * bp.hpPerLevel),
+            dmg: bp.baseDmg,
+            crit: bp.baseCrit,
+            spd: bp.baseSpd,
+            move: bp.baseMove,
+            regen: bp.baseRegen,
+            soulGain: bp.baseSoulGain,
+            kb: bp.baseKb,
+            area: bp.baseArea
+        };
 
-        this.perks.might = t.might >= 20;
-        this.perks.alacrity = t.alacrity >= 20;
-        this.perks.will = t.will >= 20;
+        s.dmg += t.might * bp.dmgPerMight;
+        s.kb += t.might * bp.kbPerMight;
+        s.spd += t.alacrity * bp.spdPerAlacrity;
+        s.move += t.alacrity * bp.movePerAlacrity;
+        s.area += t.will * bp.areaPerWill;
+        s.soulGain += t.will * bp.soulGainPerWill;
+
+        this.perks.might = t.might >= bp.perkThreshold;
+        this.perks.alacrity = t.alacrity >= bp.perkThreshold;
+        this.perks.will = t.will >= bp.perkThreshold;
 
         for (let k in this.gear) if (this.gear[k]) for (let sk in this.gear[k].stats) s[sk] = (s[sk] || 0) + this.gear[k].stats[sk];
         SKILLS.forEach(sk => { if (this.skills.has(sk.id)) for (let k in sk.mods) s[k] = (s[k] || 0) + sk.mods[k]; });
@@ -212,6 +241,9 @@ export default class PlayerObj {
             document.getElementById('screen_death').classList.add('active');
             document.getElementById('deathSouls').innerText = this.souls;
             document.getElementById('deathLvl').innerText = this.lvl;
+
+            const kills = this.killStats?.currentSession ?? 0;
+            document.getElementById('deathKills').innerText = kills;
         }
     }
 
@@ -250,5 +282,28 @@ export default class PlayerObj {
                 ctx.fill();
             }
         }
+    }
+
+    registerKill(enemy) {
+        // Lifetime tally
+        this.killStats.lifetime++;
+        this.killStats.currentSession++;
+
+        if (!enemy.isElite) {
+            this.killStats.nonEliteSession++;
+        }
+        if (enemy.isBoss) {
+            this.killStats.bossesSession++;
+        }
+
+        // Make sure HUD picks up the change
+        UI.dirty = true;
+    }
+
+    resetKillSession() {
+        this.killStats.currentSession = 0;
+        this.killStats.nonEliteSession = 0;
+        this.killStats.bossesSession = 0;
+        UI.dirty = true;
     }
 }

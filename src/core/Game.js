@@ -56,15 +56,15 @@ const Game = {
     update(dt) {
         this.time += dt;
         this.stateManager.update(dt);
-        if (UI.dirty) {
-            UI.render();
-            UI.dirty = false;
-        }
     },
 
     render() {
         if (!this.canvas) return;
         this.stateManager.render(this.ctx);
+        if (UI.dirty) {
+            UI.render();
+            UI.dirty = false;
+        }
     },
 
     screenToWorld(sx, sy) {

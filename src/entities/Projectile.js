@@ -1,6 +1,7 @@
 import { dist2 } from "../core/Utils.js";
 import CombatSystem from "../systems/CombatSystem.js"; // Import CombatSystem
 import UI from "../systems/UI.js";
+import { BALANCE } from "../data/Balance.js";
 
 export class Projectile {
     constructor(state, x, y, vx, vy, life, pierce = 0, bounce = 0) {
@@ -38,9 +39,9 @@ export class EnemyProjectile {
     constructor(x, y, angle, isBuffed, level) {
         this.x = x;
         this.y = y;
-        this.vx = Math.cos(angle) * 200;
-        this.vy = Math.sin(angle) * 200;
-        this.life = 3;
+        this.vx = Math.cos(angle) * BALANCE.projectiles.enemy.speed;
+        this.vy = Math.sin(angle) * BALANCE.projectiles.enemy.speed;
+        this.life = BALANCE.projectiles.enemy.life;
         this.isBuffed = isBuffed;
         this.level = level;
     }
@@ -53,7 +54,7 @@ export class EnemyProjectile {
         const pl = state.game.p;
         if (dist2(this.x, this.y, pl.x, pl.y) < (pl.r + 5) ** 2) {
             CombatSystem.onPlayerHit(this, state);
-            let raw = (this.isBuffed ? 12 : 8) + this.level;
+            let raw = (this.isBuffed ? BALANCE.projectiles.enemy.buffedDamage : BALANCE.projectiles.enemy.damage) + this.level;
             pl.takeDamage(raw);
             return false;
         }
@@ -70,9 +71,9 @@ export class EnemyProjectile {
 }
 
 export class Shockwave {
-    constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.r = 0; this.dmg = dmg; this.life = 0.5; }
+    constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.r = 0; this.dmg = dmg; this.life = BALANCE.projectiles.shockwave.life; }
     update(dt) {
-        this.r += dt * 400; this.life -= dt;
+        this.r += dt * BALANCE.projectiles.shockwave.speed; this.life -= dt;
         this.state.enemies.forEach(e => {
             if (dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2 && !e.hitByWave) {
                 // Call CombatSystem.hit instead of this.state.hit
@@ -90,12 +91,12 @@ export class Shockwave {
 }
 
 export class RootWave {
-    constructor(state, x, y) { this.state = state; this.x = x; this.y = y; this.r = 0; this.life = 0.5; }
+    constructor(state, x, y) { this.state = state; this.x = x; this.y = y; this.r = 0; this.life = BALANCE.projectiles.rootWave.life; }
     update(dt) {
-        this.r += dt * 400; this.life -= dt;
+        this.r += dt * BALANCE.projectiles.rootWave.speed; this.life -= dt;
         const p = this.state.game.p;
         if (dist2(this.x, this.y, p.x, p.y) < (this.r + p.r) ** 2 && p.dashTimer <= 0) {
-            CombatSystem.rootPlayer(p, 2);
+            CombatSystem.rootPlayer(p, BALANCE.projectiles.rootWave.duration);
         }
         return this.life > 0;
     }
@@ -107,13 +108,13 @@ export class RootWave {
 }
 
 export class StaticMine {
-    constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.dmg = dmg; this.life = 3.0; }
+    constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.dmg = dmg; this.life = BALANCE.projectiles.staticMine.life; }
     update(dt) {
         this.life -= dt;
         this.state.enemies.forEach(e => {
-            if (dist2(this.x, this.y, e.x, e.y) < 25 * 25) {
+            if (dist2(this.x, this.y, e.x, e.y) < BALANCE.projectiles.staticMine.radius ** 2) {
                 // Call CombatSystem.hit instead of this.state.hit
-                CombatSystem.hit(e, this.dmg * 3 * dt, this.state.game.p, this.state);
+                CombatSystem.hit(e, this.dmg * BALANCE.projectiles.staticMine.damageMultiplier * dt, this.state.game.p, this.state);
             }
         });
         return this.life > 0;
@@ -122,16 +123,16 @@ export class StaticMine {
 }
 
 export class Wisp {
-    constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.dmg = dmg; this.life = 4.0; this.target = null; }
+    constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.dmg = dmg; this.life = BALANCE.projectiles.wisp.life; this.target = null; }
     update(dt) {
         this.life -= dt;
         if (!this.target || this.target.dead) this.target = this.state.findTarget(null, this.x, this.y);
         if (this.target) {
             let angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
-            this.x += Math.cos(angle) * 350 * dt; this.y += Math.sin(angle) * 350 * dt;
+            this.x += Math.cos(angle) * BALANCE.projectiles.wisp.speed * dt; this.y += Math.sin(angle) * BALANCE.projectiles.wisp.speed * dt;
             if (dist2(this.x, this.y, this.target.x, this.target.y) < 20 * 20) {
                 // Call CombatSystem.hit instead of this.state.hit
-                CombatSystem.hit(this.target, this.dmg * 1.5, this.state.game.p, this.state);
+                CombatSystem.hit(this.target, this.dmg * BALANCE.projectiles.wisp.damageMultiplier, this.state.game.p, this.state);
                 return false;
             }
         } else {
@@ -151,8 +152,7 @@ export class Hazard {
         this.life -= dt;
         if (dist2(this.x, this.y, this.state.game.p.x, this.state.game.p.y) < (this.state.game.p.r + 5)**2) {
             CombatSystem.onPlayerHit(this, this.state);
-            this.state.game.p.hp -= 10 * dt;
-            UI.dirty = true;
+            this.state.game.p.takeDamage(BALANCE.projectiles.hazard.damage * dt);
         }
         return this.life > 0;
     }

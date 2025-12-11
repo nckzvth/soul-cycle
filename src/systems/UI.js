@@ -32,6 +32,16 @@ const UI = {
         document.getElementById("hpBar").style.width = (p.hp / p.hpMax * 100) + "%";
         document.getElementById("txtSta").innerText = `${Math.ceil(p.sta)}/100`;
         document.getElementById("staBar").style.width = p.sta + "%";
+        
+        const killCounter = document.getElementById("uiKills");
+        const state = Game.stateManager?.currentState || Game.state;
+
+        if (state && state.showKillCounter) {
+            killCounter.parentElement.style.display = 'flex';
+            killCounter.innerText = p.killStats.currentSession;
+        } else {
+            killCounter.parentElement.style.display = 'none';
+        }
     },
     toggle(id) {
         let el = document.getElementById("modal_" + id);

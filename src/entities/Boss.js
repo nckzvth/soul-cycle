@@ -1,18 +1,20 @@
 // src/entities/Boss.js
 import { dist2 } from '../core/Utils.js';
 import UI from '../systems/UI.js';
+import { BALANCE } from '../data/Balance.js';
 
 class Boss {
     constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.hp = 2000;
-        this.hpMax = 2000;
-        this.r = 30;
+        this.hp = BALANCE.boss.hp;
+        this.hpMax = BALANCE.boss.hp;
+        this.r = BALANCE.boss.radius;
         this.dead = false;
         this.attackTimer = 0;
         this.phase = 1;
         this.flash = 0;
+        this.isBoss = true;
     }
 
     update(dt, p, dungeonState) {
@@ -22,7 +24,7 @@ class Boss {
         this.attackTimer -= dt;
         if (this.attackTimer <= 0) {
             this.attack(p, dungeonState);
-            this.attackTimer = this.phase === 1 ? 2 : 1;
+            this.attackTimer = this.phase === 1 ? BALANCE.boss.phase1.attackInterval : BALANCE.boss.phase2.attackInterval;
         }
 
         if (this.hp < this.hpMax / 2 && this.phase === 1) {
@@ -32,15 +34,17 @@ class Boss {
     }
 
     attack(p, dungeonState) {
-        const projectileCount = this.phase === 1 ? 8 : 16;
+        const projectileCount = this.phase === 1 ? BALANCE.boss.phase1.projectileCount : BALANCE.boss.phase2.projectileCount;
+        const projectileSpeed = this.phase === 1 ? BALANCE.boss.phase1.projectileSpeed : BALANCE.boss.phase2.projectileSpeed;
+        const projectileDamage = this.phase === 1 ? BALANCE.boss.phase1.projectileDamage : BALANCE.boss.phase2.projectileDamage;
+
         for (let i = 0; i < projectileCount; i++) {
             const angle = (i / projectileCount) * Math.PI * 2;
-            const speed = 200;
             dungeonState.shots.push({
                 x: this.x,
                 y: this.y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
+                vx: Math.cos(angle) * projectileSpeed,
+                vy: Math.sin(angle) * projectileSpeed,
                 life: 3,
                 isBossShot: true,
                 update: function(dt, state) {
@@ -50,15 +54,7 @@ class Boss {
 
                     // Check collision with player
                     if (dist2(this.x, this.y, p.x, p.y) < (p.r + 5)**2) {
-                        p.hp -= 10; // Player takes 10 damage
-                        UI.dirty = true;
-                        if (p.hp <= 0) {
-                            p.hp = 0;
-                            state.game.active = false;
-                            document.getElementById('screen_death').classList.add('active');
-                            document.getElementById('deathSouls').innerText = p.souls;
-                            document.getElementById('deathLvl').innerText = p.lvl;
-                        }
+                        p.takeDamage(projectileDamage);
                         return false; // Projectile is destroyed on hit
                     }
 

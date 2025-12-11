@@ -2,20 +2,13 @@ import { dist2 } from "../core/Utils.js";
 import { Hazard, RootWave, EnemyProjectile } from "./Projectile.js";
 import Telegraph from "../systems/Telegraph.js";
 import CombatSystem from "../systems/CombatSystem.js";
+import { BALANCE } from "../data/Balance.js";
 
 /**
  * @class Enemy
  * @description The base class for all enemy types in the game.
- * Handles common logic such as movement, physics, health, and rendering.
- * Subclasses should override the performAI and handlePlayerCollision methods.
  */
 export class Enemy {
-    /**
-     * @param {number} x - The initial x-coordinate.
-     * @param {number} y - The initial y-coordinate.
-     * @param {number} level - The level of the enemy, used for scaling stats.
-     * @param {boolean} [isElite=false] - Whether the enemy is an elite variant.
-     */
     constructor(x, y, level, isElite = false) {
         this.x = x;
         this.y = y;
@@ -25,73 +18,55 @@ export class Enemy {
         this.isElite = isElite;
         this.dead = false;
 
-        // --- Default Stats (to be overridden in subclasses) ---
-        this.hp = 10;
-        this.hpMax = 10;
-        this.speed = 100;
-        this.r = 12; // radius
-        this.color = "#fff";
-        this.soulValue = 1;
+        // --- Generic Stats ---
+        // These are set as defaults but are expected to be overridden by subclasses.
+        this.hp = BALANCE.enemies.baseHp;
+        this.hpMax = BALANCE.enemies.baseHp;
+        this.speed = BALANCE.enemies.baseSpeed;
+        this.r = BALANCE.enemies.baseRadius;
+        this.soulValue = BALANCE.enemies.baseSoulValue;
 
         // --- State Variables ---
-        this.flash = 0; // timer for the white flash effect when damaged
-        this.isBuffed = false; // Flag set by Anchor enemies
-        this.iframes = 0; // Invincibility frames after being hit
-        this.applyFriction = true; // Flag to control whether friction is applied
+        this.flash = 0;
+        this.isBuffed = false;
+        this.iframes = 0;
+        this.applyFriction = true;
 
-        // Automatically scale stats for elite enemies
+        // Apply elite multipliers for stats that are NOT typically overridden by subclasses (like radius).
+        // HP is handled in the subclass constructors to ensure correct order of operations.
         if (this.isElite) {
-            this.hp *= 2;
-            this.hpMax *= 2;
-            this.r *= 1.5;
-            this.soulValue *= 3;
+            this.r *= BALANCE.enemies.eliteRadiusMult;
+            this.soulValue *= BALANCE.enemies.eliteSoulMult;
         }
     }
 
-    /**
-     * @description Main update loop for the enemy.
-     * @param {number} dt - Delta time.
-     * @param {PlayerObj} player - The player object.
-     * @param {FieldState} fieldState - The state object for the current field, contains lists of entities.
-     */
     update(dt, player, fieldState) {
         if (this.dead) return;
 
         this.flash -= dt;
         this.iframes -= dt;
 
-        // 1. Friction & Physics (basic drag)
         if (this.applyFriction) {
             this.vx *= 0.92;
             this.vy *= 0.92;
         }
 
-        // 2. Run subclass-specific AI
         this.performAI(dt, player, fieldState);
 
-        // 3. Apply final velocity
         this.x += this.vx * dt;
         this.y += this.vy * dt;
 
-        // 4. Player Collision & Damage (Pre-separation)
-        // FIX: Added a small buffer (+5) to the collision check.
-        // This ensures that even if separation pushes the enemy to the exact edge of the player's radius,
-        // they are still considered "close enough" to deal damage.
         if (dist2(this.x, this.y, player.x, player.y) < (this.r + player.r + 5) ** 2) {
             this.handlePlayerCollision(player, fieldState, dt);
         }
 
-        // 5. Separation (Post-damage check)
         this.applySeparation(player, fieldState.enemies);
-
-        // 6. Reset buff status for next frame
         this.isBuffed = false;
     }
     
     applySeparation(player, allEnemies) {
-        const separationForce = 0.5; // How much to push apart per frame
+        const separationForce = 0.5;
 
-        // Separation from other enemies
         allEnemies.forEach(other => {
             if (this === other || other.dead) return;
             const d2 = dist2(this.x, this.y, other.x, other.y);
@@ -106,7 +81,6 @@ export class Enemy {
             }
         });
 
-        // Separation from the player
         const playerDist2 = dist2(this.x, this.y, player.x, player.y);
         const playerCombinedRadii = (this.r + player.r) ** 2;
         if (playerDist2 < playerCombinedRadii && playerDist2 > 0) {
@@ -119,28 +93,14 @@ export class Enemy {
         }
     }
 
-    /**
-     * @description Handles the logic for when an enemy collides with the player.
-     * This is a generic fallback and should be overridden by subclasses for specific damage values.
-     * @param {PlayerObj} player - The player object.
-     * @param {FieldState} fieldState - The current field state.
-     * @param {number} dt - Delta time.
-     */
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        // Removed player.lvl scaling to allow for specific damage tuning
         let rawDamage = (this.isBuffed ? 10 : 5);
         player.takeDamage(rawDamage * dt); 
     }
 
-    /**
-     * @description Renders the enemy on the canvas.
-     * @param {CanvasRenderingContext2D} ctx - The rendering context.
-     * @param {function} s - The screen space conversion function.
-     */
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        // Elite enemies are gold, otherwise use assigned color. Flash white when hit.
         ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 ? "#fff" : this.color);
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.r, 0, 6.28);
@@ -161,12 +121,6 @@ export class Enemy {
         }
     }
 
-    /**
-     * @description Abstract method for AI behavior, to be implemented by subclasses.
-     * @param {number} dt - Delta time.
-     * @param {PlayerObj} player - The player object.
-     * @param {FieldState} fieldState - The current field state.
-     */
     performAI(dt, player, fieldState) { }
 }
 
@@ -175,9 +129,15 @@ export class Enemy {
 export class Walker extends Enemy {
     constructor(x, y, level, isElite) {
         super(x, y, level, isElite);
-        this.hp = 20 + level * 5;
+        const cfg = BALANCE.enemies.walker;
+        
+        this.hp = cfg.baseHp + level * cfg.hpPerLevel;
+        if (this.isElite) {
+            this.hp *= BALANCE.enemies.eliteHpMult;
+        }
         this.hpMax = this.hp;
-        this.speed = 1500;
+
+        this.speed = cfg.speed;
         this.color = "#c44e4e";
         this.eliteSkillCd = 5;
     }
@@ -196,10 +156,8 @@ export class Walker extends Enemy {
         }
     }
 
-    /** @override */
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        // Removed player.lvl scaling. Increased base damage to 10 DPS.
         let rawDamage = (this.isBuffed ? 15 : 10);
         player.takeDamage(rawDamage * dt);
     }
@@ -208,9 +166,15 @@ export class Walker extends Enemy {
 export class Charger extends Enemy {
     constructor(x, y, level, isElite) {
         super(x, y, level, isElite);
-        this.hp = 30 + level * 5;
+        const cfg = BALANCE.enemies.charger;
+
+        this.hp = cfg.baseHp + level * cfg.hpPerLevel;
+        if (this.isElite) {
+            this.hp *= BALANCE.enemies.eliteHpMult;
+        }
         this.hpMax = this.hp;
-        this.speed = 2000;
+
+        this.speed = cfg.speed;
         this.color = "#a0f";
         this.state = 0;
         this.timer = 0;
@@ -237,8 +201,8 @@ export class Charger extends Enemy {
                 this.state = 2;
                 this.timer = 0.4;
                 let ang = Math.atan2(dy, dx);
-                this.vx = Math.cos(ang) * 800;
-                this.vy = Math.sin(ang) * 800;
+                this.vx = Math.cos(ang) * BALANCE.enemies.charger.dashSpeed;
+                this.vy = Math.sin(ang) * BALANCE.enemies.charger.dashSpeed;
                 if (this.isElite) {
                     Telegraph.create(this.x, this.y, 20, 500, 0.4, 'rect', ang + Math.PI / 2);
                 }
@@ -253,11 +217,9 @@ export class Charger extends Enemy {
         }
     }
 
-    /** @override */
     handlePlayerCollision(player, fieldState, dt) {
         if (this.iframes > 0) return;
         CombatSystem.onPlayerHit(this, fieldState);
-        // Removed player.lvl scaling. Fixed burst damage.
         let rawDamage = (this.isBuffed ? 20 : 15);
         player.takeDamage(rawDamage);
         this.iframes = 0.5;
@@ -281,9 +243,15 @@ export class Charger extends Enemy {
 export class Spitter extends Enemy {
     constructor(x, y, level, isElite) {
         super(x, y, level, isElite);
-        this.hp = 15 + level * 5;
+        const cfg = BALANCE.enemies.spitter;
+
+        this.hp = cfg.baseHp + level * cfg.hpPerLevel;
+        if (this.isElite) {
+            this.hp *= BALANCE.enemies.eliteHpMult;
+        }
         this.hpMax = this.hp;
-        this.speed = 500;
+
+        this.speed = cfg.speed;
         this.color = "orange";
         this.r = 10;
         this.shootCd = 2;
@@ -293,7 +261,7 @@ export class Spitter extends Enemy {
         let dx = player.x - this.x, dy = player.y - this.y;
         let dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-        if (dist < 300) {
+        if (dist < BALANCE.enemies.spitter.retreatDistance) {
             this.vx -= (dx / dist) * this.speed * dt;
             this.vy -= (dy / dist) * this.speed * dt;
         } else {
@@ -318,10 +286,8 @@ export class Spitter extends Enemy {
         }
     }
 
-    /** @override */
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        // Removed player.lvl scaling.
         let rawDamage = (this.isBuffed ? 6 : 3);
         player.takeDamage(rawDamage * dt);
     }
@@ -330,12 +296,18 @@ export class Spitter extends Enemy {
 export class Anchor extends Enemy {
     constructor(x, y, level, isElite) {
         super(x, y, level, isElite);
-        this.hp = 50 + (level * 10);
+        const cfg = BALANCE.enemies.anchor;
+
+        this.hp = cfg.baseHp + level * cfg.hpPerLevel;
+        if (this.isElite) {
+            this.hp *= BALANCE.enemies.eliteHpMult;
+        }
         this.hpMax = this.hp;
-        this.speed = 40;
+
+        this.speed = cfg.speed;
         this.r = 15;
         this.color = "#4a4a6a";
-        this.auraRad = 150;
+        this.auraRad = cfg.auraRadius;
         this.eliteTimer = 0;
     }
 
@@ -366,7 +338,6 @@ export class Anchor extends Enemy {
     
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        // Removed player.lvl scaling.
         let rawDamage = (this.isBuffed ? 8 : 4);
         player.takeDamage(rawDamage * dt);
     }

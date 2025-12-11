@@ -10,6 +10,7 @@ import DungeonState from './DungeonState.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import Telegraph from '../systems/Telegraph.js';
 import { Walker, Charger, Spitter, Anchor } from "../entities/Enemy.js";
+import { BALANCE } from '../data/Balance.js';
 
 const WAVE_DURATION = 60;
 
@@ -35,7 +36,10 @@ class FieldState extends State {
         this.waveTimer = WAVE_DURATION;
         this.killsThisWave = 0;
         this.soulGauge = 0;
-        this.soulGaugeThreshold = 10;
+        this.elitesToSpawn = 0;
+        
+        this.soulGaugeThreshold = BALANCE.waves.baseSoulGaugeThreshold;
+        this.showKillCounter = true;
     }
 
     enter() {
@@ -44,8 +48,9 @@ class FieldState extends State {
         this.waveTimer = WAVE_DURATION;
         this.killsThisWave = 0;
         this.soulGauge = 0;
-        this.soulGaugeThreshold = 10;
+        this.elitesToSpawn = 0;
         this.dungeonPortal = null;
+        this.showKillCounter = true;
     }
 
     exit() {
@@ -54,6 +59,7 @@ class FieldState extends State {
         this.drops = [];
         this.souls = [];
         this.chains = [];
+        this.showKillCounter = false;
     }
 
     update(dt) {
@@ -69,7 +75,10 @@ class FieldState extends State {
                 this.waveIndex++;
                 this.waveTimer = WAVE_DURATION;
                 this.killsThisWave = 0;
-                this.soulGaugeThreshold = 10 * this.waveIndex;
+
+                this.soulGaugeThreshold =
+                    BALANCE.waves.baseSoulGaugeThreshold +
+                    BALANCE.waves.soulGaugeThresholdPerWave * (this.waveIndex - 1);
             } else if (!this.dungeonPortal) {
                 this.dungeonPortal = new Interactable(p.x + 100, p.y, 50, 50, () => {
                     this.game.stateManager.switchState(new DungeonState(this.game));
@@ -78,8 +87,13 @@ class FieldState extends State {
         }
 
         // 3. SPAWN
-        const spawnRate = 1 + (this.waveIndex * 0.5);
-        if (Math.random() < dt * spawnRate && this.enemies.length < 30) this.spawnEnemy();
+        const spawnRate =
+            BALANCE.waves.baseSpawnRate +
+            BALANCE.waves.spawnRatePerWave * this.waveIndex;
+        if (Math.random() < dt * spawnRate &&
+            this.enemies.length < BALANCE.waves.maxEnemies) {
+            this.spawnEnemy();
+        }
 
         // 4. ENTITY UPDATES
         Telegraph.update(dt);
@@ -93,6 +107,12 @@ class FieldState extends State {
             }
             return true;
         });
+
+        // Now process queued elite spawns *after* the filter reassigns this.enemies
+        while (this.elitesToSpawn > 0) {
+            this.spawnEnemy(true);
+            this.elitesToSpawn--;
+        }
 
         // Projectiles
         let activeShots = [];
@@ -171,16 +191,26 @@ class FieldState extends State {
     }
 
     onEnemyDeath(enemy) {
+        const p = this.game.p;
+
+        // Tell the player about the kill
+        p.registerKill(enemy);
+
         this.souls.push(new Soul(enemy.x, enemy.y));
         if (enemy.isElite || Math.random() < 0.3) {
             this.drops.push(new Drop(enemy.x, enemy.y, this.loot()));
         }
-        this.game.p.giveXp(10 * (enemy.isElite ? 3 : 1));
+        p.giveXp(10 * (enemy.isElite ? 3 : 1));
         this.killsThisWave++;
+        
+        // --- Elite Spawning ---
+        // Add to the soul gauge when an enemy dies.
         this.soulGauge += enemy.soulValue || 1;
+        // If the gauge is full, queue an elite to spawn and reset the gauge.
         if (this.soulGauge >= this.soulGaugeThreshold) {
             this.soulGauge = 0;
-            this.spawnElite();
+            this.elitesToSpawn = (this.elitesToSpawn || 0) + 1;
+            console.log('Queued elite spawn, elitesToSpawn =', this.elitesToSpawn);
         }
     }
 
@@ -215,8 +245,6 @@ class FieldState extends State {
         this.enemies.push(enemy);
         CombatSystem.onEnemySpawn(enemy, this);
     }
-
-    spawnElite() { this.spawnEnemy(true); }
 
     findTarget(exclude, x, y) {
         let t = null, min = 400 * 400;

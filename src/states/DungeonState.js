@@ -15,6 +15,7 @@ class DungeonState extends State {
         this.chains = [];
         // Room bounds
         this.bounds = { x: 0, y: 0, w: 800, h: 600 };
+        this.showKillCounter = true;
     }
 
     enter() {
@@ -28,6 +29,11 @@ class DungeonState extends State {
         this.enemies = [this.boss];
         this.shots = [];
         this.townPortal = null;
+        this.showKillCounter = true;
+    }
+
+    exit() {
+        this.showKillCounter = false;
     }
 
     update(dt) {
@@ -56,6 +62,11 @@ class DungeonState extends State {
     }
 
     onEnemyDeath(enemy) {
+        const p = this.game.p;
+
+        // Always record the kill
+        p.registerKill(enemy);
+
         if (enemy === this.boss) {
             console.log("Boss defeated!");
             this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
