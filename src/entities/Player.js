@@ -57,6 +57,16 @@ export default class PlayerObj {
         if (this.xp >= req) { this.xp -= req; this.lvl++; this.attr.pts += 3; this.hp = this.hpMax; UI.toast("LEVEL UP!"); this.recalc(); }
         UI.dirty = true;
     }
+    takeDamage(amount) {
+        this.hp -= amount;
+        UI.dirty = true;
+        if (this.hp <= 0) {
+            this.hp = 0;
+            document.getElementById('screen_death').classList.add('active');
+            document.getElementById('deathSouls').innerText = this.souls;
+            document.getElementById('deathLvl').innerText = this.lvl;
+        }
+    }
     updatePerks(dt, state) {
         if (this.perks.might) {
             this.timers.might -= dt;

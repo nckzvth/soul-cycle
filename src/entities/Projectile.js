@@ -34,6 +34,41 @@ export class Projectile {
     draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 6.28); ctx.fill(); }
 }
 
+export class EnemyProjectile {
+    constructor(x, y, angle, isBuffed, level) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle) * 200;
+        this.vy = Math.sin(angle) * 200;
+        this.life = 3;
+        this.isBuffed = isBuffed;
+        this.level = level;
+    }
+
+    update(dt, state) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.life -= dt;
+
+        const pl = state.game.p;
+        if (dist2(this.x, this.y, pl.x, pl.y) < (pl.r + 5) ** 2) {
+            CombatSystem.onPlayerHit(this, state);
+            let raw = (this.isBuffed ? 12 : 8) + this.level;
+            pl.takeDamage(raw);
+            return false;
+        }
+        return this.life > 0;
+    }
+
+    draw(ctx, s) {
+        let p = s(this.x, this.y);
+        ctx.fillStyle = 'orange';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, 6.28);
+        ctx.fill();
+    }
+}
+
 export class Shockwave {
     constructor(state, x, y, dmg) { this.state = state; this.x = x; this.y = y; this.r = 0; this.dmg = dmg; this.life = 0.5; }
     update(dt) {
