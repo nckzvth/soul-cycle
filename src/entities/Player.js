@@ -90,6 +90,15 @@ export default class PlayerObj {
     clearPhials() {
         this.phials.clear();
         this.recentPhialGains.clear();
+        this.haloTimer = 0;
+        this.salvoCharges = 0;
+        this.salvoGlow = 0;
+        this.aegisCooldownTimer = 0;
+        this.aegisActiveTimer = 0;
+        this.aegisDamageMultiplier = 1;
+        this.titheKillsCounter = 0;
+        this.titheCharges = 0;
+        this.titheChargeGainedTimer = 0;
     }
 
     // --- STATE INTERFACE ---
