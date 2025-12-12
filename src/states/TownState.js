@@ -22,6 +22,7 @@ class TownState extends State {
         p.teleport(400, 300);
         p.fullHeal();
         p.resetKillSession();
+        p.clearPhials(); // Clear phials on entering town
         console.log(`Lifetime kills: ${p.killStats.lifetime}`);
         this.showKillCounter = false;
     }

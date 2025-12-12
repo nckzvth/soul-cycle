@@ -15,11 +15,22 @@ const Game = {
     lastTime: 0,
     canvas: null,
     ctx: null,
+    debug: false,
 
     init() {
         this.canvas = document.getElementById("game");
         this.ctx = this.canvas.getContext("2d");
         UI.init(this);
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyP') {
+                this.debug = !this.debug;
+                const debugEl = document.getElementById('debug-phials');
+                if (debugEl) {
+                    debugEl.style.display = this.debug ? 'block' : 'none';
+                }
+            }
+        });
     },
 
     startGame(wepType) {
@@ -66,6 +77,13 @@ const Game = {
         if (!this.canvas) return;
         this.stateManager.render(this.ctx);
         UI.render(); // always update HUD
+
+        if (this.p && this.p.salvoCharges > 0) {
+            this.ctx.fillStyle = `rgba(160, 235, 255, ${this.p.salvoGlow * 0.2})`;
+            this.ctx.beginPath();
+            this.ctx.arc(mouse.x, mouse.y, 20, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
     },
 
     screenToWorld(sx, sy) {

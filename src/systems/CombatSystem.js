@@ -1,8 +1,8 @@
 // src/systems/CombatSystem.js
 import { dist2 } from "../core/Utils.js";
-import { SoulOrb as Soul } from "../entities/Pickups.js";
+import { SoulOrb as Soul, PhialShard } from "../entities/Pickups.js";
 import { LootDrop as Drop } from "../entities/Pickups.js";
-import { Projectile as Proj, Shockwave, StaticMine, Wisp } from "../entities/Projectile.js";
+import { Projectile as Proj, Shockwave, StaticMine, Wisp, HammerProjectile } from "../entities/Projectile.js";
 import { mouse } from "../core/Input.js";
 import DungeonState from "../states/DungeonState.js";
 import { BALANCE } from "../data/Balance.js";
@@ -10,22 +10,23 @@ import { BALANCE } from "../data/Balance.js";
 const CombatSystem = {
     // Event hooks
     onEnemySpawn: (enemy, state) => {},
-    onPlayerHit: (source, state) => {
-        // This function was empty, causing enemies to not deal damage initially.
-        // The logic is now handled directly in each enemy's handlePlayerCollision method.
-        // This hook can be used for global effects that trigger when the player is hit.
-    },
+    onPlayerHit: (source, state) => {},
     onRoomOrWaveClear: (state) => {},
 
     hit(target, dmg, player, state) {
         if (target.dead) return;
         
+        this.applyDamage(target, dmg, player, state);
+        player.onHit(target, state);
+    },
+
+    applyDamage(target, dmg, player, state) {
         let finalDmg = dmg * BALANCE.combat.playerDamageMult;
         if (target.isBuffed) {
             finalDmg *= BALANCE.combat.buffedEnemyDamageTakenMult;
         }
 
-        target.takeDamage(finalDmg);
+        target.takeDamage(finalDmg, state);
 
         if (player) {
             let a = Math.atan2(target.y - player.y, target.x - player.x);
@@ -37,6 +38,9 @@ const CombatSystem = {
 
         if (target.hp <= 0) {
             target.dead = true;
+            if (target.isElite) {
+                state.pickups.push(new PhialShard(target.x, target.y));
+            }
         }
     },
 
@@ -52,14 +56,25 @@ const CombatSystem = {
             w = state.game.screenToWorld(mouse.x, mouse.y);
         }
         const a = Math.atan2(w.y - player.y, w.x - player.x);
-        state.shots.push(new Proj(state,
-            player.x, player.y, Math.cos(a) * BALANCE.player.pistolSpeed, Math.sin(a) * BALANCE.player.pistolSpeed, 1.5, player.stats.hexPierce || 0, player.stats.hexBounce || 0
+        const damage = player.stats.dmg * BALANCE.player.pistol.damageMult;
+        state.shots.push(new Proj(state, player,
+            player.x, player.y, Math.cos(a) * BALANCE.player.pistolSpeed, Math.sin(a) * BALANCE.player.pistolSpeed, 1.5, damage, player.stats.hexPierce || 0, player.stats.hexBounce || 0
         ));
+
+        if (player.salvoCharges > 0) {
+            player.salvoCharges--;
+            setTimeout(() => {
+                state.shots.push(new Proj(state, player,
+                    player.x, player.y, Math.cos(a) * BALANCE.player.pistolSpeed, Math.sin(a) * BALANCE.player.pistolSpeed, 1.5, damage, player.stats.hexPierce || 0, player.stats.hexBounce || 0, true
+                ));
+            }, 100);
+        }
     },
 
     fireZap(player, state) {
         const maxChains = 1 + (player.stats.chainCount || 0);
         const range = BALANCE.combat.zapChainRange * (1 + (player.stats.chainJump || 0));
+        const damage = player.stats.dmg * BALANCE.player.staff.damageMult;
         let curr = { x: player.x, y: player.y };
         let visited = new Set();
 
@@ -73,31 +88,47 @@ const CombatSystem = {
 
             if (best) {
                 visited.add(best);
-                this.hit(best, player.stats.dmg, player, state);
+                this.hit(best, damage, player, state);
                 state.chains.push({ t: 0.15, pts: [{ x: curr.x, y: curr.y }, { x: best.x, y: best.y }] });
                 curr = best;
             } else break;
         }
-    },
 
-    runOrbit(player, state, dt) {
-        const cnt = 1 + (player.stats.orbitBase || 0);
-        player.hammerAng += dt * 5;
-        for (let i = 0; i < cnt; i++) {
-            let a = player.hammerAng + (i * 6.28 / cnt);
-            let ox = player.x + Math.cos(a) * player.hammerRad;
-            let oy = player.y + Math.sin(a) * player.hammerRad;
-            state.enemies.forEach(e => {
-                if (!e.dead && dist2(ox, oy, e.x, e.y) < (15 + e.r) ** 2) {
-                    this.hit(e, player.stats.dmg * BALANCE.combat.orbitDamageMult, player, state);
+        if (player.salvoCharges > 0) {
+            player.salvoCharges--;
+            let curr2 = { x: player.x, y: player.y };
+            for (let i = 0; i < maxChains; i++) {
+                let best = null, bestDist = range * range;
+                // First pass: try to find an unvisited target
+                state.enemies.forEach(e => {
+                    if (e.dead || visited.has(e)) return;
+                    let d = dist2(curr2.x, curr2.y, e.x, e.y);
+                    if (d < bestDist) { bestDist = d; best = e; }
+                });
+                
+                // Second pass: if no unvisited target, fall back to any target
+                if (!best) {
+                    state.enemies.forEach(e => {
+                        if (e.dead) return;
+                        let d = dist2(curr2.x, curr2.y, e.x, e.y);
+                        if (d < bestDist) { bestDist = d; best = e; }
+                    });
                 }
-            });
+    
+                if (best) {
+                    visited.add(best);
+                    this.hit(best, damage, player, state);
+                    state.chains.push({ t: 0.15, pts: [{ x: curr2.x, y: curr2.y }, { x: best.x, y: best.y }], isSalvo: true });
+                    curr2 = best;
+                } else break;
+            }
         }
     },
 
     fireShockwave(player, state) {
         state.shots.push(new Shockwave(
             state,
+            player,
             player.x,
             player.y,
             player.stats.dmg * BALANCE.combat.shockwaveDamageMult
@@ -107,6 +138,7 @@ const CombatSystem = {
     fireStaticMine(player, state, x, y) {
         state.shots.push(new StaticMine(
             state,
+            player,
             x,
             y,
             player.stats.dmg * BALANCE.combat.staticMineDamageMult
@@ -116,6 +148,7 @@ const CombatSystem = {
     fireWisp(player, state) {
         state.shots.push(new Wisp(
             state,
+            player,
             player.x,
             player.y,
             player.stats.dmg * BALANCE.combat.wispDamageMult

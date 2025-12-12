@@ -5,7 +5,7 @@
     <title>SoulCycle - Modular</title>
     <style>
         /* FIX: Added --green to the root definitions below */
-        :root{ --bg:#0e1016; --text:#e8ecf7; --muted:#889; --gold:#d7c48a; --red:#c46b6b; --blue:#6b8cc4; --green:#6baae0; }
+        :root{ --bg:#0e1016; --text:#e8ecf7; --muted:#889; --gold:#d7c48a; --red:#c46b6b; --blue:#6b8cc4; --green:#6bc48c; }
 
         body { margin:0; height:100vh; background:#080a10; color:var(--text); font-family:system-ui,sans-serif; overflow:hidden; user-select:none; }
         canvas { display:block; width:100%; height:100%; cursor:crosshair; }
@@ -27,7 +27,7 @@
         .col { padding:16px; overflow-y:auto; border-right:1px solid #333; }
         .col:last-child { border:none; }
         .sec-title { font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid #333; padding-bottom:4px; margin-bottom:10px; display:block; letter-spacing:1px; }
-        .stat-row { display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:6px 8px; border-radius:4px; margin-bottom:6px; border-left:3px solid #555; }
+        .stat-row { display:flex; justify-content:space-between; align-items:center; background:rgba(255, 255, 255, 0.03); padding:6px 8px; border-radius:4px; margin-bottom:6px; border-left:3px solid #555; }
         .stat-btn { width:20px; height:20px; border:none; background:#333; color:#fff; border-radius:4px; cursor:pointer; }
         .inv-list { display:flex; flex-direction:column; gap:6px; }
         .item-card { display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid #333; padding:8px; border-radius:6px; cursor:pointer; transition:0.1s; }
@@ -39,7 +39,7 @@
         .r-rare { border-left:3px solid #6b8cc4; }
         .r-epic { border-left:3px solid #c46b6b; }
         .r-legendary { border-left:3px solid #d7c48a; }
-        .equip-slot { display:flex; justify-content:space-between; padding:10px; background:rgba(255,255,255,0.02); border:1px solid #333; border-radius:4px; margin-bottom:6px; cursor:pointer; font-size:12px; }
+        .equip-slot { display:flex; justify-content:space-between; padding:10px; background:rgba(255, 255, 255, 0.02); border:1px solid #333; border-radius:4px; margin-bottom:6px; cursor:pointer; font-size:12px; }
         .node { padding:10px; background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; margin-bottom:8px; cursor:pointer; transition:0.1s; }
         .node.unlocked { border-color:var(--gold); background:rgba(215,196,138,0.05); }
         .node-top { display:flex; justify-content:space-between; margin-bottom:4px; font-weight:600; font-size:13px; }
@@ -55,6 +55,15 @@
         .bar-wrap { position:relative; height:16px; background:rgba(0,0,0,0.6); border:1px solid #333; border-radius:4px; overflow:hidden; }
         .bar-fill { height:100%; transition:width 0.1s; }
         .bar-text { position:absolute; top:0; left:6px; bottom:0; display:flex; align-items:center; font-size:10px; font-weight:700; text-shadow:0 1px 2px #000; z-index:2; color:#fff; }
+        #debug-phials { display: none; }
+
+        /* Dash Charges */
+        #dash-charges { display: flex; gap: 4px; margin-top: 4px; }
+        .dash-charge-pip { width: 20px; height: 8px; background: rgba(107, 196, 140, 0.2); border: 1px solid #333; border-radius: 2px; transform: skewX(-20deg); position: relative; overflow: hidden; }
+        .dash-charge-pip .fill { position: absolute; top: 0; left: 0; bottom: 0; background: var(--green); width: 0%; transition: width 0.1s linear; }
+        .dash-charge-pip.full .fill { width: 100%; }
+        .dash-charge-pip.recharged { animation: flash-green 0.5s ease-out; }
+        @keyframes flash-green { 0% { box-shadow: 0 0 8px var(--green); } 100% { box-shadow: 0 0 0 transparent; } }
     </style>
 </head>
 <body>
@@ -92,8 +101,8 @@
 <div id="hud">
     <div class="topbar">
         <div class="pill">LVL <b id="uiLvl">1</b></div>
-        <div class="pill">SOULS <b id="uiSouls">0</b></div>
         <div class="pill">XP <b id="uiXp">0</b> / <span id="uiMaxXp">50</span></div>
+        <div class="pill">SOULS <b id="uiSouls">0</b></div>
         <div class="pill">💀 <b id="uiKills">0</b></div>
     </div>
     <div class="corner">
@@ -104,7 +113,10 @@
     </div>
     <div class="bars">
         <div class="bar-wrap"><div class="bar-text">HEALTH <span id="txtHp" style="margin-left:6px;color:#ddd">100/100</span></div><div class="bar-fill" id="hpBar" style="width:100%;background:#c44e4e"></div></div>
-        <div class="bar-wrap" style="width:80%"><div class="bar-text">STAMINA <span id="txtSta" style="margin-left:6px;color:#ddd">100/100</span></div><div class="bar-fill" id="staBar" style="width:100%;background:#4e6ec4"></div></div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div style="font-size:10px; font-weight:700; color:#ddd; text-shadow:0 1px 2px #000;">DASH</div>
+            <div id="dash-charges"></div>
+        </div>
     </div>
     <div id="toast"></div>
 </div>
@@ -116,6 +128,9 @@
             <span class="sec-title">Attributes (Pts: <b id="uiPts" style="color:#fff">0</b>)</span>
             <div id="attr-container"></div>
             <br><span class="sec-title">Details</span><div id="statText" style="font-size:10px;line-height:1.5;color:#888"></div>
+            <div id="debug-phials">
+                <span class="sec-title">Debug: Add Phials</span>
+            </div>
         </div>
         <div class="col" style="background:rgba(0,0,0,0.3)"><span class="sec-title">Equipped</span><div id="equipList"></div></div>
         <div class="col"><span class="sec-title">Backpack</span><div class="inv-list" id="invList"></div></div>

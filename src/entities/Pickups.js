@@ -1,6 +1,7 @@
 import { dist2 } from "../core/Utils.js";
 import UI from "../systems/UI.js";
 import { BALANCE } from "../data/Balance.js";
+import { Phials } from "../data/Phials.js";
 
 export class LootDrop {
     constructor(x, y, item) { this.x = x; this.y = y; this.item = item; this.life = 0; }
@@ -42,5 +43,47 @@ export class SoulOrb {
             }
         }
         return true;
+    }
+}
+
+export class PhialShard {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.life = 0;
+    }
+
+    update(dt, p) {
+        this.life += dt;
+        if (dist2(this.x, this.y, p.x, p.y) < BALANCE.pickups.loot.pickupRadius ** 2) {
+            p.phialShards++;
+            if (p.phialShards % 2 === 0) {
+                const phialIds = Object.keys(Phials);
+                const randomPhialId = phialIds[Math.floor(Math.random() * phialIds.length)];
+                p.addPhial(randomPhialId);
+                const phialName = Phials[randomPhialId].id.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+                console.log(`${phialName} x${p.getPhialStacks(randomPhialId)}`);
+                UI.toast(`New Phial: ${Phials[randomPhialId].description}`);
+            }
+            UI.dirty = true;
+            return false;
+        }
+        return true;
+    }
+
+    draw(ctx, s) {
+        let p = s(this.x, this.y);
+        let float = Math.sin(this.life * 3) * 5;
+        ctx.save();
+        ctx.translate(p.x, p.y + float);
+        ctx.fillStyle = "#a865e8"; // A purplish color for the shard
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(5, 0);
+        ctx.lineTo(0, 8);
+        ctx.lineTo(-5, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
     }
 }

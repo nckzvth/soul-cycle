@@ -3,6 +3,7 @@ import { Hazard, RootWave, EnemyProjectile } from "./Projectile.js";
 import Telegraph from "../systems/Telegraph.js";
 import CombatSystem from "../systems/CombatSystem.js";
 import { BALANCE } from "../data/Balance.js";
+import ParticleSystem from "../systems/Particles.js";
 
 /**
  * @class Enemy
@@ -31,6 +32,8 @@ export class Enemy {
         this.isBuffed = false;
         this.iframes = 0;
         this.applyFriction = true;
+        this.blinded = 0;
+        this.burns = null;
 
         // Apply elite multipliers for stats that are NOT typically overridden by subclasses (like radius).
         // HP is handled in the subclass constructors to ensure correct order of operations.
@@ -45,13 +48,38 @@ export class Enemy {
 
         this.flash -= dt;
         this.iframes -= dt;
+        
+        // Handle Blind
+        if (this.blinded > 0) {
+            this.blinded -= dt;
+            if (Math.random() < 0.1) {
+                ParticleSystem.emit(this.x, this.y, 'white', 1, 30, 2, 0.5);
+            }
+        }
+
+        // Handle Burn
+        if (this.burns) {
+            this.burns.timer -= dt;
+            if (this.burns.timer <= 0) {
+                this.burns.timer = 1;
+                this.takeDamage(this.burns.damage, fieldState);
+                ParticleSystem.emit(this.x, this.y, 'orange', 2, 20, 3, 0.5);
+            }
+            this.burns.duration -= dt;
+            if (this.burns.duration <= 0) {
+                this.burns = null;
+            }
+        }
 
         if (this.applyFriction) {
             this.vx *= 0.92;
             this.vy *= 0.92;
         }
 
-        this.performAI(dt, player, fieldState);
+        // Only run AI movement if NOT blinded
+        if (this.blinded <= 0) {
+            this.performAI(dt, player, fieldState);
+        }
 
         this.x += this.vx * dt;
         this.y += this.vy * dt;
@@ -96,15 +124,19 @@ export class Enemy {
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
         let rawDamage = (this.isBuffed ? 10 : 5);
-        player.takeDamage(rawDamage * dt); 
+        player.takeDamage(rawDamage * dt, this); 
     }
 
     draw(ctx, s) {
         let p = s(this.x, this.y);
         ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 ? "#fff" : this.color);
+        if (this.blinded > 0) {
+            ctx.globalAlpha = 0.5;
+        }
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.r, 0, 6.28);
         ctx.fill();
+        ctx.globalAlpha = 1;
 
         ctx.fillStyle = "#000";
         ctx.fillRect(p.x - 10, p.y - this.r - 8, 20, 4);
@@ -112,7 +144,7 @@ export class Enemy {
         ctx.fillRect(p.x - 10, p.y - this.r - 8, 20 * (this.hp / this.hpMax), 4);
     }
 
-    takeDamage(amount) {
+    takeDamage(amount, state) {
         if (this.iframes > 0) return;
         this.hp -= amount;
         this.flash = 0.2;
@@ -159,7 +191,7 @@ export class Walker extends Enemy {
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
         let rawDamage = (this.isBuffed ? 15 : 10);
-        player.takeDamage(rawDamage * dt);
+        player.takeDamage(rawDamage * dt, this);
     }
 }
 
@@ -221,7 +253,7 @@ export class Charger extends Enemy {
         if (this.iframes > 0) return;
         CombatSystem.onPlayerHit(this, fieldState);
         let rawDamage = (this.isBuffed ? 20 : 15);
-        player.takeDamage(rawDamage);
+        player.takeDamage(rawDamage, this);
         this.iframes = 0.5;
     }
 
@@ -289,7 +321,7 @@ export class Spitter extends Enemy {
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
         let rawDamage = (this.isBuffed ? 6 : 3);
-        player.takeDamage(rawDamage * dt);
+        player.takeDamage(rawDamage * dt, this);
     }
 }
 
@@ -339,7 +371,7 @@ export class Anchor extends Enemy {
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
         let rawDamage = (this.isBuffed ? 8 : 4);
-        player.takeDamage(rawDamage * dt);
+        player.takeDamage(rawDamage * dt, this);
     }
 
     draw(ctx, s) {

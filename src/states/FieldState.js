@@ -11,8 +11,10 @@ import CombatSystem from '../systems/CombatSystem.js';
 import Telegraph from '../systems/Telegraph.js';
 import { Walker, Charger, Spitter, Anchor } from "../entities/Enemy.js";
 import { BALANCE } from '../data/Balance.js';
+import { Phials } from '../data/Phials.js';
+import ParticleSystem from '../systems/Particles.js';
 
-const WAVE_DURATION = 60;
+const WAVE_DURATION = BALANCE.waves.waveDuration;
 
 const SPAWN_TABLE = {
     1: [{ type: 'walker', weight: 1, soulValue: 1 }],
@@ -22,6 +24,36 @@ const SPAWN_TABLE = {
     5: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 2, soulValue: 2 }, { type: 'spitter', weight: 2, soulValue: 2 }, { type: 'anchor', weight: 2, soulValue: 5 }],
 };
 
+const PHIAL_ICONS = {
+    ashenHalo: "🔆",
+    soulSalvo: "➕",
+    witchglassAegis: "🛡️",
+    blindingStep: "✨",
+    titheEngine: "🩸"
+};
+
+function drawPill(ctx, x, y, width, height, radius, text) {
+    ctx.fillStyle = 'rgba(20,24,35,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = 'white';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + width / 2, y + height / 2);
+}
+
 class FieldState extends State {
     constructor(game) {
         super(game);
@@ -29,28 +61,39 @@ class FieldState extends State {
         this.shots = [];
         this.drops = [];
         this.souls = [];
+        this.pickups = [];
         this.chains = [];
         this.dungeonPortal = null;
 
         this.waveIndex = 1;
         this.waveTimer = WAVE_DURATION;
+        this.waveElapsed = 0;
+        this.spawnTimer = 0;
+
         this.killsThisWave = 0;
         this.soulGauge = 0;
         this.elitesToSpawn = 0;
+        this.gaugeFlash = 0;
         
         this.soulGaugeThreshold = BALANCE.waves.baseSoulGaugeThreshold;
         this.showKillCounter = true;
+        
+        this.combatSystem = CombatSystem; // Expose CombatSystem to entities
     }
 
     enter() {
         console.log("Entering Field State");
         this.waveIndex = 1;
         this.waveTimer = WAVE_DURATION;
+        this.waveElapsed = 0;
+        this.spawnTimer = 0;
+
         this.killsThisWave = 0;
         this.soulGauge = 0;
         this.elitesToSpawn = 0;
         this.dungeonPortal = null;
         this.showKillCounter = true;
+        this.pickups = [];
     }
 
     exit() {
@@ -58,6 +101,7 @@ class FieldState extends State {
         this.shots = [];
         this.drops = [];
         this.souls = [];
+        this.pickups = [];
         this.chains = [];
         this.showKillCounter = false;
     }
@@ -65,15 +109,23 @@ class FieldState extends State {
     update(dt) {
         const p = this.game.p;
 
+        if (this.gaugeFlash > 0) {
+            this.gaugeFlash -= dt * 2;
+        }
+
         // 1. UPDATE PLAYER (Handles input, physics, combat)
         p.update(dt, this, true);
 
         // 2. WAVE LOGIC
         this.waveTimer -= dt;
+        this.waveElapsed += dt;
+
         if (this.waveTimer <= 0) {
             if (this.waveIndex < 5) {
                 this.waveIndex++;
                 this.waveTimer = WAVE_DURATION;
+                this.waveElapsed = 0;
+                this.spawnTimer = 0;
                 this.killsThisWave = 0;
 
                 this.soulGaugeThreshold =
@@ -86,17 +138,53 @@ class FieldState extends State {
             }
         }
 
-        // 3. SPAWN
-        const spawnRate =
-            BALANCE.waves.baseSpawnRate +
-            BALANCE.waves.spawnRatePerWave * this.waveIndex;
-        if (Math.random() < dt * spawnRate &&
-            this.enemies.length < BALANCE.waves.maxEnemies) {
-            this.spawnEnemy();
+        // 3. SPAWN (ramping, capped per wave)
+        const wavesCfg = BALANCE.waves;
+
+        // Wave progress in [0, 1]
+        const t = Math.max(0, Math.min(1, this.waveElapsed / wavesCfg.waveDuration));
+
+        // Per-wave cap, clamped by global hard cap
+        const waveCap = Math.min(
+            wavesCfg.baseWaveEnemyCap + wavesCfg.enemyCapPerWave * (this.waveIndex - 1),
+            wavesCfg.hardEnemyCap
+        );
+
+        // How many enemies we are allowed to add right now
+        const active = this.enemies.length;
+        const allowed = Math.max(0, waveCap - active);
+
+        // Only bother if there is room
+        if (allowed > 0) {
+            // Spawn interval ramps from baseSpawnInterval -> minSpawnInterval over the wave
+            const maxInterval = wavesCfg.baseSpawnInterval;
+            const minInterval = wavesCfg.minSpawnInterval;
+            const currentInterval = maxInterval + (minInterval - maxInterval) * t;
+
+            this.spawnTimer -= dt;
+            if (this.spawnTimer <= 0) {
+                // Batch size ramps up as the wave progresses
+                const baseBatch = wavesCfg.baseBatchSize;
+                const maxBatch = baseBatch + wavesCfg.batchSizeRamp;
+                const batchSize = Math.round(baseBatch + (maxBatch - baseBatch) * t);
+
+                const toSpawn = Math.min(allowed, batchSize);
+
+                for (let i = 0; i < toSpawn; i++) {
+                    this.spawnEnemy(); // normal enemies only; elites are handled separately
+                }
+
+                // Schedule next spawn tick
+                this.spawnTimer += currentInterval;
+            }
+        } else {
+            // If we're at cap, keep timer from spiraling negative
+            this.spawnTimer = 0;
         }
 
         // 4. ENTITY UPDATES
         Telegraph.update(dt);
+        ParticleSystem.update(dt);
         
         // Enemies
         this.enemies.forEach(e => e.update(dt, p, this)); // Keep passing 'this' for context
@@ -115,13 +203,19 @@ class FieldState extends State {
         }
 
         // Projectiles
-        let activeShots = [];
-        this.shots.forEach(b => { if (b.update(dt, this)) activeShots.push(b); });
-        this.shots = activeShots;
+        // Use a standard for loop to handle projectiles spawning other projectiles (like TitheExplosion)
+        for (let i = 0; i < this.shots.length; i++) {
+            const b = this.shots[i];
+            if (!b.update(dt, this)) {
+                this.shots.splice(i, 1);
+                i--;
+            }
+        }
 
         // Drops
         this.drops = this.drops.filter(d => d.update(dt, p));
         this.souls = this.souls.filter(s => s.update(dt, p));
+        this.pickups = this.pickups.filter(p => p.update(dt, this.game.p));
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
 
         // Portal
@@ -148,6 +242,7 @@ class FieldState extends State {
 
         Telegraph.render(ctx, s);
         this.drops.forEach(d => d.draw(ctx, s));
+        this.pickups.forEach(p => p.draw(ctx, s));
         this.souls.forEach(o => {
             let pos = s(o.x, o.y);
             ctx.fillStyle = "#d7c48a"; ctx.beginPath(); ctx.arc(pos.x, pos.y, 3, 0, 6.28); ctx.fill();
@@ -169,15 +264,17 @@ class FieldState extends State {
         p.draw(ctx, s);
 
         // Chains
-        ctx.lineWidth = 2; ctx.strokeStyle = "#a0ebff";
+        ctx.lineWidth = 2;
         this.chains.forEach(c => {
             if (c.pts.length < 2) return;
+            ctx.strokeStyle = c.isSalvo ? "#a0ebff" : "#fff";
             ctx.beginPath(); ctx.moveTo(s(c.pts[0].x, c.pts[0].y).x, s(c.pts[0].x, c.pts[0].y).y);
             ctx.lineTo(s(c.pts[1].x, c.pts[1].y).x, s(c.pts[1].x, c.pts[1].y).y);
             ctx.globalAlpha = c.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
         });
 
         this.shots.forEach(b => b.draw(ctx, s));
+        ParticleSystem.render(ctx, s);
 
         // UI
         ctx.fillStyle = 'white'; ctx.font = '24px sans-serif'; ctx.textAlign = 'center';
@@ -186,8 +283,49 @@ class FieldState extends State {
         ctx.textAlign = 'start';
 
         // Gauge
-        ctx.fillStyle = 'purple'; ctx.fillRect(w / 2 - 100, h - 30, 200, 20);
-        ctx.fillStyle = 'magenta'; ctx.fillRect(w / 2 - 100, h - 30, (this.soulGauge / this.soulGaugeThreshold) * 200, 20);
+        const gaugeX = w / 2 - 100;
+        const gaugeY = h - 30;
+        ctx.fillStyle = 'purple'; ctx.fillRect(gaugeX, gaugeY, 200, 20);
+        ctx.fillStyle = 'magenta'; ctx.fillRect(gaugeX, gaugeY, (this.soulGauge / this.soulGaugeThreshold) * 200, 20);
+        if (this.gaugeFlash > 0) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${this.gaugeFlash})`;
+            ctx.fillRect(gaugeX, gaugeY, 200, 20);
+        }
+
+        // Shard Counter
+        const shardText = `SHARDS: ${p.phialShards}`;
+        const textMetrics = ctx.measureText(shardText);
+        drawPill(ctx, gaugeX - textMetrics.width - 30, gaugeY, textMetrics.width + 20, 20, 10, shardText);
+        
+        // Phial Icons
+        const phialCount = p.phials.size;
+        if (phialCount > 0) {
+            const spacing = 30;
+            const totalWidth = (phialCount - 1) * spacing;
+            let iconX = (w / 2) - (totalWidth / 2);
+            
+            for (const [id, stacks] of p.phials) {
+                const popTime = p.recentPhialGains.get(id) || 0;
+                const scale = 1 + popTime * 0.5; // Pop effect
+                const alpha = 0.5 + (1 - popTime) * 0.5;
+
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.font = `${24 * scale}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(PHIAL_ICONS[id], iconX, gaugeY - 25);
+                
+                if (stacks > 1) {
+                    ctx.font = '12px sans-serif';
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(stacks, iconX + 10, gaugeY - 15);
+                }
+                
+                ctx.restore();
+                iconX += spacing;
+            }
+        }
     }
 
     onEnemyDeath(enemy) {
@@ -210,6 +348,8 @@ class FieldState extends State {
         if (this.soulGauge >= this.soulGaugeThreshold) {
             this.soulGauge = 0;
             this.elitesToSpawn = (this.elitesToSpawn || 0) + 1;
+            p.onGaugeFill(this);
+            this.gaugeFlash = 1.0;
             console.log('Queued elite spawn, elitesToSpawn =', this.elitesToSpawn);
         }
     }
@@ -217,7 +357,7 @@ class FieldState extends State {
     spawnEnemy(isElite = false) {
         const p = this.game.p;
         let a = Math.random() * 6.28;
-        let d = 450;
+        let d = BALANCE.waves.spawnRadius;
         let x = p.x + Math.cos(a) * d;
         let y = p.y + Math.sin(a) * d;
 
@@ -274,7 +414,7 @@ class FieldState extends State {
             else if (rVal < 0.60) { rarity = "uncommon"; m = 1.2; }
             let stats = {};
             for (let k in tpl.stats) stats[k] = Math.ceil(tpl.stats[k] * m);
-            return { id: Math.random().toString(36), type, name: tpl.base, rarity, stats, cls: tpl.cls };
+            return { id: Math.random().toString(36), type: type, name: tpl.base, rarity, stats, cls: tpl.cls };
         } catch (e) { return { id: "err", type: "trinket", name: "Scrap", rarity: "common", stats: {} }; }
     }
 }

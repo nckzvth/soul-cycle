@@ -1,6 +1,8 @@
 import Game from "../core/Game.js";
 import { SLOTS } from "../data/Constants.js";
 import { SKILLS } from "../data/Skills.js";
+import { Phials } from "../data/Phials.js";
+import { BALANCE } from "../data/Balance.js";
 
 const UI = {
     dirty: true,
@@ -32,20 +34,37 @@ const UI = {
         document.getElementById("uiMaxXp").innerText = Math.floor(50 * Math.pow(1.2, p.lvl - 1));
         document.getElementById("txtHp").innerText = `${Math.ceil(p.hp)}/${p.hpMax}`;
         document.getElementById("hpBar").style.width = (p.hp / p.hpMax * 100) + "%";
-        document.getElementById("txtSta").innerText = `${Math.ceil(p.sta)}/100`;
-        document.getElementById("staBar").style.width = p.sta + "%";
+        
+        const dashContainer = document.getElementById("dash-charges");
+        if (dashContainer) {
+            dashContainer.innerHTML = "";
+            for (let i = 0; i < BALANCE.player.baseDashCharges; i++) {
+                const chargeEl = document.createElement("div");
+                chargeEl.className = "dash-charge-pip";
+                const fillEl = document.createElement("div");
+                fillEl.className = "fill";
+                
+                if (i < p.dashCharges) {
+                    chargeEl.classList.add("full");
+                    fillEl.style.width = "100%";
+                    if (p.dashRechargeFlash > 0 && i === p.dashCharges - 1) {
+                        chargeEl.classList.add("recharged");
+                    }
+                } else if (i === p.dashCharges) {
+                    const progress = p.dashRechargeTimer / BALANCE.player.dashRechargeTime;
+                    fillEl.style.width = `${progress * 100}%`;
+                }
+
+                chargeEl.appendChild(fillEl);
+                dashContainer.appendChild(chargeEl);
+            }
+        }
 
         // Kill counter: always visible, always driven by player
         const killCounter = document.getElementById("uiKills");
         if (killCounter) {
-            const state = Game.stateManager?.currentState || Game.state;
-            if (state && state.showKillCounter) {
-                killCounter.parentElement.style.display = 'flex';
-                const kc = p.killStats?.currentSession ?? 0;
-                killCounter.innerText = kc;
-            } else {
-                killCounter.parentElement.style.display = 'none';
-            }
+            const kc = p.killStats?.currentSession ?? 0;
+            killCounter.innerText = kc;
         }
     },
     toggle(id) {
@@ -91,6 +110,21 @@ const UI = {
             };
             elInv.appendChild(d);
         });
+        
+        const debugPhials = document.getElementById('debug-phials');
+        if (Game.debug) {
+            debugPhials.innerHTML = '<span class="sec-title">Debug: Add Phials</span>';
+            for (const phialId in Phials) {
+                const phial = Phials[phialId];
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.innerText = `+ ${phial.name}`;
+                btn.onclick = () => {
+                    p.addPhial(phial.id);
+                };
+                debugPhials.appendChild(btn);
+            }
+        }
     },
     renderSkill() {
         let p = Game.p, w = p.gear.weapon, el = document.getElementById("skillList");

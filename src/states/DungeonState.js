@@ -16,6 +16,8 @@ class DungeonState extends State {
         // Room bounds
         this.bounds = { x: 0, y: 0, w: 800, h: 600 };
         this.showKillCounter = true;
+        
+        this.combatSystem = CombatSystem; // Expose CombatSystem to entities
     }
 
     enter() {
@@ -52,7 +54,14 @@ class DungeonState extends State {
         }
         
         // 4. PROJECTILES
-        this.shots = this.shots.filter(s => s.update(dt, this));
+        // Use a standard for loop to handle projectiles spawning other projectiles (like TitheExplosion)
+        for (let i = 0; i < this.shots.length; i++) {
+            const b = this.shots[i];
+            if (!b.update(dt, this)) {
+                this.shots.splice(i, 1);
+                i--;
+            }
+        }
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
 
         // 5. INTERACTION
