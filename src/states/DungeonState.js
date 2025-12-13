@@ -4,6 +4,8 @@ import Boss from '../entities/Boss.js';
 import Interactable from '../entities/Interactable.js';
 import { keys } from '../core/Input.js';
 import CombatSystem from '../systems/CombatSystem.js';
+import LootSystem from '../systems/LootSystem.js';
+import { LootDrop as Drop } from '../entities/Pickups.js';
 
 class DungeonState extends State {
     constructor(game) {
@@ -11,6 +13,7 @@ class DungeonState extends State {
         this.boss = null;
         this.enemies = [];
         this.shots = []; 
+        this.drops = [];
         this.townPortal = null;
         this.chains = [];
         // Room bounds
@@ -30,6 +33,7 @@ class DungeonState extends State {
         this.boss = new Boss(400, 200);
         this.enemies = [this.boss];
         this.shots = [];
+        this.drops = [];
         this.townPortal = null;
         this.showKillCounter = true;
     }
@@ -63,6 +67,7 @@ class DungeonState extends State {
             }
         }
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
+        this.drops = this.drops.filter(d => d.update(dt, p));
 
         // 5. INTERACTION
         if (this.townPortal && keys['KeyF'] && this.townPortal.checkInteraction(p)) {
@@ -78,6 +83,7 @@ class DungeonState extends State {
 
         if (enemy === this.boss) {
             console.log("Boss defeated!");
+            this.drops.push(new Drop(this.boss.x, this.boss.y, LootSystem.loot("weapon")));
             this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
                 this.game.stateManager.switchState(new TownState(this.game));
             });
@@ -103,6 +109,7 @@ class DungeonState extends State {
 
         if (!this.boss.dead) this.boss.draw(ctx, s);
         this.shots.forEach(shot => shot.draw(ctx, s));
+        this.drops.forEach(d => d.draw(ctx, s));
         
         // Chains
         ctx.lineWidth = 2; ctx.strokeStyle = "#a0ebff";

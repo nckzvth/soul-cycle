@@ -300,7 +300,8 @@ export default class PlayerObj {
             regen: bp.baseRegen,
             soulGain: bp.baseSoulGain,
             kb: bp.baseKb,
-            area: bp.baseArea
+            area: bp.baseArea,
+            magnetism: bp.baseMagnetism
         };
 
         s.dmg += t.might * bp.dmgPerMight;
@@ -309,6 +310,7 @@ export default class PlayerObj {
         s.move += t.alacrity * bp.movePerAlacrity;
         s.area += t.will * bp.areaPerWill;
         s.soulGain += t.will * bp.soulGainPerWill;
+        s.magnetism += t.will * BALANCE.pickups.soul.magnetism;
 
         this.perks.might = t.might >= bp.perkThreshold;
         this.perks.alacrity = t.alacrity >= bp.perkThreshold;
@@ -333,7 +335,7 @@ export default class PlayerObj {
     }
     
     giveXp(n) {
-        this.xp += n; let req = Math.floor(50 * Math.pow(1.2, this.lvl - 1));
+        this.xp += n; let req = Math.floor(10 * Math.pow(1.2, this.lvl - 1));
         if (this.xp >= req) { this.xp -= req; this.lvl++; this.attr.pts += 3; this.hp = this.hpMax; UI.toast("LEVEL UP!"); this.recalc(); }
         UI.dirty = true;
     }

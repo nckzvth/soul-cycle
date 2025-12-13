@@ -11,6 +11,7 @@ export const BALANCE = {
         baseSpd: 0,
         baseKb: 0,
         baseArea: 1,
+        baseMagnetism: 15,
 
         // Attribute scaling
         dmgPerMight: 0.5,
@@ -122,6 +123,6 @@ export const BALANCE = {
 
     pickups: {
         loot: { pickupRadius: 30 },
-        soul: { pickupRadius: 30, extendedPickupRadius: 150, attractionSpeed: 5, baseSoulValue: 1 }
+        soul: { pickupRadius: 30, extendedPickupRadius: 150, attractionSpeed: 5, baseSoulValue: 1, magnetism: 5 }
     }
 };

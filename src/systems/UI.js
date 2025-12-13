@@ -30,8 +30,9 @@ const UI = {
 
         document.getElementById("uiLvl").innerText = p.lvl;
         document.getElementById("uiSouls").innerText = p.souls;
-        document.getElementById("uiXp").innerText = Math.floor(p.xp);
-        document.getElementById("uiMaxXp").innerText = Math.floor(50 * Math.pow(1.2, p.lvl - 1));
+        const xpRequired = Math.floor(12 * Math.pow(1.2, p.lvl - 1));
+        const xpProgress = (p.xp / xpRequired) * 100;
+        document.getElementById("xp-bar-fill").style.width = `${xpProgress}%`;
         document.getElementById("txtHp").innerText = `${Math.ceil(p.hp)}/${p.hpMax}`;
         document.getElementById("hpBar").style.width = (p.hp / p.hpMax * 100) + "%";
         

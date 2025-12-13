@@ -4,69 +4,99 @@ import { BALANCE } from "../data/Balance.js";
 import { Phials } from "../data/Phials.js";
 
 export class LootDrop {
-    constructor(x, y, item) { this.x = x; this.y = y; this.item = item; this.life = 0; }
+    constructor(x, y, item) {
+        this.x = x + (Math.random() - 0.5) * 20;
+        this.y = y + (Math.random() - 0.5) * 20;
+        this.item = item;
+        this.life = 0;
+    }
     update(dt, p) {
         this.life += dt;
-        if (dist2(this.x, this.y, p.x, p.y) < BALANCE.pickups.loot.pickupRadius ** 2) {
-            p.inv.push(this.item);
-            UI.toast(`Got ${this.item.name}`);
-            return false;
+        let r = BALANCE.pickups.loot.pickupRadius + p.stats.magnetism;
+        let d2 = dist2(this.x, this.y, p.x, p.y);
+        if (d2 < r * r) {
+            if (r > BALANCE.pickups.loot.pickupRadius) { this.x += (p.x - this.x) * BALANCE.pickups.soul.attractionSpeed * dt; this.y += (p.y - this.y) * BALANCE.pickups.soul.attractionSpeed * dt; }
+            if (d2 < BALANCE.pickups.loot.pickupRadius ** 2) {
+                p.inv.push(this.item);
+                UI.toast(`Got ${this.item.name}`);
+                return false;
+            }
         }
         return true;
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
         let c = { common: "#888", uncommon: "#6aae9d", rare: "#6b8cc4", epic: "#c46b6b", legendary: "#d7c48a" }[this.item.rarity] || "#fff";
-        let float = Math.sin(this.life * 3) * 5;
         ctx.save();
-        ctx.translate(p.x, p.y + float);
+        ctx.translate(p.x, p.y);
         let g = ctx.createLinearGradient(0, -40, 0, 0);
         g.addColorStop(0, "transparent"); g.addColorStop(1, c);
         ctx.fillStyle = g; ctx.fillRect(-2, -40, 4, 40);
-        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(0, -10, 4, 0, 6.28); ctx.fill();
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 6.28); ctx.fill();
         ctx.restore();
     }
 }
 
 export class SoulOrb {
-    constructor(x, y) { this.x = x; this.y = y; }
+    constructor(x, y) {
+        this.x = x + (Math.random() - 0.5) * 20;
+        this.y = y + (Math.random() - 0.5) * 20;
+        this.life = 0;
+    }
     update(dt, p) {
-        let r = BALANCE.pickups.soul.pickupRadius;
-        if (p.perks.will || p.stats.area > 2) r = BALANCE.pickups.soul.extendedPickupRadius;
+        this.life += dt;
+        let r = BALANCE.pickups.soul.pickupRadius + p.stats.magnetism;
         let d2 = dist2(this.x, this.y, p.x, p.y);
         if (d2 < r * r) {
             if (r > BALANCE.pickups.soul.pickupRadius) { this.x += (p.x - this.x) * BALANCE.pickups.soul.attractionSpeed * dt; this.y += (p.y - this.y) * BALANCE.pickups.soul.attractionSpeed * dt; }
             if (d2 < BALANCE.pickups.soul.pickupRadius ** 2) {
-                p.souls += Math.ceil(BALANCE.pickups.soul.baseSoulValue * p.stats.soulGain);
+                p.souls += BALANCE.pickups.soul.baseSoulValue; // Currency
+                p.giveXp(BALANCE.pickups.soul.baseSoulValue);  // XP
                 UI.dirty = true;
                 return false;
             }
         }
         return true;
     }
+    draw(ctx, s) {
+        let p = s(this.x, this.y);
+        let float = Math.sin(this.life * 3) * 5;
+        ctx.save();
+        ctx.translate(p.x, p.y + float);
+        ctx.fillStyle = "#d7c48a";
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, 6.28);
+        ctx.fill();
+        ctx.restore();
+    }
 }
 
 export class PhialShard {
     constructor(x, y) {
-        this.x = x;
-        this.y = y;
+        this.x = x + (Math.random() - 0.5) * 20;
+        this.y = y + (Math.random() - 0.5) * 20;
         this.life = 0;
     }
 
     update(dt, p) {
         this.life += dt;
-        if (dist2(this.x, this.y, p.x, p.y) < BALANCE.pickups.loot.pickupRadius ** 2) {
-            p.phialShards++;
-            if (p.phialShards % 2 === 0) {
-                const phialIds = Object.keys(Phials);
-                const randomPhialId = phialIds[Math.floor(Math.random() * phialIds.length)];
-                p.addPhial(randomPhialId);
-                const phialName = Phials[randomPhialId].id.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-                console.log(`${phialName} x${p.getPhialStacks(randomPhialId)}`);
-                UI.toast(`New Phial: ${Phials[randomPhialId].description}`);
+        let r = BALANCE.pickups.loot.pickupRadius + p.stats.magnetism;
+        let d2 = dist2(this.x, this.y, p.x, p.y);
+        if (d2 < r * r) {
+            if (r > BALANCE.pickups.loot.pickupRadius) { this.x += (p.x - this.x) * BALANCE.pickups.soul.attractionSpeed * dt; this.y += (p.y - this.y) * BALANCE.pickups.soul.attractionSpeed * dt; }
+            if (d2 < BALANCE.pickups.loot.pickupRadius ** 2) {
+                p.phialShards++;
+                if (p.phialShards % 2 === 0) {
+                    const phialIds = Object.keys(Phials);
+                    const randomPhialId = phialIds[Math.floor(Math.random() * phialIds.length)];
+                    p.addPhial(randomPhialId);
+                    const phialName = Phials[randomPhialId].id.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+                    console.log(`${phialName} x${p.getPhialStacks(randomPhialId)}`);
+                    UI.toast(`New Phial: ${Phials[randomPhialId].description}`);
+                }
+                UI.dirty = true;
+                return false;
             }
-            UI.dirty = true;
-            return false;
         }
         return true;
     }
@@ -76,7 +106,10 @@ export class PhialShard {
         let float = Math.sin(this.life * 3) * 5;
         ctx.save();
         ctx.translate(p.x, p.y + float);
-        ctx.fillStyle = "#a865e8"; // A purplish color for the shard
+        let g = ctx.createLinearGradient(0, -60, 0, 0);
+        g.addColorStop(0, "transparent"); g.addColorStop(1, "#a865e8");
+        ctx.fillStyle = g; ctx.fillRect(-3, -60, 6, 60);
+        ctx.fillStyle = "#8a2be2"; // A darker purplish color for the shard
         ctx.beginPath();
         ctx.moveTo(0, -8);
         ctx.lineTo(5, 0);

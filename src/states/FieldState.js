@@ -13,6 +13,7 @@ import { Walker, Charger, Spitter, Anchor } from "../entities/Enemy.js";
 import { BALANCE } from '../data/Balance.js';
 import { Phials } from '../data/Phials.js';
 import ParticleSystem from '../systems/Particles.js';
+import LootSystem from '../systems/LootSystem.js';
 
 const WAVE_DURATION = BALANCE.waves.waveDuration;
 
@@ -244,8 +245,7 @@ class FieldState extends State {
         this.drops.forEach(d => d.draw(ctx, s));
         this.pickups.forEach(p => p.draw(ctx, s));
         this.souls.forEach(o => {
-            let pos = s(o.x, o.y);
-            ctx.fillStyle = "#d7c48a"; ctx.beginPath(); ctx.arc(pos.x, pos.y, 3, 0, 6.28); ctx.fill();
+            o.draw(ctx, s);
         });
 
         this.enemies.forEach(e => { ctx.save(); e.draw(ctx, s); ctx.restore(); });
@@ -336,9 +336,8 @@ class FieldState extends State {
 
         this.souls.push(new Soul(enemy.x, enemy.y));
         if (enemy.isElite || Math.random() < 0.3) {
-            this.drops.push(new Drop(enemy.x, enemy.y, this.loot()));
+            this.drops.push(new Drop(enemy.x, enemy.y, LootSystem.loot()));
         }
-        p.giveXp(10 * (enemy.isElite ? 3 : 1));
         this.killsThisWave++;
         
         // --- Elite Spawning ---
@@ -396,26 +395,6 @@ class FieldState extends State {
             }
         });
         return t;
-    }
-
-    loot(forceType) {
-        // Keep existing loot logic...
-        // Copied from your source for completeness
-        try {
-            const type = forceType || SLOTS[Math.floor(Math.random() * SLOTS.length)];
-            const pool = ITEMS[type];
-            if (!pool) throw "No pool";
-            const tpl = pool[Math.floor(Math.random() * pool.length)];
-            const rVal = Math.random();
-            let rarity = "common", m = 1;
-            if (rVal < 0.05) { rarity = "legendary"; m = 2.5; }
-            else if (rVal < 0.15) { rarity = "epic"; m = 1.8; }
-            else if (rVal < 0.30) { rarity = "rare"; m = 1.4; }
-            else if (rVal < 0.60) { rarity = "uncommon"; m = 1.2; }
-            let stats = {};
-            for (let k in tpl.stats) stats[k] = Math.ceil(tpl.stats[k] * m);
-            return { id: Math.random().toString(36), type: type, name: tpl.base, rarity, stats, cls: tpl.cls };
-        } catch (e) { return { id: "err", type: "trinket", name: "Scrap", rarity: "common", stats: {} }; }
     }
 }
 
