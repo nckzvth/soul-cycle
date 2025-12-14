@@ -53,7 +53,9 @@ class DungeonState extends State {
         p.y = Math.max(this.bounds.y + 12, Math.min(this.bounds.h - 12, p.y));
 
         // 3. BOSS/ENEMIES
-        if (!this.boss.dead) {
+        if (this.boss.dead && !this.townPortal) {
+            this.onEnemyDeath(this.boss);
+        } else if (!this.boss.dead) {
             this.boss.update(dt, p, this);
         }
         
@@ -124,10 +126,14 @@ class DungeonState extends State {
 
         // Portal
         if (this.townPortal) {
-            this.townPortal.draw(ctx);
+            let portalPos = s(this.townPortal.x, this.townPortal.y);
+            ctx.fillStyle = 'lightblue';
+            ctx.fillRect(portalPos.x, portalPos.y, this.townPortal.width, this.townPortal.height);
             if (this.townPortal.checkInteraction(p)) {
                 ctx.fillStyle = 'white'; ctx.font = '24px sans-serif';
+                ctx.textAlign = 'center';
                 ctx.fillText("[F] to return to Town", w / 2, h - 50);
+                ctx.textAlign = 'start';
             }
         }
 

@@ -1,5 +1,6 @@
 import State from '../core/State.js';
 import FieldState from './FieldState.js';
+import DungeonState from './DungeonState.js';
 import Interactable from '../entities/Interactable.js';
 import { keys } from '../core/Input.js';
 
@@ -8,6 +9,10 @@ class TownState extends State {
         super(game);
         this.gate = new Interactable(350, 500, 100, 50, () => {
             this.game.stateManager.switchState(new FieldState(this.game));
+        });
+        // TODO: Remove this temporary portal for testing
+        this.dungeonPortal = new Interactable(600, 300, 50, 50, () => {
+            this.game.stateManager.switchState(new DungeonState(this.game));
         });
         // Empty array for safety if perks trigger
         this.shots = []; 
@@ -34,8 +39,14 @@ class TownState extends State {
         p.update(dt, this, false);
 
         // Interaction
-        if (keys['KeyF'] && this.gate.checkInteraction(p)) {
-            this.gate.onInteract();
+        if (keys['KeyF']) {
+            if (this.gate.checkInteraction(p)) {
+                this.gate.onInteract();
+            }
+            // TODO: Remove this temporary portal for testing
+            if (this.dungeonPortal.checkInteraction(p)) {
+                this.dungeonPortal.onInteract();
+            }
         }
         
         // Cleanup visuals
@@ -59,6 +70,14 @@ class TownState extends State {
         ctx.font = '16px sans-serif';
         ctx.fillText('Gate', gatePos.x + 30, gatePos.y + 30);
 
+        // TODO: Remove this temporary portal for testing
+        let portalPos = s(this.dungeonPortal.x, this.dungeonPortal.y);
+        ctx.fillStyle = 'purple';
+        ctx.fillRect(portalPos.x, portalPos.y, this.dungeonPortal.width, this.dungeonPortal.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('Dungeon', portalPos.x - 5, portalPos.y + 30);
+
         p.draw(ctx, s);
 
         // Overlay
@@ -70,6 +89,11 @@ class TownState extends State {
         if (this.gate.checkInteraction(p)) {
             ctx.font = '24px sans-serif';
             ctx.fillText("[F] to Enter Field", w / 2, h - 50);
+        }
+        // TODO: Remove this temporary portal for testing
+        if (this.dungeonPortal.checkInteraction(p)) {
+            ctx.font = '24px sans-serif';
+            ctx.fillText("[F] to Enter Dungeon", w / 2, h - 20);
         }
         ctx.textAlign = 'start';
     }

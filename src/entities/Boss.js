@@ -33,6 +33,15 @@ class Boss {
         }
     }
 
+    takeDamage(dmg, state) {
+        this.hp -= dmg;
+        this.flash = 0.15;
+        if (this.hp <= 0) {
+            this.dead = true;
+            // TODO: Handle boss death logic, e.g., victory screen, loot drops
+        }
+    }
+
     attack(p, dungeonState) {
         const projectileCount = this.phase === 1 ? BALANCE.boss.phase1.projectileCount : BALANCE.boss.phase2.projectileCount;
         const projectileSpeed = this.phase === 1 ? BALANCE.boss.phase1.projectileSpeed : BALANCE.boss.phase2.projectileSpeed;
