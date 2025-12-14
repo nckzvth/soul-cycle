@@ -30,6 +30,7 @@ export const BALANCE = {
         dashDuration: 0.2,
         dashSpeed: 800,
         walkBaseSpeed: 180,
+        rootImmunityDuration: 1.0,
 
         // Weapon timings
         pistolBaseRate: 0.4,

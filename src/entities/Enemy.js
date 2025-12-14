@@ -172,6 +172,7 @@ export class Walker extends Enemy {
         this.speed = cfg.speed;
         this.color = "#c44e4e";
         this.eliteSkillCd = 5;
+        this.rooting = 0;
     }
 
     performAI(dt, player, fieldState) {
@@ -183,7 +184,13 @@ export class Walker extends Enemy {
             this.eliteSkillCd -= dt;
             if (this.eliteSkillCd <= 0) {
                 this.eliteSkillCd = 5;
-                fieldState.shots.push(new RootWave(fieldState, this.x, this.y));
+                this.rooting = BALANCE.projectiles.rootWave.life;
+            }
+            if (this.rooting > 0) {
+                this.rooting -= dt;
+                if (this.rooting <= 0) {
+                    fieldState.shots.push(new RootWave(fieldState, this.x, this.y));
+                }
             }
         }
     }
@@ -192,6 +199,32 @@ export class Walker extends Enemy {
         CombatSystem.onPlayerHit(this, fieldState);
         let rawDamage = (this.isBuffed ? 15 : 10);
         player.takeDamage(rawDamage * dt, this);
+    }
+
+    draw(ctx, s) {
+        let p = s(this.x, this.y);
+        let baseColor = this.isElite ? [255, 215, 0] : [196, 78, 78];
+        if (this.rooting > 0) {
+            const t = 1 - (this.rooting / BALANCE.projectiles.rootWave.life);
+            const r = Math.floor(baseColor[0] * (1 - t) + 255 * t);
+            const g = Math.floor(baseColor[1] * (1 - t));
+            const b = Math.floor(baseColor[2] * (1 - t));
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+        } else {
+            ctx.fillStyle = this.flash > 0 ? "#fff" : `rgb(${baseColor[0]},${baseColor[1]},${baseColor[2]})`;
+        }
+        if (this.blinded > 0) {
+            ctx.globalAlpha = 0.5;
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.r, 0, 6.28);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        ctx.fillStyle = "#000";
+        ctx.fillRect(p.x - 10, p.y - this.r - 8, 20, 4);
+        ctx.fillStyle = "#0f0";
+        ctx.fillRect(p.x - 10, p.y - this.r - 8, 20 * (this.hp / this.hpMax), 4);
     }
 }
 

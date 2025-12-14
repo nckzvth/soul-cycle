@@ -68,6 +68,7 @@ export default class PlayerObj {
         this.dashVec = { x: 0, y: 0 };
         this.dashHitList = [];
         this.rooted = 0;
+        this.rootImmunity = 0;
         this.atkCd = 0;
         
         this.recalc();
@@ -114,6 +115,9 @@ export default class PlayerObj {
         if (this.rooted > 0) {
             this.rooted -= dt;
         }
+        if (this.rootImmunity > 0) {
+            this.rootImmunity -= dt;
+        }
 
         // 2. Handle Passive Perks & Phials
         if (allowCombat) {
@@ -145,11 +149,10 @@ export default class PlayerObj {
         }
 
         // 4. Movement
+        this.processMovement(dt, scene);
         if (this.rooted <= 0) {
             if (this.dashTimer > 0) {
                 this.processDash(dt, scene);
-            } else {
-                this.processMovement(dt, scene);
             }
         }
         
@@ -199,13 +202,15 @@ export default class PlayerObj {
                 this.dashTimer = BALANCE.player.dashDuration;
                 this.dashVec = { x: mx, y: my };
                 this.dashHitList = []; // Clear hit list on new dash
+                this.rooted = 0; // Break root
+                this.rootImmunity = BALANCE.player.rootImmunityDuration;
             }
             this.dashKeyPressed = true;
         } else {
             this.dashKeyPressed = false;
         }
 
-        if (this.dashTimer <= 0) {
+        if (this.dashTimer <= 0 && this.rooted <= 0) {
             // Standard Walk
             let spd = BALANCE.player.walkBaseSpeed * (1 + this.stats.move);
             this.x += mx * spd * dt; 
