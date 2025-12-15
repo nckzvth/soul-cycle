@@ -140,6 +140,7 @@ const UI = {
         const body = document.querySelector('#modal_levelup .modal-body');
         
         const weaponOptions = this.getWeaponUpgradeOptions();
+        const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
 
         body.innerHTML = `
             <div class="levelup-row" id="levelup-attributes">
@@ -151,7 +152,10 @@ const UI = {
                 </div>
             </div>
             <div class="levelup-row" id="levelup-weapon">
-                <div class="sec-title">Weapon Upgrade (x${p.levelPicks.weapon})</div>
+                <div class="sec-title-container">
+                    <div class="sec-title">Weapon Upgrade (x${p.levelPicks.weapon})</div>
+                    <button class="btn-reroll" id="btn-reroll-weapon">Reroll (${rerollCost} Souls)</button>
+                </div>
                 <div class="levelup-options" id="weapon-upgrade-options">
                     ${weaponOptions.map(skill => `<button class="btn-upgrade" data-skill-id="${skill.id}">${skill.name}<small>${skill.desc}</small></button>`).join('')}
                 </div>
@@ -171,6 +175,8 @@ const UI = {
         document.querySelectorAll('.btn-upgrade').forEach(btn => {
             btn.onclick = () => this.selectWeaponUpgrade(btn.dataset.skillId);
         });
+        
+        document.getElementById('btn-reroll-weapon').onclick = () => this.rerollWeaponOptions();
     },
     selectAttribute(attr) {
         const p = Game.p;
@@ -215,6 +221,17 @@ const UI = {
         const p = Game.p;
         const weaponRow = document.getElementById('levelup-weapon');
         weaponRow.querySelector('.sec-title').innerText = `Weapon Upgrade (x${p.levelPicks.weapon})`;
+        
+        const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
+        const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
+        rerollBtn.innerText = `Reroll (${rerollCost} Souls)`;
+        
+        if (p.souls < rerollCost) {
+            rerollBtn.classList.add('disabled');
+        } else {
+            rerollBtn.classList.remove('disabled');
+        }
+
         const weaponOptions = this.getWeaponUpgradeOptions();
         const optionsContainer = weaponRow.querySelector('#weapon-upgrade-options');
         optionsContainer.innerHTML = weaponOptions.map(skill => `<button class="btn-upgrade" data-skill-id="${skill.id}">${skill.name}<small>${skill.desc}</small></button>`).join('');
@@ -224,28 +241,53 @@ const UI = {
         });
         this.updateRowCompletion();
     },
+    rerollWeaponOptions() {
+        const p = Game.p;
+        const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
+        if (p.souls >= rerollCost) {
+            p.souls -= rerollCost;
+            p.weaponRerollsUsed++;
+            this.dirty = true;
+            this.rerenderWeaponRow();
+        }
+    },
     updateRowCompletion() {
         const p = Game.p;
         const attrRow = document.getElementById('levelup-attributes');
         const weaponRow = document.getElementById('levelup-weapon');
         const phialRow = document.getElementById('levelup-phial');
 
+        const addOverlay = (row, text) => {
+            if (!row.querySelector('.row-overlay')) {
+                const overlay = document.createElement('div');
+                overlay.className = 'row-overlay';
+                overlay.innerText = text;
+                row.appendChild(overlay);
+            }
+        };
+
         if (p.levelPicks.attribute === 0) {
             attrRow.classList.add('complete');
-            if (!attrRow.querySelector('.row-overlay')) {
-                attrRow.innerHTML += '<div class="row-overlay">NO PENDING ATTRIBUTES</div>';
-            }
+            addOverlay(attrRow, 'NO PENDING ATTRIBUTES');
         }
         if (p.levelPicks.weapon === 0) {
             weaponRow.classList.add('complete');
-            if (!weaponRow.querySelector('.row-overlay')) {
-                weaponRow.innerHTML += '<div class="row-overlay">NO PENDING SKILLS</div>';
-            }
+            const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
+            if(rerollBtn) rerollBtn.style.display = 'none';
+            addOverlay(weaponRow, 'NO PENDING SKILLS');
         }
         if (p.levelPicks.phial === 0) {
             phialRow.classList.add('complete');
-            if (!phialRow.querySelector('.row-overlay')) {
-                phialRow.innerHTML += '<div class="row-overlay">NO PENDING PHIALS</div>';
+            addOverlay(phialRow, 'NO PENDING PHIALS');
+        }
+        
+        const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
+        if (rerollBtn) {
+            const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
+            if (p.souls < rerollCost) {
+                rerollBtn.classList.add('disabled');
+            } else {
+                rerollBtn.classList.remove('disabled');
             }
         }
     },

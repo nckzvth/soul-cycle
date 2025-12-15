@@ -32,6 +32,10 @@ export const BALANCE = {
         walkBaseSpeed: 180,
         rootImmunityDuration: 1.0,
 
+        // Reroll
+        baseRerollCost: 50,
+        rerollCostMultiplier: 1.25,
+
         // Weapon timings
         pistolBaseRate: 0.4,
         staffRateMult: 1.5,

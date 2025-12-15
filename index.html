@@ -165,6 +165,33 @@
         #btn-might { border-color: var(--red); }
         #btn-alacrity { border-color: var(--green); }
         #btn-will { border-color: var(--blue); }
+
+        .sec-title-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .btn-reroll {
+            background: rgba(215, 196, 138, 0.1);
+            border: 1px solid var(--gold);
+            color: var(--gold);
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .btn-reroll.disabled {
+            background: #222;
+            border-color: #444;
+            color: #777;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .btn-reroll:not(.disabled):hover {
+            background: rgba(215, 196, 138, 0.2);
+        }
     </style>
 </head>
 <body>

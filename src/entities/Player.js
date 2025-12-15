@@ -22,6 +22,7 @@ export default class PlayerObj {
         
         // Level Up Picks
         this.levelPicks = { attribute: 0, weapon: 0, phial: 0 };
+        this.weaponRerollsUsed = 0;
 
         // Dash
         this.dashCharges = BALANCE.player.baseDashCharges;
@@ -178,6 +179,7 @@ export default class PlayerObj {
         this.atkCd = 0;
         this.dashCharges = BALANCE.player.baseDashCharges;
         this.dashRechargeTimer = 0;
+        this.weaponRerollsUsed = 0;
     }
 
     /** Move player without physics interpolation */
@@ -627,6 +629,7 @@ export default class PlayerObj {
         this.killStats.currentSession = 0;
         this.killStats.nonEliteSession = 0;
         this.killStats.bossesSession = 0;
+        this.weaponRerollsUsed = 0;
         UI.dirty = true;
     }
 }
