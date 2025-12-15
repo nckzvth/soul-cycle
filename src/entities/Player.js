@@ -269,6 +269,17 @@ export default class PlayerObj {
                 const cy = this.y + dy * 20;
                 const initialAngle = Math.atan2(dy, dx) + Math.PI / 2;
 
+                // Enforce max hammers
+                const existingHammers = scene.shots.filter(s => s instanceof HammerProjectile && !s.isSalvo);
+                if (existingHammers.length >= hb.maxHammers) {
+                    existingHammers.sort((a, b) => a.creationTime - b.creationTime);
+                    const oldestHammer = existingHammers[0];
+                    const index = scene.shots.indexOf(oldestHammer);
+                    if (index > -1) {
+                        scene.shots.splice(index, 1);
+                    }
+                }
+
                 scene.shots.push(new HammerProjectile(scene, this, cx, cy, initialAngle));
                 this.atkCd = hb.cooldown;
 

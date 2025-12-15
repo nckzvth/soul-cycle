@@ -1,5 +1,6 @@
 import { dist2 } from "../core/Utils.js";
 import { BALANCE } from "../data/Balance.js";
+import Game from "../core/Game.js";
 
 export class TitheExplosion {
     constructor(state, player, x, y, radius, stacks, damage) {
@@ -107,11 +108,25 @@ export class HammerProjectile {
         if (this.isSalvo) {
             this.ang += Math.PI;
         }
+        this.spinTimer = BALANCE.player.hammer.spinTime;
+        this.atMaxRadius = false;
+        this.creationTime = Game.time;
+        this.markedForDeletion = false;
     }
 
     update(dt) {
         const hb = BALANCE.player.hammer;
-        this.rad += hb.radialSpeed * dt;
+
+        if (this.atMaxRadius) {
+            this.spinTimer -= dt;
+        } else {
+            this.rad += hb.radialSpeed * dt;
+            if (this.rad >= hb.maxRadius) {
+                this.rad = hb.maxRadius;
+                this.atMaxRadius = true;
+            }
+        }
+
         this.ang += hb.angularSpeed * dt * (this.isSalvo ? -1 : 1);
 
         const hx = this.cx + Math.cos(this.ang) * this.rad;
@@ -123,7 +138,7 @@ export class HammerProjectile {
             }
         });
 
-        return this.rad < hb.maxRadius;
+        return !this.atMaxRadius || this.spinTimer > 0;
     }
 
     draw(ctx, s) {

@@ -39,12 +39,14 @@ export const BALANCE = {
         // Weapon configs
         hammer: {
             startRadius: 20,
-            maxRadius: 350,
+            maxRadius: 120,
             radialSpeed: 180,
             angularSpeed: -7.0,
             hitRadius: 12,
             cooldown: 0.6,
-            damageMult: 0.6
+            damageMult: 0.6,
+            spinTime: 3.0,
+            maxHammers: 3
         },
         pistol: {
             damageMult: 3.2
