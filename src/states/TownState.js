@@ -3,6 +3,7 @@ import FieldState from './FieldState.js';
 import DungeonState from './DungeonState.js';
 import Interactable from '../entities/Interactable.js';
 import { keys } from '../core/Input.js';
+import UI from '../systems/UI.js';
 
 class TownState extends State {
     constructor(game) {
@@ -28,8 +29,11 @@ class TownState extends State {
         p.fullHeal();
         p.resetKillSession();
         p.clearPhials(); // Clear phials on entering town
+        p.clearSkills(); // Clear skills on entering town
+        p.levelPicks = { attribute: 0, weapon: 0, phial: 0 }; // Clear level picks
         console.log(`Lifetime kills: ${p.killStats.lifetime}`);
         this.showKillCounter = false;
+        UI.updateLevelUpPrompt();
     }
 
     update(dt) {

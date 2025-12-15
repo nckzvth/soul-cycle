@@ -6,6 +6,7 @@ import UI from "../systems/UI.js";
 import { keys, mouse } from "./Input.js";
 import { SLOTS } from "../data/Constants.js";
 import { ITEMS } from "../data/Items.js";
+import ParticleSystem from "../systems/Particles.js";
 
 const Game = {
     p: null,
@@ -71,6 +72,7 @@ const Game = {
     update(dt) {
         this.time += dt;
         this.stateManager.update(dt);
+        ParticleSystem.update(dt, this.p);
     },
 
     render() {

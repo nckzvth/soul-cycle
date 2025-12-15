@@ -74,26 +74,77 @@ export const BALANCE = {
     },
 
     waves: {
-        // Soul gauge
+        // Global settings
+        hardEnemyCap: 400,
+        minSpawnRadius: 500, // Minimum distance from player
+        maxSpawnRadius: 700, // Maximum distance from player
+        viewportMargin: 50,  // Extra margin outside camera view to ensure off-screen
         baseSoulGaugeThreshold: 20,
         soulGaugeThresholdPerWave: 5,
+        
+        // Director settings (Ambient Spawning)
+        director: {
+            emaAlpha: 0.5, // Smoothing factor for kill rate (higher = more responsive)
+            fillRate: 2,   // Max enemies/sec the director can spawn to reach target (Reduced from 10)
+        },
 
-        // Spawn & caps
-        waveDuration: 60,
-        hardEnemyCap: 400,
-        baseWaveEnemyCap: 80,
-        enemyCapPerWave: 80,
-        spawnRadius: 600,
-
-        // Spawn pacing within a wave
-        baseSpawnInterval: 1.2,
-        minSpawnInterval: 0.25,
-        baseBatchSize: 2,
-        batchSizeRamp: 4
+        // Per-wave configuration
+        sequence: [
+            { // Wave 1
+                duration: 60,
+                baseAlive: 3, // Reduced from 10
+                bufferSeconds: 3,
+                maxAlive: 50,
+                weights: [{ type: 'walker', weight: 100, soulValue: 1 }],
+                events: [
+                     { type: 'walker', count: 10, rate: 1, delay: 10 }
+                ]
+            },
+            { // Wave 2
+                duration: 60,
+                baseAlive: 8, // Reduced from 15
+                bufferSeconds: 4,
+                maxAlive: 80,
+                weights: [{ type: 'walker', weight: 60, soulValue: 1 }, { type: 'charger', weight: 40, soulValue: 2 }],
+                events: [
+                    { type: 'charger', count: 15, rate: 1, delay: 20 }
+                ]
+            },
+            { // Wave 3
+                duration: 60,
+                baseAlive: 12, // Reduced from 20
+                bufferSeconds: 5,
+                maxAlive: 100,
+                weights: [{ type: 'walker', weight: 50, soulValue: 1 }, { type: 'charger', weight: 30, soulValue: 2 }, { type: 'spitter', weight: 20, soulValue: 2 }],
+                events: [
+                    { type: 'spitter', count: 10, rate: 0.5, delay: 15 }
+                ]
+            },
+            { // Wave 4
+                duration: 60,
+                baseAlive: 16, // Reduced from 25
+                bufferSeconds: 5,
+                maxAlive: 120,
+                weights: [{ type: 'walker', weight: 40, soulValue: 1 }, { type: 'charger', weight: 30, soulValue: 2 }, { type: 'spitter', weight: 20, soulValue: 2 }, { type: 'anchor', weight: 10, soulValue: 5 }],
+                events: [
+                    { type: 'anchor', count: 5, rate: 0.2, delay: 10 }
+                ]
+            },
+            { // Wave 5
+                duration: 60,
+                baseAlive: 20, // Reduced from 30
+                bufferSeconds: 6,
+                maxAlive: 150,
+                weights: [{ type: 'walker', weight: 30, soulValue: 1 }, { type: 'charger', weight: 30, soulValue: 2 }, { type: 'spitter', weight: 20, soulValue: 2 }, { type: 'anchor', weight: 20, soulValue: 5 }],
+                events: [
+                    { type: 'charger', count: 50, rate: 2, delay: 5 } // Swarm
+                ]
+            }
+        ]
     },
 
     enemies: {
-        walker: { baseHp: 200, hpPerLevel: 5, speed: 1500 },
+        walker: { baseHp: 200, hpPerLevel: 5, speed: 750 },
         charger: { baseHp: 50, hpPerLevel: 5, speed: 2000, dashSpeed: 800 },
         spitter: { baseHp: 150, hpPerLevel: 5, speed: 500, retreatDistance: 300 },
         anchor:  { baseHp: 500, hpPerLevel: 10, speed: 40, auraRadius: 150 },

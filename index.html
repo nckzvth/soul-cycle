@@ -69,6 +69,102 @@
         .dash-charge-pip.full .fill { width: 100%; }
         .dash-charge-pip.recharged { animation: flash-green 0.5s ease-out; }
         @keyframes flash-green { 0% { box-shadow: 0 0 8px var(--green); } 100% { box-shadow: 0 0 0 transparent; } }
+
+        /* Level Up Prompt */
+        #levelup-prompt {
+            position: fixed;
+            top: 100px; /* Moved to top */
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 20px;
+            background: rgba(215, 196, 138, 0.9);
+            border: 1px solid var(--gold);
+            border-radius: 8px;
+            color: #111;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            display: none; /* Hidden by default */
+            pointer-events: auto;
+            z-index: 101;
+            box-shadow: 0 0 15px var(--gold);
+            text-align: center;
+            line-height: 1.2;
+        }
+        #levelup-prompt.glow {
+            animation: pulse-gold 1.5s infinite;
+        }
+        #levelup-prompt small {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        @keyframes pulse-gold {
+            0% { box-shadow: 0 0 5px var(--gold), 0 0 10px var(--gold); }
+            50% { box-shadow: 0 0 20px var(--gold), 0 0 30px var(--gold); }
+            100% { box-shadow: 0 0 5px var(--gold), 0 0 10px var(--gold); }
+        }
+
+        /* Level Up Modal */
+        #modal_levelup .modal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px;
+        }
+        .levelup-row {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .levelup-row.complete .levelup-options {
+            filter: blur(4px) grayscale(100%);
+            opacity: 0.3;
+            pointer-events: none;
+        }
+        .row-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            z-index: 5;
+            pointer-events: none;
+        }
+        .levelup-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .btn-attr, .btn-upgrade {
+            padding: 20px;
+            border-radius: 6px;
+            border: 2px solid #555;
+            background: #222;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+        }
+        .btn-upgrade small {
+            display: block;
+            font-size: 10px;
+            color: #888;
+            margin-top: 8px;
+        }
+        #btn-might { border-color: var(--red); }
+        #btn-alacrity { border-color: var(--green); }
+        #btn-will { border-color: var(--blue); }
     </style>
 </head>
 <body>
@@ -112,7 +208,6 @@
     </div>
     <div class="corner">
         <button class="btn" id="btn-inv">INVENTORY (I)</button>
-        <button class="btn" id="btn-skill">SKILLS (K)</button>
         <button class="btn" id="btn-save">SAVE</button>
         <button class="btn danger" onclick="location.reload()">ABANDON</button>
     </div>
@@ -124,6 +219,7 @@
         </div>
     </div>
     <div id="toast"></div>
+    <div id="levelup-prompt">Level up!<small>0 available</small></div>
 </div>
 
 <div class="modal" id="modal_inv">
@@ -142,9 +238,11 @@
     </div>
 </div>
 
-<div class="modal" id="modal_skill">
-    <div class="modal-head"><span>MASTERY</span><button class="btn" id="btn-close-skill">X</button></div>
-    <div class="modal-body" style="display:block; padding:16px;"><div id="skillList"></div></div>
+<div class="modal" id="modal_levelup">
+    <div class="modal-head"><span>LEVEL UP</span><button class="btn" id="btn-close-levelup">X</button></div>
+    <div class="modal-body">
+        <!-- Content for the level-up menu will go here -->
+    </div>
 </div>
 
 <script type="module" src="src/main.js"></script>

@@ -19,6 +19,9 @@ export default class PlayerObj {
         // Stats
         this.hp = 100; this.hpMax = 100;
         this.lvl = 1; this.xp = 0; this.souls = 0;
+        
+        // Level Up Picks
+        this.levelPicks = { attribute: 0, weapon: 0, phial: 0 };
 
         // Dash
         this.dashCharges = BALANCE.player.baseDashCharges;
@@ -60,7 +63,7 @@ export default class PlayerObj {
         this.perks = { might: false, alacrity: false, will: false };
         this.timers = { might: 0, alacrity: 0, will: 0 };
         
-        this.skills = new Set(); 
+        this.skills = new Map(); 
         this.stats = {};
         
         // Action States
@@ -100,6 +103,10 @@ export default class PlayerObj {
         this.titheKillsCounter = 0;
         this.titheCharges = 0;
         this.titheChargeGainedTimer = 0;
+    }
+
+    clearSkills() {
+        this.skills.clear();
     }
 
     // --- STATE INTERFACE ---
@@ -322,7 +329,16 @@ export default class PlayerObj {
         this.perks.will = t.will >= bp.perkThreshold;
 
         for (let k in this.gear) if (this.gear[k]) for (let sk in this.gear[k].stats) s[sk] = (s[sk] || 0) + this.gear[k].stats[sk];
-        SKILLS.forEach(sk => { if (this.skills.has(sk.id)) for (let k in sk.mods) s[k] = (s[k] || 0) + sk.mods[k]; });
+        
+        this.skills.forEach((stacks, id) => {
+            const skill = SKILLS.find(sk => sk.id === id);
+            if (skill) {
+                for (const k in skill.mods) {
+                    s[k] = (s[k] || 0) + skill.mods[k] * stacks;
+                }
+            }
+        });
+
         this.stats = s;
 
         let oldMax = this.hpMax; this.hpMax = Math.round(s.hp);
@@ -340,8 +356,23 @@ export default class PlayerObj {
     }
     
     giveXp(n) {
-        this.xp += n; let req = Math.floor(10 * Math.pow(1.2, this.lvl - 1));
-        if (this.xp >= req) { this.xp -= req; this.lvl++; this.attr.pts += 3; this.hp = this.hpMax; UI.toast("LEVEL UP!"); this.recalc(); }
+        this.xp += n;
+        let req = Math.floor(10 * Math.pow(1.2, this.lvl - 1));
+        while (this.xp >= req) {
+            this.xp -= req;
+            this.lvl++;
+            this.levelPicks.attribute++;
+            this.levelPicks.weapon++;
+            this.levelPicks.phial++;
+            this.hp = this.hpMax;
+            UI.toast("LEVEL UP!");
+            this.recalc();
+            req = Math.floor(10 * Math.pow(1.2, this.lvl - 1));
+            
+            // Trigger VFX
+            ParticleSystem.emit(this.x, this.y, 'gold', 20, 150, 4, 1.5);
+            ParticleSystem.emit(this.x, this.y - this.r, 'gold', 1, 0, 300, 0.5, null, { beam: true, anchoredTo: this });
+        }
         UI.dirty = true;
     }
     

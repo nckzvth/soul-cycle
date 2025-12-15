@@ -15,16 +15,6 @@ import { Phials } from '../data/Phials.js';
 import ParticleSystem from '../systems/Particles.js';
 import LootSystem from '../systems/LootSystem.js';
 
-const WAVE_DURATION = BALANCE.waves.waveDuration;
-
-const SPAWN_TABLE = {
-    1: [{ type: 'walker', weight: 1, soulValue: 1 }],
-    2: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 1, soulValue: 2 }],
-    3: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 2, soulValue: 2 }, { type: 'spitter', weight: 1, soulValue: 2 }],
-    4: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 2, soulValue: 2 }, { type: 'spitter', weight: 2, soulValue: 2 }, { type: 'anchor', weight: 1, soulValue: 5 }],
-    5: [{ type: 'walker', weight: 2, soulValue: 1 }, { type: 'charger', weight: 2, soulValue: 2 }, { type: 'spitter', weight: 2, soulValue: 2 }, { type: 'anchor', weight: 2, soulValue: 5 }],
-};
-
 const PHIAL_ICONS = {
     ashenHalo: "🔆",
     soulSalvo: "➕",
@@ -58,6 +48,13 @@ function drawPill(ctx, x, y, width, height, radius, text) {
 class FieldState extends State {
     constructor(game) {
         super(game);
+        this.game = game;
+        this.p = game.p;
+        this.combatSystem = CombatSystem;
+        this.reset();
+    }
+
+    reset() {
         this.enemies = [];
         this.shots = [];
         this.drops = [];
@@ -66,129 +63,129 @@ class FieldState extends State {
         this.chains = [];
         this.dungeonPortal = null;
 
-        this.waveIndex = 1;
-        this.waveTimer = WAVE_DURATION;
+        this.waveIndex = 0;
+        this.waveTimer = 0;
         this.waveElapsed = 0;
-        this.spawnTimer = 0;
+        
+        this.killsThisFrame = 0;
+        this.killRateEMA = 0;
+        this.killTimer = 0;
 
-        this.killsThisWave = 0;
+        this.directorCredit = 0;
+        this.eventQueue = [];
+        this.activeEvents = [];
+
         this.soulGauge = 0;
         this.elitesToSpawn = 0;
         this.gaugeFlash = 0;
-        
         this.soulGaugeThreshold = BALANCE.waves.baseSoulGaugeThreshold;
-        this.showKillCounter = true;
-        
-        this.combatSystem = CombatSystem; // Expose CombatSystem to entities
     }
 
     enter() {
         console.log("Entering Field State");
-        this.waveIndex = 1;
-        this.waveTimer = WAVE_DURATION;
-        this.waveElapsed = 0;
-        this.spawnTimer = 0;
-
-        this.killsThisWave = 0;
-        this.soulGauge = 0;
-        this.elitesToSpawn = 0;
-        this.dungeonPortal = null;
-        this.showKillCounter = true;
-        this.pickups = [];
+        this.reset();
+        this.startNextWave();
+        UI.updateLevelUpPrompt();
     }
 
     exit() {
-        this.enemies = [];
-        this.shots = [];
-        this.drops = [];
-        this.souls = [];
-        this.pickups = [];
-        this.chains = [];
-        this.showKillCounter = false;
+        this.reset();
     }
 
-    update(dt) {
-        const p = this.game.p;
-
-        if (this.gaugeFlash > 0) {
-            this.gaugeFlash -= dt * 2;
-        }
-
-        // 1. UPDATE PLAYER (Handles input, physics, combat)
-        p.update(dt, this, true);
-
-        // 2. WAVE LOGIC
-        this.waveTimer -= dt;
-        this.waveElapsed += dt;
-
-        if (this.waveTimer <= 0) {
-            if (this.waveIndex < 5) {
-                this.waveIndex++;
-                this.waveTimer = WAVE_DURATION;
-                this.waveElapsed = 0;
-                this.spawnTimer = 0;
-                this.killsThisWave = 0;
-
-                this.soulGaugeThreshold =
-                    BALANCE.waves.baseSoulGaugeThreshold +
-                    BALANCE.waves.soulGaugeThresholdPerWave * (this.waveIndex - 1);
-            } else if (!this.dungeonPortal) {
-                this.dungeonPortal = new Interactable(p.x + 100, p.y, 50, 50, () => {
+    startNextWave() {
+        this.waveIndex++;
+        const waveConfig = BALANCE.waves.sequence[this.waveIndex - 1];
+        if (!waveConfig) {
+            // Last wave cleared
+            if (!this.dungeonPortal) {
+                this.dungeonPortal = new Interactable(this.p.x + 100, this.p.y, 50, 50, () => {
                     this.game.stateManager.switchState(new DungeonState(this.game));
                 });
             }
+            return;
         }
 
-        // 3. SPAWN (ramping, capped per wave)
-        const wavesCfg = BALANCE.waves;
+        this.waveTimer = waveConfig.duration;
+        this.waveElapsed = 0;
+        
+        this.directorCredit = 0;
+        this.eventQueue = [...waveConfig.events.map(e => ({ ...e, credit: 0 }))];
+        this.activeEvents = [];
 
-        // Wave progress in [0, 1]
-        const t = Math.max(0, Math.min(1, this.waveElapsed / wavesCfg.waveDuration));
+        this.soulGaugeThreshold =
+            BALANCE.waves.baseSoulGaugeThreshold +
+            BALANCE.waves.soulGaugeThresholdPerWave * (this.waveIndex - 1);
+    }
 
-        // Per-wave cap, clamped by global hard cap
-        const waveCap = Math.min(
-            wavesCfg.baseWaveEnemyCap + wavesCfg.enemyCapPerWave * (this.waveIndex - 1),
-            wavesCfg.hardEnemyCap
-        );
+    update(dt) {
+        // --- Timers & State ---
+        this.p.update(dt, this, true);
+        if (this.gaugeFlash > 0) this.gaugeFlash -= dt * 2;
+        this.waveTimer -= dt;
+        this.waveElapsed += dt;
 
-        // How many enemies we are allowed to add right now
-        const active = this.enemies.length;
-        const allowed = Math.max(0, waveCap - active);
+        // Kill Rate Calculation (EMA)
+        this.killTimer += dt;
+        if (this.killTimer >= 1.0) {
+            const alpha = BALANCE.waves.director.emaAlpha;
+            this.killRateEMA = alpha * this.killsThisFrame + (1 - alpha) * this.killRateEMA;
+            this.killsThisFrame = 0;
+            this.killTimer -= 1.0;
+        }
 
-        // Only bother if there is room
-        if (allowed > 0) {
-            // Spawn interval ramps from baseSpawnInterval -> minSpawnInterval over the wave
-            const maxInterval = wavesCfg.baseSpawnInterval;
-            const minInterval = wavesCfg.minSpawnInterval;
-            const currentInterval = maxInterval + (minInterval - maxInterval) * t;
+        // Wave Progression
+        if (this.waveTimer <= 0) {
+            this.startNextWave();
+        }
 
-            this.spawnTimer -= dt;
-            if (this.spawnTimer <= 0) {
-                // Batch size ramps up as the wave progresses
-                const baseBatch = wavesCfg.baseBatchSize;
-                const maxBatch = baseBatch + wavesCfg.batchSizeRamp;
-                const batchSize = Math.round(baseBatch + (maxBatch - baseBatch) * t);
+        // --- Spawning System ---
+        const waveConfig = BALANCE.waves.sequence[this.waveIndex - 1];
+        const hardCap = BALANCE.waves.hardEnemyCap;
+        const alive = this.enemies.length;
 
-                const toSpawn = Math.min(allowed, batchSize);
-
-                for (let i = 0; i < toSpawn; i++) {
-                    this.spawnEnemy(); // normal enemies only; elites are handled separately
-                }
-
-                // Schedule next spawn tick
-                this.spawnTimer += currentInterval;
+        // 1. Process Event Queue -> Active Events
+        for (let i = this.eventQueue.length - 1; i >= 0; i--) {
+            const event = this.eventQueue[i];
+            if (this.waveElapsed >= event.delay) {
+                this.activeEvents.push(event);
+                this.eventQueue.splice(i, 1);
             }
-        } else {
-            // If we're at cap, keep timer from spiraling negative
-            this.spawnTimer = 0;
         }
 
-        // 4. ENTITY UPDATES
+        // 2. Spawn from Active Events
+        for (let i = this.activeEvents.length - 1; i >= 0; i--) {
+            const event = this.activeEvents[i];
+            event.credit += event.rate * dt;
+            while (event.credit >= 1 && event.count > 0 && this.enemies.length < hardCap) {
+                this.spawnEnemy(event.type);
+                event.credit -= 1;
+                event.count--;
+            }
+            if (event.count <= 0) {
+                this.activeEvents.splice(i, 1);
+            }
+        }
+
+        // 3. Spawn from Ambient Director
+        if (waveConfig) {
+            const { baseAlive, bufferSeconds, maxAlive } = waveConfig;
+            const desired = Math.min(baseAlive + this.killRateEMA * bufferSeconds, maxAlive);
+            const missing = desired - alive;
+
+            if (missing > 0) {
+                this.directorCredit += BALANCE.waves.director.fillRate * dt;
+                while (this.directorCredit >= 1 && this.enemies.length < hardCap && this.enemies.length < desired) {
+                    this.spawnEnemy(); // Spawn ambient enemy
+                    this.directorCredit -= 1;
+                }
+            }
+        }
+        
+        // --- Entity Updates ---
         Telegraph.update(dt);
         ParticleSystem.update(dt);
         
-        // Enemies
-        this.enemies.forEach(e => e.update(dt, p, this)); // Keep passing 'this' for context
+        this.enemies.forEach(e => e.update(dt, this.p, this));
         this.enemies = this.enemies.filter(e => {
             if(e.dead) {
                 this.onEnemyDeath(e);
@@ -197,30 +194,24 @@ class FieldState extends State {
             return true;
         });
 
-        // Now process queued elite spawns *after* the filter reassigns this.enemies
-        while (this.elitesToSpawn > 0) {
-            this.spawnEnemy(true);
+        while (this.elitesToSpawn > 0 && this.enemies.length < hardCap) {
+            this.spawnEnemy(null, true);
             this.elitesToSpawn--;
         }
 
-        // Projectiles
-        // Use a standard for loop to handle projectiles spawning other projectiles (like TitheExplosion)
         for (let i = 0; i < this.shots.length; i++) {
-            const b = this.shots[i];
-            if (!b.update(dt, this)) {
+            if (!this.shots[i].update(dt, this)) {
                 this.shots.splice(i, 1);
                 i--;
             }
         }
 
-        // Drops
-        this.drops = this.drops.filter(d => d.update(dt, p));
-        this.souls = this.souls.filter(s => s.update(dt, p));
+        this.drops = this.drops.filter(d => d.update(dt, this.p));
+        this.souls = this.souls.filter(s => s.update(dt, this.p));
         this.pickups = this.pickups.filter(p => p.update(dt, this.game.p));
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
 
-        // Portal
-        if (this.dungeonPortal && keys['KeyF'] && this.dungeonPortal.checkInteraction(p)) {
+        if (this.dungeonPortal && keys['KeyF'] && this.dungeonPortal.checkInteraction(this.p)) {
             this.dungeonPortal.onInteract();
         }
     }
@@ -244,13 +235,9 @@ class FieldState extends State {
         Telegraph.render(ctx, s);
         this.drops.forEach(d => d.draw(ctx, s));
         this.pickups.forEach(p => p.draw(ctx, s));
-        this.souls.forEach(o => {
-            o.draw(ctx, s);
-        });
-
+        this.souls.forEach(o => o.draw(ctx, s));
         this.enemies.forEach(e => { ctx.save(); e.draw(ctx, s); ctx.restore(); });
 
-        // Portal
         if (this.dungeonPortal) {
             let portalPos = s(this.dungeonPortal.x, this.dungeonPortal.y);
             ctx.fillStyle = 'purple';
@@ -263,7 +250,6 @@ class FieldState extends State {
 
         p.draw(ctx, s);
 
-        // Chains
         ctx.lineWidth = 2;
         this.chains.forEach(c => {
             if (c.pts.length < 2) return;
@@ -278,11 +264,15 @@ class FieldState extends State {
 
         // UI
         ctx.fillStyle = 'white'; ctx.font = '24px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(`Wave: ${this.waveIndex} / 5`, w / 2, 30);
-        ctx.fillText(`Time: ${Math.ceil(this.waveTimer)}`, w / 2, 60);
+        const waveConfig = BALANCE.waves.sequence[this.waveIndex - 1];
+        if (waveConfig) {
+            ctx.fillText(`Wave: ${this.waveIndex} / ${BALANCE.waves.sequence.length}`, w / 2, 30);
+            ctx.fillText(`Time: ${Math.ceil(this.waveTimer)}`, w / 2, 60);
+        } else {
+            ctx.fillText(`All waves cleared!`, w / 2, 30);
+        }
         ctx.textAlign = 'start';
 
-        // Gauge
         const gaugeX = w / 2 - 100;
         const gaugeY = h - 30;
         ctx.fillStyle = 'purple'; ctx.fillRect(gaugeX, gaugeY, 200, 20);
@@ -292,12 +282,10 @@ class FieldState extends State {
             ctx.fillRect(gaugeX, gaugeY, 200, 20);
         }
 
-        // Shard Counter
         const shardText = `SHARDS: ${p.phialShards}`;
         const textMetrics = ctx.measureText(shardText);
         drawPill(ctx, gaugeX - textMetrics.width - 30, gaugeY, textMetrics.width + 20, 20, 10, shardText);
         
-        // Phial Icons
         const phialCount = p.phials.size;
         if (phialCount > 0) {
             const spacing = 30;
@@ -306,7 +294,7 @@ class FieldState extends State {
             
             for (const [id, stacks] of p.phials) {
                 const popTime = p.recentPhialGains.get(id) || 0;
-                const scale = 1 + popTime * 0.5; // Pop effect
+                const scale = 1 + popTime * 0.5;
                 const alpha = 0.5 + (1 - popTime) * 0.5;
 
                 ctx.save();
@@ -329,65 +317,92 @@ class FieldState extends State {
     }
 
     onEnemyDeath(enemy) {
-        const p = this.game.p;
-
-        // Tell the player about the kill
-        p.registerKill(enemy);
-
+        this.p.registerKill(enemy);
+        this.killsThisFrame++;
         this.souls.push(new Soul(enemy.x, enemy.y));
         if (enemy.isElite || Math.random() < 0.3) {
             this.drops.push(new Drop(enemy.x, enemy.y, LootSystem.loot()));
         }
-        this.killsThisWave++;
         
-        // --- Elite Spawning ---
-        // Add to the soul gauge when an enemy dies.
         this.soulGauge += enemy.soulValue || 1;
-        // If the gauge is full, queue an elite to spawn and reset the gauge.
         if (this.soulGauge >= this.soulGaugeThreshold) {
             this.soulGauge = 0;
-            this.elitesToSpawn = (this.elitesToSpawn || 0) + 1;
-            p.onGaugeFill(this);
+            this.elitesToSpawn++;
+            this.p.onGaugeFill(this);
             this.gaugeFlash = 1.0;
-            console.log('Queued elite spawn, elitesToSpawn =', this.elitesToSpawn);
         }
     }
 
-    spawnEnemy(isElite = false) {
-        const p = this.game.p;
-        let a = Math.random() * 6.28;
-        let d = BALANCE.waves.spawnRadius;
-        let x = p.x + Math.cos(a) * d;
-        let y = p.y + Math.sin(a) * d;
+    getSpawnPosition() {
+        const p = this.p;
+        const { minSpawnRadius, maxSpawnRadius, viewportMargin } = BALANCE.waves;
+        const { width, height } = this.game.canvas;
 
-        const waveSpawns = SPAWN_TABLE[this.waveIndex];
-        const totalWeight = waveSpawns.reduce((acc, s) => acc + s.weight, 0);
-        let rand = Math.random() * totalWeight;
-        let chosenSpawn;
-        for (const spawn of waveSpawns) {
-            rand -= spawn.weight;
-            if (rand <= 0) {
-                chosenSpawn = spawn;
-                break;
+        const view = {
+            left: p.x - width / 2 - viewportMargin,
+            right: p.x + width / 2 + viewportMargin,
+            top: p.y - height / 2 - viewportMargin,
+            bottom: p.y + height / 2 + viewportMargin,
+        };
+
+        let x, y;
+        for (let i = 0; i < 10; i++) { // Max 10 attempts to find off-screen pos
+            const a = Math.random() * 2 * Math.PI;
+            const d = minSpawnRadius + Math.random() * (maxSpawnRadius - minSpawnRadius);
+            x = p.x + Math.cos(a) * d;
+            y = p.y + Math.sin(a) * d;
+
+            if (x < view.left || x > view.right || y < view.top || y > view.bottom) {
+                return { x, y }; // Found a valid off-screen position
             }
         }
+        
+        // Fallback if no valid position found after 10 tries (very rare)
+        return { x, y };
+    }
+
+    spawnEnemy(type = null, isElite = false) {
+        const p = this.p;
+        const { x, y } = this.getSpawnPosition();
+
+        let spawnInfo;
+        const waveConfig = BALANCE.waves.sequence[this.waveIndex - 1];
+        if (!waveConfig) return;
+
+        if (type) {
+            spawnInfo = waveConfig.weights.find(w => w.type === type) || waveConfig.weights[0];
+        } else {
+            const totalWeight = waveConfig.weights.reduce((acc, s) => acc + s.weight, 0);
+            let rand = Math.random() * totalWeight;
+            for (const s of waveConfig.weights) {
+                rand -= s.weight;
+                if (rand <= 0) {
+                    spawnInfo = s;
+                    break;
+                }
+            }
+        }
+        
+        if (!spawnInfo) spawnInfo = waveConfig.weights[0];
 
         let enemy;
-        switch (chosenSpawn.type) {
+        switch (spawnInfo.type) {
             case 'charger': enemy = new Charger(x, y, p.lvl, isElite); break;
             case 'spitter': enemy = new Spitter(x, y, p.lvl, isElite); break;
             case 'anchor': enemy = new Anchor(x, y, p.lvl, isElite); break;
             default: enemy = new Walker(x, y, p.lvl, isElite); break;
         }
         
-        enemy.soulValue = chosenSpawn.soulValue * (isElite ? 3 : 1);
+        enemy.soulValue = spawnInfo.soulValue * (isElite ? 3 : 1);
         this.enemies.push(enemy);
         CombatSystem.onEnemySpawn(enemy, this);
     }
 
+
+
     findTarget(exclude, x, y) {
         let t = null, min = 400 * 400;
-        let ox = x || this.game.p.x, oy = y || this.game.p.y;
+        let ox = x || this.p.x, oy = y || this.p.y;
         this.enemies.forEach(e => {
             if (e !== exclude && !e.dead) {
                 let d = dist2(ox, oy, e.x, e.y);

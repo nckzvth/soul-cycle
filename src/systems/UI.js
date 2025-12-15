@@ -19,10 +19,13 @@ const UI = {
         document.getElementById("btn-up-will").onclick = () => Game.p.upAttr('will');
 
         document.getElementById("btn-inv").onclick = () => this.toggle('inv');
-        document.getElementById("btn-skill").onclick = () => this.toggle('skill');
         document.getElementById("btn-close-inv").onclick = () => this.toggle('inv');
-        document.getElementById("btn-close-skill").onclick = () => this.toggle('skill');
         document.getElementById("btn-save").onclick = () => Game.save();
+        
+        document.getElementById('levelup-prompt').onclick = () => {
+            this.toggle('levelup');
+        };
+        document.getElementById('btn-close-levelup').onclick = () => this.toggle('levelup');
     },
     render() {
         let p = Game.p;
@@ -67,12 +70,17 @@ const UI = {
             const kc = p.killStats?.currentSession ?? 0;
             killCounter.innerText = kc;
         }
+        this.updateLevelUpPrompt();
     },
     toggle(id) {
         let el = document.getElementById("modal_" + id);
         let on = el.classList.toggle("show");
         Game.paused = on;
-        if (on) { if (id === "inv") this.renderInv(); if (id === "skill") this.renderSkill(); }
+        if (on) { 
+            if (id === "inv") this.renderInv(); 
+            if (id === 'levelup') this.renderLevelUp();
+        }
+        this.updateLevelUpPrompt();
     },
     renderInv() {
         let p = Game.p;
@@ -127,18 +135,133 @@ const UI = {
             }
         }
     },
-    renderSkill() {
-        let p = Game.p, w = p.gear.weapon, el = document.getElementById("skillList");
-        el.innerHTML = "";
-        if (!w) { el.innerText = "Equip weapon."; return; }
-        SKILLS.filter(s => s.cls === w.cls).forEach(s => {
-            let has = p.skills.has(s.id);
-            let d = document.createElement("div"); d.className = `node ${has ? 'unlocked' : ''}`;
-            d.innerHTML = `<div class="node-top"><span>${s.name}</span><span>${has ? 'YES' : s.cost}</span></div><small style="color:#888">${s.desc}</small>`;
-            if (!has) d.onclick = () => { if (p.souls >= s.cost) { p.souls -= s.cost; p.skills.add(s.id); p.recalc(); this.renderSkill(); } else this.toast("No Souls"); };
-            el.appendChild(d);
+    renderLevelUp() {
+        const p = Game.p;
+        const body = document.querySelector('#modal_levelup .modal-body');
+        
+        const weaponOptions = this.getWeaponUpgradeOptions();
+
+        body.innerHTML = `
+            <div class="levelup-row" id="levelup-attributes">
+                <div class="sec-title">Attributes (x${p.levelPicks.attribute})</div>
+                <div class="levelup-options">
+                    <button class="btn-attr" id="btn-might">Might</button>
+                    <button class="btn-attr" id="btn-alacrity">Alacrity</button>
+                    <button class="btn-attr" id="btn-will">Will</button>
+                </div>
+            </div>
+            <div class="levelup-row" id="levelup-weapon">
+                <div class="sec-title">Weapon Upgrade (x${p.levelPicks.weapon})</div>
+                <div class="levelup-options" id="weapon-upgrade-options">
+                    ${weaponOptions.map(skill => `<button class="btn-upgrade" data-skill-id="${skill.id}">${skill.name}<small>${skill.desc}</small></button>`).join('')}
+                </div>
+            </div>
+            <div class="levelup-row" id="levelup-phial">
+                <div class="sec-title">Phial (x${p.levelPicks.phial})</div>
+                <div class="levelup-options"></div>
+            </div>
+        `;
+
+        this.updateRowCompletion();
+
+        document.getElementById('btn-might').onclick = () => this.selectAttribute('might');
+        document.getElementById('btn-alacrity').onclick = () => this.selectAttribute('alacrity');
+        document.getElementById('btn-will').onclick = () => this.selectAttribute('will');
+
+        document.querySelectorAll('.btn-upgrade').forEach(btn => {
+            btn.onclick = () => this.selectWeaponUpgrade(btn.dataset.skillId);
         });
     },
-    toast(m) { let t = document.getElementById("toast"); t.innerText = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2000); }
+    selectAttribute(attr) {
+        const p = Game.p;
+        if (p.levelPicks.attribute > 0) {
+            p.attr[attr]++;
+            p.levelPicks.attribute--;
+            p.recalc();
+            this.rerenderAttributeRow();
+        }
+    },
+    rerenderAttributeRow() {
+        const p = Game.p;
+        const attrRow = document.getElementById('levelup-attributes');
+        attrRow.querySelector('.sec-title').innerText = `Attributes (x${p.levelPicks.attribute})`;
+        this.updateRowCompletion();
+    },
+    getWeaponUpgradeOptions() {
+        const p = Game.p;
+        const weapon = p.gear.weapon;
+        if (!weapon) return [];
+
+        const availableSkills = SKILLS.filter(skill => skill.cls === weapon.cls && (p.skills.get(skill.id) || 0) < skill.max_stacks);
+        
+        const options = [];
+        while (options.length < 3 && availableSkills.length > 0) {
+            const randomIndex = Math.floor(Math.random() * availableSkills.length);
+            options.push(availableSkills.splice(randomIndex, 1)[0]);
+        }
+        return options;
+    },
+    selectWeaponUpgrade(skillId) {
+        const p = Game.p;
+        if (p.levelPicks.weapon > 0) {
+            const currentStacks = p.skills.get(skillId) || 0;
+            p.skills.set(skillId, currentStacks + 1);
+            p.levelPicks.weapon--;
+            p.recalc();
+            this.rerenderWeaponRow();
+        }
+    },
+    rerenderWeaponRow() {
+        const p = Game.p;
+        const weaponRow = document.getElementById('levelup-weapon');
+        weaponRow.querySelector('.sec-title').innerText = `Weapon Upgrade (x${p.levelPicks.weapon})`;
+        const weaponOptions = this.getWeaponUpgradeOptions();
+        const optionsContainer = weaponRow.querySelector('#weapon-upgrade-options');
+        optionsContainer.innerHTML = weaponOptions.map(skill => `<button class="btn-upgrade" data-skill-id="${skill.id}">${skill.name}<small>${skill.desc}</small></button>`).join('');
+        
+        optionsContainer.querySelectorAll('.btn-upgrade').forEach(btn => {
+            btn.onclick = () => this.selectWeaponUpgrade(btn.dataset.skillId);
+        });
+        this.updateRowCompletion();
+    },
+    updateRowCompletion() {
+        const p = Game.p;
+        const attrRow = document.getElementById('levelup-attributes');
+        const weaponRow = document.getElementById('levelup-weapon');
+        const phialRow = document.getElementById('levelup-phial');
+
+        if (p.levelPicks.attribute === 0) {
+            attrRow.classList.add('complete');
+            if (!attrRow.querySelector('.row-overlay')) {
+                attrRow.innerHTML += '<div class="row-overlay">NO PENDING ATTRIBUTES</div>';
+            }
+        }
+        if (p.levelPicks.weapon === 0) {
+            weaponRow.classList.add('complete');
+            if (!weaponRow.querySelector('.row-overlay')) {
+                weaponRow.innerHTML += '<div class="row-overlay">NO PENDING SKILLS</div>';
+            }
+        }
+        if (p.levelPicks.phial === 0) {
+            phialRow.classList.add('complete');
+            if (!phialRow.querySelector('.row-overlay')) {
+                phialRow.innerHTML += '<div class="row-overlay">NO PENDING PHIALS</div>';
+            }
+        }
+    },
+    toast(m) { let t = document.getElementById("toast"); t.innerText = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2000); },
+    updateLevelUpPrompt() {
+        const prompt = document.getElementById('levelup-prompt');
+        const p = Game.p;
+        if (p && (p.levelPicks.attribute > 0 || p.levelPicks.weapon > 0 || p.levelPicks.phial > 0)) {
+            const totalPicks = p.levelPicks.attribute + p.levelPicks.weapon + p.levelPicks.phial;
+            prompt.innerHTML = `Level Up!<small>${totalPicks} available</small>`;
+            prompt.style.display = 'block';
+            prompt.classList.add('glow');
+        } else {
+            prompt.style.display = 'none';
+            prompt.classList.remove('glow');
+        }
+    }
 };
 export default UI;

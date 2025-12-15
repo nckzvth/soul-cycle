@@ -1,5 +1,6 @@
 // src/core/Input.js
 import UI from "../systems/UI.js";
+import Game from "./Game.js";
 
 export const keys = {};
 export const mouse = { x: 0, y: 0, down: false };
@@ -8,7 +9,11 @@ export function initInput() {
     window.onkeydown = e => {
         keys[e.code] = true;
         if (e.code === "KeyI") UI.toggle("inv");
-        if (e.code === "KeyK") UI.toggle("skill");
+        if (e.code === "KeyC") {
+            if (Game.p && (Game.p.levelPicks.attribute > 0 || Game.p.levelPicks.weapon > 0 || Game.p.levelPicks.phial > 0)) {
+                UI.toggle('levelup');
+            }
+        }
     };
     window.onkeyup = e => keys[e.code] = false;
 

@@ -6,6 +6,7 @@ import { keys } from '../core/Input.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import LootSystem from '../systems/LootSystem.js';
 import { LootDrop as Drop } from '../entities/Pickups.js';
+import UI from '../systems/UI.js';
 
 class DungeonState extends State {
     constructor(game) {
@@ -36,6 +37,7 @@ class DungeonState extends State {
         this.drops = [];
         this.townPortal = null;
         this.showKillCounter = true;
+        UI.updateLevelUpPrompt();
     }
 
     exit() {
