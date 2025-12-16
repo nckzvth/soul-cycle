@@ -6,6 +6,7 @@ import { Projectile as Proj, Shockwave, StaticMine, Wisp, HammerProjectile } fro
 import { mouse } from "../core/Input.js";
 import DungeonState from "../states/DungeonState.js";
 import { BALANCE } from "../data/Balance.js";
+import ParticleSystem from "./Particles.js";
 
 const CombatSystem = {
     // Event hooks
@@ -13,20 +14,41 @@ const CombatSystem = {
     onPlayerHit: (source, state) => {},
     onRoomOrWaveClear: (state) => {},
 
-    hit(target, dmg, player, state) {
+    hit(target, dmg, player, state, isDoT = false) {
         if (target.dead) return;
         
-        this.applyDamage(target, dmg, player, state);
+        this.applyDamage(target, dmg, player, state, isDoT);
         player.onHit(target, state);
     },
 
-    applyDamage(target, dmg, player, state) {
+    applyDamage(target, dmg, player, state, isDoT = false) {
         let finalDmg = dmg * BALANCE.combat.playerDamageMult;
         if (target.isBuffed) {
             finalDmg *= BALANCE.combat.buffedEnemyDamageTakenMult;
         }
 
-        target.takeDamage(finalDmg, state);
+        const roundedDmg = Math.round(finalDmg);
+        if (roundedDmg <= 0) return;
+
+        target.takeDamage(roundedDmg, state);
+        
+        if (isDoT) {
+            target.damageAccumulator += roundedDmg;
+            if (target.damageAccumulator > 5) {
+                ParticleSystem.emitText(target.x, target.y - target.r, target.damageAccumulator, {
+                    color: 'orange',
+                    size: 16,
+                    life: 0.6
+                });
+                target.damageAccumulator = 0;
+            }
+        } else {
+            ParticleSystem.emitText(target.x, target.y - target.r, roundedDmg, {
+                color: 'white',
+                size: 20,
+                life: 0.8
+            });
+        }
 
         if (player) {
             let a = Math.atan2(target.y - player.y, target.x - player.x);

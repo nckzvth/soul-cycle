@@ -112,6 +112,7 @@ export class HammerProjectile {
         this.atMaxRadius = false;
         this.creationTime = Game.time;
         this.markedForDeletion = false;
+        this.hitList = [];
     }
 
     update(dt) {
@@ -133,8 +134,9 @@ export class HammerProjectile {
         const hy = this.cy + Math.sin(this.ang) * this.rad;
 
         this.state.enemies.forEach(e => {
-            if (!e.dead && dist2(hx, hy, e.x, e.y) < (hb.hitRadius + e.r) ** 2) {
+            if (!e.dead && !this.hitList.includes(e) && dist2(hx, hy, e.x, e.y) < (hb.hitRadius + e.r) ** 2) {
                 this.state.combatSystem.hit(e, this.damage, this.player, this.state);
+                this.hitList.push(e);
             }
         });
 
@@ -304,7 +306,7 @@ export class StaticMine {
         this.life -= dt;
         this.state.enemies.forEach(e => {
             if (dist2(this.x, this.y, e.x, e.y) < BALANCE.projectiles.staticMine.radius ** 2) {
-                this.state.combatSystem.hit(e, this.dmg * BALANCE.projectiles.staticMine.damageMultiplier * dt, this.player, this.state);
+                this.state.combatSystem.hit(e, this.dmg * BALANCE.projectiles.staticMine.damageMultiplier * dt, this.player, this.state, true);
             }
         });
         return this.life > 0;

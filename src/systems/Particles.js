@@ -13,6 +13,10 @@ const ParticleSystem = {
                 continue;
             }
 
+            if (p.isText) {
+                p.vy += 100 * dt; // Gravity
+            }
+
             if (p.options?.anchoredTo) {
                 p.x = p.options.anchoredTo.x + p.offsetX;
                 p.y = p.options.anchoredTo.y + p.offsetY;
@@ -41,7 +45,13 @@ const ParticleSystem = {
             const pos = s(p.x, p.y);
             ctx.globalAlpha = p.alpha;
             
-            if (p.options?.beam) {
+            if (p.isText) {
+                const scale = 1 + (1 - (p.life / p.startLife));
+                ctx.font = `bold ${Math.floor(p.size / scale)}px sans-serif`;
+                ctx.fillStyle = p.color;
+                ctx.textAlign = 'center';
+                ctx.fillText(p.text, pos.x, pos.y);
+            } else if (p.options?.beam) {
                 const pulse = Math.sin(Game.time * 20) * 0.2 + 0.8;
                 const width = 20 * pulse;
                 const grad = ctx.createLinearGradient(pos.x, pos.y - p.size, pos.x, pos.y);
@@ -58,6 +68,7 @@ const ParticleSystem = {
             }
         }
         ctx.globalAlpha = 1;
+        ctx.textAlign = 'left'; // Reset alignment
     },
 
     emit(x, y, color, count, speed, size, life, target = null, options = {}) {
@@ -85,6 +96,24 @@ const ParticleSystem = {
 
             particles.push(p);
         }
+    },
+
+    emitText(x, y, text, options = {}) {
+        const p = {
+            x: x + (Math.random() - 0.5) * 20,
+            y,
+            vx: (Math.random() - 0.5) * 30,
+            vy: -80,
+            life: options.life || 1.0,
+            startLife: options.life || 1.0,
+            alpha: 1,
+            text,
+            color: options.color || 'white',
+            size: options.size || 24,
+            isText: true,
+            options
+        };
+        particles.push(p);
     }
 };
 

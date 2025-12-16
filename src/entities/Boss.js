@@ -88,6 +88,22 @@ class Boss {
         ctx.arc(p.x, p.y, this.r, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
+
+        // Health bar
+        const barWidth = 100;
+        const barHeight = 10;
+        const barX = p.x - barWidth / 2;
+        const barY = p.y - this.r - 20;
+        
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        const hpRatio = this.hp / this.hpMax;
+        ctx.fillStyle = 'red';
+        ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+        
+        ctx.strokeStyle = 'white';
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
     }
 }
 

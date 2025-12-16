@@ -34,6 +34,7 @@ export class Enemy {
         this.applyFriction = true;
         this.blinded = 0;
         this.burns = null;
+        this.damageAccumulator = 0;
 
         // Apply elite multipliers for stats that are NOT typically overridden by subclasses (like radius).
         // HP is handled in the subclass constructors to ensure correct order of operations.
@@ -137,11 +138,6 @@ export class Enemy {
         ctx.arc(p.x, p.y, this.r, 0, 6.28);
         ctx.fill();
         ctx.globalAlpha = 1;
-
-        ctx.fillStyle = "#000";
-        ctx.fillRect(p.x - 10, p.y - this.r - 8, 20, 4);
-        ctx.fillStyle = "#0f0";
-        ctx.fillRect(p.x - 10, p.y - this.r - 8, 20 * (this.hp / this.hpMax), 4);
     }
 
     takeDamage(amount, state) {
@@ -220,11 +216,6 @@ export class Walker extends Enemy {
         ctx.arc(p.x, p.y, this.r, 0, 6.28);
         ctx.fill();
         ctx.globalAlpha = 1;
-
-        ctx.fillStyle = "#000";
-        ctx.fillRect(p.x - 10, p.y - this.r - 8, 20, 4);
-        ctx.fillStyle = "#0f0";
-        ctx.fillRect(p.x - 10, p.y - this.r - 8, 20 * (this.hp / this.hpMax), 4);
     }
 }
 
@@ -298,10 +289,6 @@ export class Charger extends Enemy {
         ctx.lineTo(p.x - 8, p.y + 8);
         ctx.lineTo(p.x - 8, p.y - 8);
         ctx.fill();
-        ctx.fillStyle = "#000";
-        ctx.fillRect(p.x - 10, p.y - 20, 20, 4);
-        ctx.fillStyle = "#0f0";
-        ctx.fillRect(p.x - 10, p.y - 20, 20 * (this.hp / this.hpMax), 4);
     }
 }
 
