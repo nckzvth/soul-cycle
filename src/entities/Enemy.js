@@ -4,6 +4,9 @@ import Telegraph from "../systems/Telegraph.js";
 import CombatSystem from "../systems/CombatSystem.js";
 import { BALANCE } from "../data/Balance.js";
 import ParticleSystem from "../systems/Particles.js";
+import DamageSystem from "../systems/DamageSystem.js";
+import DamageSpecs from "../data/DamageSpecs.js";
+import StatusSystem from "../systems/StatusSystem.js";
 
 /**
  * @class Enemy
@@ -30,11 +33,12 @@ export class Enemy {
         // --- State Variables ---
         this.flash = 0;
         this.isBuffed = false;
+        this.stats = { damageTakenMult: 1.0 };
         this.iframes = 0;
         this.applyFriction = true;
         this.blinded = 0;
-        this.burns = null;
         this.damageAccumulator = 0;
+        StatusSystem.init(this);
 
         // Apply elite multipliers for stats that are NOT typically overridden by subclasses (like radius).
         // HP is handled in the subclass constructors to ensure correct order of operations.
@@ -58,19 +62,7 @@ export class Enemy {
             }
         }
 
-        // Handle Burn
-        if (this.burns) {
-            this.burns.timer -= dt;
-            if (this.burns.timer <= 0) {
-                this.burns.timer = 1;
-                this.takeDamage(this.burns.damage, fieldState);
-                ParticleSystem.emit(this.x, this.y, 'orange', 2, 20, 3, 0.5);
-            }
-            this.burns.duration -= dt;
-            if (this.burns.duration <= 0) {
-                this.burns = null;
-            }
-        }
+        StatusSystem.update(this, dt, fieldState);
 
         if (this.applyFriction) {
             this.vx *= 0.92;
@@ -90,7 +82,6 @@ export class Enemy {
         }
 
         this.applySeparation(player, fieldState.enemies);
-        this.isBuffed = false;
     }
     
     applySeparation(player, allEnemies) {
@@ -124,8 +115,8 @@ export class Enemy {
 
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        let rawDamage = (this.isBuffed ? 10 : 5);
-        player.takeDamage(rawDamage * dt, this); 
+        const spec = DamageSpecs.enemyContact("enemy", this.isBuffed);
+        DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
     }
 
     draw(ctx, s) {
@@ -193,8 +184,8 @@ export class Walker extends Enemy {
 
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        let rawDamage = (this.isBuffed ? 15 : 10);
-        player.takeDamage(rawDamage * dt, this);
+        const spec = DamageSpecs.enemyContact("walker", this.isBuffed);
+        DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
     }
 
     draw(ctx, s) {
@@ -276,8 +267,8 @@ export class Charger extends Enemy {
     handlePlayerCollision(player, fieldState, dt) {
         if (this.iframes > 0) return;
         CombatSystem.onPlayerHit(this, fieldState);
-        let rawDamage = (this.isBuffed ? 20 : 15);
-        player.takeDamage(rawDamage, this);
+        const spec = DamageSpecs.enemyContact("charger", this.isBuffed);
+        DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState });
         this.iframes = 0.5;
     }
 
@@ -340,8 +331,8 @@ export class Spitter extends Enemy {
 
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        let rawDamage = (this.isBuffed ? 6 : 3);
-        player.takeDamage(rawDamage * dt, this);
+        const spec = DamageSpecs.enemyContact("spitter", this.isBuffed);
+        DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
     }
 }
 
@@ -372,6 +363,7 @@ export class Anchor extends Enemy {
             if (e !== this && !e.dead) {
                 if (dist2(this.x, this.y, e.x, e.y) < this.auraRad ** 2) {
                     e.isBuffed = true;
+                    e.stats.damageTakenMult = BALANCE.combat.buffedEnemyDamageTakenMult;
                 }
             }
         });
@@ -390,8 +382,8 @@ export class Anchor extends Enemy {
     
     handlePlayerCollision(player, fieldState, dt) {
         CombatSystem.onPlayerHit(this, fieldState);
-        let rawDamage = (this.isBuffed ? 8 : 4);
-        player.takeDamage(rawDamage * dt, this);
+        const spec = DamageSpecs.enemyContact("anchor", this.isBuffed);
+        DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
     }
 
     draw(ctx, s) {

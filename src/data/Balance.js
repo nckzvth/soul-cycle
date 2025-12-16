@@ -5,6 +5,7 @@ export const BALANCE = {
         hpPerLevel: 5,
         baseDmg: 5,
         baseCrit: 0.05,
+        baseCritMult: 1.5,
         baseRegen: 0.5,
         baseSoulGain: 1,
         baseMove: 0,
@@ -48,7 +49,7 @@ export const BALANCE = {
             angularSpeed: -7.0,
             hitRadius: 12,
             cooldown: 0.6,
-            damageMult: 0.6,
+            damageMult: 1,
             spinTime: 3.0,
             maxHammers: 3
         },

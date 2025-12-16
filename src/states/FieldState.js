@@ -2,7 +2,7 @@ import State from '../core/State.js';
 import { dist2 } from "../core/Utils.js";
 import { SLOTS } from "../data/Constants.js"; 
 import { ITEMS } from "../data/Items.js";
-import { LootDrop as Drop, SoulOrb as Soul } from "../entities/Pickups.js";
+import { LootDrop as Drop, SoulOrb as Soul, PhialShard } from "../entities/Pickups.js";
 import { keys } from "../core/Input.js";
 import UI from '../systems/UI.js';
 import Interactable from '../entities/Interactable.js';
@@ -184,6 +184,11 @@ class FieldState extends State {
         // --- Entity Updates ---
         Telegraph.update(dt);
         ParticleSystem.update(dt);
+        // Reset per-frame buff state; Anchors re-apply during enemy updates and it must persist into shot updates.
+        this.enemies.forEach(e => {
+            e.isBuffed = false;
+            if (e.stats) e.stats.damageTakenMult = 1.0;
+        });
         
         this.enemies.forEach(e => e.update(dt, this.p, this));
         this.enemies = this.enemies.filter(e => {
@@ -320,6 +325,9 @@ class FieldState extends State {
         this.p.registerKill(enemy);
         this.killsThisFrame++;
         this.souls.push(new Soul(enemy.x, enemy.y));
+        if (enemy.isElite) {
+            this.pickups.push(new PhialShard(enemy.x, enemy.y));
+        }
         if (enemy.isElite || Math.random() < 0.3) {
             this.drops.push(new Drop(enemy.x, enemy.y, LootSystem.loot()));
         }

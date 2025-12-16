@@ -2,6 +2,8 @@
 import { dist2 } from '../core/Utils.js';
 import UI from '../systems/UI.js';
 import { BALANCE } from '../data/Balance.js';
+import DamageSystem from '../systems/DamageSystem.js';
+import DamageSpecs from '../data/DamageSpecs.js';
 
 class Boss {
     constructor(x, y) {
@@ -45,7 +47,7 @@ class Boss {
     attack(p, dungeonState) {
         const projectileCount = this.phase === 1 ? BALANCE.boss.phase1.projectileCount : BALANCE.boss.phase2.projectileCount;
         const projectileSpeed = this.phase === 1 ? BALANCE.boss.phase1.projectileSpeed : BALANCE.boss.phase2.projectileSpeed;
-        const projectileDamage = this.phase === 1 ? BALANCE.boss.phase1.projectileDamage : BALANCE.boss.phase2.projectileDamage;
+        const spec = DamageSpecs.bossProjectile(this.phase);
 
         for (let i = 0; i < projectileCount; i++) {
             const angle = (i / projectileCount) * Math.PI * 2;
@@ -56,6 +58,7 @@ class Boss {
                 vy: Math.sin(angle) * projectileSpeed,
                 life: 3,
                 isBossShot: true,
+                spec,
                 update: function(dt, state) {
                     this.x += this.vx * dt;
                     this.y += this.vy * dt;
@@ -63,7 +66,7 @@ class Boss {
 
                     // Check collision with player
                     if (dist2(this.x, this.y, p.x, p.y) < (p.r + 5)**2) {
-                        p.takeDamage(projectileDamage);
+                        DamageSystem.dealPlayerDamage(state.boss, p, this.spec, { state, ui: UI });
                         return false; // Projectile is destroyed on hit
                     }
 

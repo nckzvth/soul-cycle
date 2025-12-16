@@ -1,5 +1,4 @@
 import { SLOTS } from "../data/Constants.js";
-import { SKILLS } from "../data/Skills.js";
 import { clamp, dist2 } from "../core/Utils.js";
 import { keys, mouse } from "../core/Input.js";
 import UI from "../systems/UI.js";
@@ -8,9 +7,14 @@ import Game from "../core/Game.js";
 import { Phials } from "../data/Phials.js";
 import { HammerProjectile, AegisPulse, DashTrail, TitheExplosion } from "./Projectile.js";
 import ParticleSystem from "../systems/Particles.js";
+import StatsSystem from "../systems/StatsSystem.js";
+import DamageSystem from "../systems/DamageSystem.js";
+import DamageSpecs from "../data/DamageSpecs.js";
+import StatusSystem from "../systems/StatusSystem.js";
 
 export default class PlayerObj {
     constructor() {
+        this.isPlayer = true;
         // Physics & Transform
         this.x = 0; 
         this.y = 0; 
@@ -101,6 +105,7 @@ export default class PlayerObj {
         this.aegisCooldownTimer = 0;
         this.aegisActiveTimer = 0;
         this.aegisDamageMultiplier = 1;
+        if (this.stats) this.stats.damageTakenMult = 1;
         this.titheKillsCounter = 0;
         this.titheCharges = 0;
         this.titheChargeGainedTimer = 0;
@@ -221,7 +226,7 @@ export default class PlayerObj {
 
         if (this.dashTimer <= 0 && this.rooted <= 0) {
             // Standard Walk
-            let spd = BALANCE.player.walkBaseSpeed * (1 + this.stats.move);
+            let spd = BALANCE.player.walkBaseSpeed * (this.stats.moveSpeedMult || (1 + this.stats.move));
             this.x += mx * spd * dt; 
             this.y += my * spd * dt;
         }
@@ -282,19 +287,21 @@ export default class PlayerObj {
                     }
                 }
 
-                scene.shots.push(new HammerProjectile(scene, this, cx, cy, initialAngle));
+                const spec = DamageSpecs.hammerOrbit();
+                const snapshot = DamageSystem.snapshotOutgoing(this, spec);
+                scene.shots.push(new HammerProjectile(scene, this, cx, cy, initialAngle, spec, snapshot));
                 this.atkCd = hb.cooldown;
 
                 if (this.salvoCharges > 0) {
                     this.salvoCharges--;
-                    scene.shots.push(new HammerProjectile(scene, this, cx, cy, initialAngle + Math.PI, true));
+                    scene.shots.push(new HammerProjectile(scene, this, cx, cy, initialAngle + Math.PI, spec, snapshot, true));
                 }
             }
         }
 
         // Shooting (Pistol/Staff) - Don't shoot while dashing
         if (mouse.down && this.atkCd <= 0 && this.dashTimer <= 0) {
-            let rate = BALANCE.player.pistolBaseRate / (1 + this.stats.spd);
+            let rate = BALANCE.player.pistolBaseRate / (this.stats.attackSpeed || (1 + this.stats.spd));
             
             if (w.cls === "pistol") {
                 scene.combatSystem.firePistol(this, scene);
@@ -307,56 +314,7 @@ export default class PlayerObj {
     }
 
     recalc() {
-        let t = { might: this.attr.might, alacrity: this.attr.alacrity, will: this.attr.will };
-        for (let k in this.gear) if (this.gear[k]) {
-            if (this.gear[k].stats.might) t.might += this.gear[k].stats.might;
-            if (this.gear[k].stats.alacrity) t.alacrity += this.gear[k].stats.alacrity;
-            if (this.gear[k].stats.will) t.will += this.gear[k].stats.will;
-        }
-        this.totalAttr = t;
-
-        const bp = BALANCE.player;
-        let s = {
-            hp: bp.baseHp + (this.lvl * bp.hpPerLevel),
-            dmg: bp.baseDmg,
-            crit: bp.baseCrit,
-            spd: bp.baseSpd,
-            move: bp.baseMove,
-            regen: bp.baseRegen,
-            soulGain: bp.baseSoulGain,
-            kb: bp.baseKb,
-            area: bp.baseArea,
-            magnetism: bp.baseMagnetism
-        };
-
-        s.dmg += t.might * bp.dmgPerMight;
-        s.kb += t.might * bp.kbPerMight;
-        s.spd += t.alacrity * bp.spdPerAlacrity;
-        s.move += t.alacrity * bp.movePerAlacrity;
-        s.area += t.will * bp.areaPerWill;
-        s.soulGain += t.will * bp.soulGainPerWill;
-        s.magnetism += t.will * BALANCE.pickups.soul.magnetism;
-
-        this.perks.might = t.might >= bp.perkThreshold;
-        this.perks.alacrity = t.alacrity >= bp.perkThreshold;
-        this.perks.will = t.will >= bp.perkThreshold;
-
-        for (let k in this.gear) if (this.gear[k]) for (let sk in this.gear[k].stats) s[sk] = (s[sk] || 0) + this.gear[k].stats[sk];
-        
-        this.skills.forEach((stacks, id) => {
-            const skill = SKILLS.find(sk => sk.id === id);
-            if (skill) {
-                for (const k in skill.mods) {
-                    s[k] = (s[k] || 0) + skill.mods[k] * stacks;
-                }
-            }
-        });
-
-        this.stats = s;
-
-        let oldMax = this.hpMax; this.hpMax = Math.round(s.hp);
-        if (this.hpMax > oldMax) this.hp += (this.hpMax - oldMax);
-        this.hp = clamp(this.hp, 0, this.hpMax);
+        StatsSystem.recalcPlayer(this);
     }
 
     upAttr(k) {
@@ -390,21 +348,18 @@ export default class PlayerObj {
     }
     
     takeDamage(amount, source) {
-        if (this.dashTimer > 0) return; // Invulnerable while dashing
-        let finalDamage = amount * this.aegisDamageMultiplier;
-        this.hp -= finalDamage;
-        this.onDamageTaken(source);
-        UI.render(); // Directly call render to ensure UI updates immediately
-        if (this.hp <= 0) {
-            this.hp = 0;
-            document.getElementById('screen_death').classList.add('active');
-            document.getElementById('deathSouls').innerText = this.souls;
-            document.getElementById('deathLvl').innerText = this.lvl;
+        const spec = { id: "legacy:incoming", base: amount, coeff: 0, canCrit: false, tags: ["incoming"], element: "physical", snapshot: true };
+        DamageSystem.dealPlayerDamage(source, this, spec, { state: Game.stateManager?.currentState, ui: UI });
+    }
 
-            const kills = this.killStats?.currentSession ?? 0;
-            document.getElementById('deathKills').innerText = kills;
-            Game.paused = true;
-        }
+    onDeath() {
+        document.getElementById('screen_death').classList.add('active');
+        document.getElementById('deathSouls').innerText = this.souls;
+        document.getElementById('deathLvl').innerText = this.lvl;
+
+        const kills = this.killStats?.currentSession ?? 0;
+        document.getElementById('deathKills').innerText = kills;
+        Game.paused = true;
     }
 
     updatePerks(dt, state) {
@@ -432,11 +387,12 @@ export default class PlayerObj {
             this.haloTimer -= dt;
             if (this.haloTimer <= 0) {
                 this.haloTimer = 0.5;
-                const damage = (Phials.ashenHalo.baseDamagePerSecond + Phials.ashenHalo.damagePerStack * (haloStacks - 1)) * 0.5;
                 const radius = Phials.ashenHalo.baseRadius + Phials.ashenHalo.radiusPerStack * (haloStacks - 1);
+                const spec = DamageSpecs.ashenHaloTick(haloStacks);
+                const snapshot = DamageSystem.snapshotOutgoing(this, spec);
                 state.enemies.forEach(enemy => {
                     if (dist2(this.x, this.y, enemy.x, enemy.y) < radius * radius) {
-                        state.combatSystem.hit(enemy, damage, this, state);
+                        DamageSystem.dealDamage(this, enemy, spec, { state, snapshot, triggerOnHit: true, particles: ParticleSystem });
                     }
                 });
             }
@@ -448,6 +404,7 @@ export default class PlayerObj {
             this.aegisActiveTimer -= dt;
             if (this.aegisActiveTimer <= 0) {
                 this.aegisDamageMultiplier = 1;
+                if (this.stats) this.stats.damageTakenMult = 1;
             }
         }
         
@@ -475,12 +432,11 @@ export default class PlayerObj {
         const titheStacks = this.getPhialStacks(Phials.titheEngine.id);
         if (titheStacks > 0 && this.titheCharges > 0) {
             this.titheCharges--;
-            const explosionDamage =
-                Phials.titheEngine.baseExplosionDamage +
-                Phials.titheEngine.explosionDamagePerStack * (titheStacks - 1);
             const radius =
                 Phials.titheEngine.baseExplosionRadius +
                 Phials.titheEngine.radiusPerStack * (titheStacks - 1);
+            const spec = DamageSpecs.titheExplosion(titheStacks);
+            const snapshot = DamageSystem.snapshotOutgoing(this, spec);
     
             state.shots.push(new TitheExplosion(
                 state,
@@ -489,7 +445,8 @@ export default class PlayerObj {
                 target.y,
                 radius,
                 titheStacks,
-                explosionDamage
+                spec,
+                snapshot
             ));
         }
     }
@@ -498,9 +455,9 @@ export default class PlayerObj {
         const blindStacks = this.getPhialStacks(Phials.blindingStep.id);
         if (blindStacks > 0) {
             const blindDuration = Phials.blindingStep.baseBlindDuration + Math.floor((blindStacks - 1) / 2) * Phials.blindingStep.blindDurationPerTwoStacks;
-            const burnDamage = Phials.blindingStep.baseBurnDamagePerSecond + Phials.blindingStep.burnDamagePerStack * (blindStacks - 1);
             const burnDuration = Phials.blindingStep.baseBurnDuration;
             const knockback = clamp(Phials.blindingStep.baseKnockback + Phials.blindingStep.knockbackPerStack * (blindStacks - 1), 0, Phials.blindingStep.maxKnockback);
+            const burnSpec = blindStacks >= 2 ? DamageSpecs.blindingStepBurn(blindStacks) : null;
             
             state.enemies.forEach(enemy => {
                 if (!this.dashHitList.includes(enemy) && dist2(this.x, this.y, enemy.x, enemy.y) < Phials.blindingStep.dashAffectRadius * Phials.blindingStep.dashAffectRadius) {
@@ -512,7 +469,16 @@ export default class PlayerObj {
                     enemy.vy += Math.sin(angle) * knockback;
 
                     if (blindStacks >= 2) {
-                        enemy.burns = { duration: burnDuration, damage: burnDamage, timer: 1 };
+                        StatusSystem.applyStatus(enemy, "burn", {
+                            source: this,
+                            stacks: 1,
+                            duration: burnDuration,
+                            tickInterval: 1.0,
+                            spec: burnSpec,
+                            snapshotPolicy: "snapshot",
+                            triggerOnHit: false,
+                            dotTextMode: "perTick"
+                        });
                     }
                 }
             });
@@ -525,11 +491,13 @@ export default class PlayerObj {
             this.aegisCooldownTimer = Phials.witchglassAegis.internalCooldown;
             const reduction = clamp(Phials.witchglassAegis.baseDamageReduction + Phials.witchglassAegis.damageReductionPerStack * (aegisStacks - 1), 0, 0.9);
             this.aegisDamageMultiplier = 1 - reduction;
+            if (this.stats) this.stats.damageTakenMult = this.aegisDamageMultiplier;
             this.aegisActiveTimer = Phials.witchglassAegis.baseDuration + Phials.witchglassAegis.durationPerStack * (aegisStacks - 1);
 
-            const pulseDamage = Phials.witchglassAegis.pulseBaseDamage + Phials.witchglassAegis.pulseDamagePerStack * (aegisStacks - 1);
             const radius = Phials.witchglassAegis.pulseBaseRadius + Phials.witchglassAegis.pulseRadiusPerStack * (aegisStacks - 1);
-            Game.stateManager.currentState.shots.push(new AegisPulse(Game.stateManager.currentState, this, this.x, this.y, radius, aegisStacks, pulseDamage));
+            const spec = DamageSpecs.aegisPulse(aegisStacks);
+            const snapshot = DamageSystem.snapshotOutgoing(this, spec);
+            Game.stateManager.currentState.shots.push(new AegisPulse(Game.stateManager.currentState, this, this.x, this.y, radius, aegisStacks, spec, snapshot));
         }
     }
 

@@ -1,11 +1,11 @@
 // src/systems/CombatSystem.js
 import { dist2 } from "../core/Utils.js";
-import { SoulOrb as Soul, PhialShard } from "../entities/Pickups.js";
-import { LootDrop as Drop } from "../entities/Pickups.js";
-import { Projectile as Proj, Shockwave, StaticMine, Wisp, HammerProjectile } from "../entities/Projectile.js";
+import { Projectile as Proj, Shockwave, StaticMine, Wisp } from "../entities/Projectile.js";
 import { mouse } from "../core/Input.js";
 import DungeonState from "../states/DungeonState.js";
 import { BALANCE } from "../data/Balance.js";
+import DamageSystem from "./DamageSystem.js";
+import DamageSpecs from "../data/DamageSpecs.js";
 import ParticleSystem from "./Particles.js";
 
 const CombatSystem = {
@@ -13,58 +13,6 @@ const CombatSystem = {
     onEnemySpawn: (enemy, state) => {},
     onPlayerHit: (source, state) => {},
     onRoomOrWaveClear: (state) => {},
-
-    hit(target, dmg, player, state, isDoT = false) {
-        if (target.dead) return;
-        
-        this.applyDamage(target, dmg, player, state, isDoT);
-        player.onHit(target, state);
-    },
-
-    applyDamage(target, dmg, player, state, isDoT = false) {
-        let finalDmg = dmg * BALANCE.combat.playerDamageMult;
-        if (target.isBuffed) {
-            finalDmg *= BALANCE.combat.buffedEnemyDamageTakenMult;
-        }
-
-        const roundedDmg = Math.round(finalDmg);
-        if (roundedDmg <= 0) return;
-
-        target.takeDamage(roundedDmg, state);
-        
-        if (isDoT) {
-            target.damageAccumulator += roundedDmg;
-            if (target.damageAccumulator > 5) {
-                ParticleSystem.emitText(target.x, target.y - target.r, target.damageAccumulator, {
-                    color: 'orange',
-                    size: 16,
-                    life: 0.6
-                });
-                target.damageAccumulator = 0;
-            }
-        } else {
-            ParticleSystem.emitText(target.x, target.y - target.r, roundedDmg, {
-                color: 'white',
-                size: 20,
-                life: 0.8
-            });
-        }
-
-        if (player) {
-            let a = Math.atan2(target.y - player.y, target.x - player.x);
-            if(target.vx !== undefined) {
-                target.vx += Math.cos(a) * (player.stats.kb + BALANCE.combat.knockbackBase);
-                target.vy += Math.sin(a) * (player.stats.kb + BALANCE.combat.knockbackBase);
-            }
-        }
-
-        if (target.hp <= 0) {
-            target.dead = true;
-            if (target.isElite) {
-                state.pickups.push(new PhialShard(target.x, target.y));
-            }
-        }
-    },
 
     rootPlayer(player, duration) {
         player.rooted = Math.max(player.rooted, duration);
@@ -78,16 +26,34 @@ const CombatSystem = {
             w = state.game.screenToWorld(mouse.x, mouse.y);
         }
         const a = Math.atan2(w.y - player.y, w.x - player.x);
-        const damage = player.stats.dmg * BALANCE.player.pistol.damageMult;
+        const spec = DamageSpecs.pistolShot();
+        const snapshot = DamageSystem.snapshotOutgoing(player, spec);
         state.shots.push(new Proj(state, player,
-            player.x, player.y, Math.cos(a) * BALANCE.player.pistolSpeed, Math.sin(a) * BALANCE.player.pistolSpeed, 1.5, damage, player.stats.hexPierce || 0, player.stats.hexBounce || 0
+            player.x,
+            player.y,
+            Math.cos(a) * BALANCE.player.pistolSpeed,
+            Math.sin(a) * BALANCE.player.pistolSpeed,
+            1.5,
+            spec,
+            snapshot,
+            player.stats.pierce ?? player.stats.hexPierce ?? 0,
+            player.stats.bounce ?? player.stats.hexBounce ?? 0
         ));
 
         if (player.salvoCharges > 0) {
             player.salvoCharges--;
             setTimeout(() => {
                 state.shots.push(new Proj(state, player,
-                    player.x, player.y, Math.cos(a) * BALANCE.player.pistolSpeed, Math.sin(a) * BALANCE.player.pistolSpeed, 1.5, damage, player.stats.hexPierce || 0, player.stats.hexBounce || 0, true
+                    player.x,
+                    player.y,
+                    Math.cos(a) * BALANCE.player.pistolSpeed,
+                    Math.sin(a) * BALANCE.player.pistolSpeed,
+                    1.5,
+                    spec,
+                    snapshot,
+                    player.stats.pierce ?? player.stats.hexPierce ?? 0,
+                    player.stats.bounce ?? player.stats.hexBounce ?? 0,
+                    true
                 ));
             }, 100);
         }
@@ -95,8 +61,9 @@ const CombatSystem = {
 
     fireZap(player, state) {
         const maxChains = 1 + (player.stats.chainCount || 0);
-        const range = BALANCE.combat.zapChainRange * (1 + (player.stats.chainJump || 0));
-        const damage = player.stats.dmg * BALANCE.player.staff.damageMult;
+        const range = BALANCE.combat.zapChainRange * (player.stats.chainRangeMult || (1 + (player.stats.chainJump || 0)));
+        const spec = DamageSpecs.staffZap();
+        const snapshot = DamageSystem.snapshotOutgoing(player, spec);
         let curr = { x: player.x, y: player.y };
         let visited = new Set();
 
@@ -110,7 +77,7 @@ const CombatSystem = {
 
             if (best) {
                 visited.add(best);
-                this.hit(best, damage, player, state);
+                DamageSystem.dealDamage(player, best, spec, { state, snapshot, particles: ParticleSystem });
                 state.chains.push({ t: 0.15, pts: [{ x: curr.x, y: curr.y }, { x: best.x, y: best.y }] });
                 curr = best;
             } else break;
@@ -139,7 +106,7 @@ const CombatSystem = {
     
                 if (best) {
                     visited.add(best);
-                    this.hit(best, damage, player, state);
+                    DamageSystem.dealDamage(player, best, spec, { state, snapshot, particles: ParticleSystem });
                     state.chains.push({ t: 0.15, pts: [{ x: curr2.x, y: curr2.y }, { x: best.x, y: best.y }], isSalvo: true });
                     curr2 = best;
                 } else break;
@@ -148,32 +115,39 @@ const CombatSystem = {
     },
 
     fireShockwave(player, state) {
+        const spec = DamageSpecs.shockwave();
+        const snapshot = DamageSystem.snapshotOutgoing(player, spec);
         state.shots.push(new Shockwave(
             state,
             player,
             player.x,
             player.y,
-            player.stats.dmg * BALANCE.combat.shockwaveDamageMult
+            spec,
+            snapshot
         ));
     },
 
     fireStaticMine(player, state, x, y) {
+        const spec = DamageSpecs.staticMineTick();
         state.shots.push(new StaticMine(
             state,
             player,
             x,
             y,
-            player.stats.dmg * BALANCE.combat.staticMineDamageMult
+            spec
         ));
     },
 
     fireWisp(player, state) {
+        const spec = DamageSpecs.wispHit();
+        const snapshot = DamageSystem.snapshotOutgoing(player, spec);
         state.shots.push(new Wisp(
             state,
             player,
             player.x,
             player.y,
-            player.stats.dmg * BALANCE.combat.wispDamageMult
+            spec,
+            snapshot
         ));
     }
 };

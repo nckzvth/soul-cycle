@@ -1,16 +1,20 @@
 import { dist2 } from "../core/Utils.js";
 import { BALANCE } from "../data/Balance.js";
 import Game from "../core/Game.js";
+import DamageSystem from "../systems/DamageSystem.js";
+import DamageSpecs from "../data/DamageSpecs.js";
+import ParticleSystem from "../systems/Particles.js";
 
 export class TitheExplosion {
-    constructor(state, player, x, y, radius, stacks, damage) {
+    constructor(state, player, x, y, radius, stacks, spec, snapshot) {
         this.state = state;
         this.player = player;
         this.x = x;
         this.y = y;
         this.maxRadius = radius;
         this.stacks = stacks;
-        this.damage = damage;
+        this.spec = spec;
+        this.snapshot = snapshot;
         this.life = 0.6;
         this.currentRadius = 0;
         this.hitList = [];
@@ -23,7 +27,7 @@ export class TitheExplosion {
         this.state.enemies.forEach(e => {
             if (!e.dead && !this.hitList.includes(e)) {
                 if (dist2(this.x, this.y, e.x, e.y) < (this.currentRadius + e.r) ** 2) {
-                    this.state.combatSystem.hit(e, this.damage, this.player, this.state);
+                    DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
                     this.hitList.push(e);
                 }
             }
@@ -96,7 +100,7 @@ export class DashTrail {
 }
 
 export class HammerProjectile {
-    constructor(state, player, cx, cy, initialAngle, isSalvo = false) {
+    constructor(state, player, cx, cy, initialAngle, spec, snapshot, isSalvo = false) {
         this.state = state;
         this.player = player;
         this.cx = cx;
@@ -104,7 +108,8 @@ export class HammerProjectile {
         this.rad = BALANCE.player.hammer.startRadius;
         this.ang = initialAngle;
         this.isSalvo = isSalvo;
-        this.damage = this.player.stats.dmg * BALANCE.player.hammer.damageMult;
+        this.spec = spec;
+        this.snapshot = snapshot;
         if (this.isSalvo) {
             this.ang += Math.PI;
         }
@@ -135,7 +140,7 @@ export class HammerProjectile {
 
         this.state.enemies.forEach(e => {
             if (!e.dead && !this.hitList.includes(e) && dist2(hx, hy, e.x, e.y) < (hb.hitRadius + e.r) ** 2) {
-                this.state.combatSystem.hit(e, this.damage, this.player, this.state);
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
                 this.hitList.push(e);
             }
         });
@@ -167,11 +172,12 @@ export class HammerProjectile {
 }
 
 export class Projectile {
-    constructor(state, player, x, y, vx, vy, life, damage, pierce = 0, bounce = 0, isSalvo = false) {
+    constructor(state, player, x, y, vx, vy, life, spec, snapshot, pierce = 0, bounce = 0, isSalvo = false) {
         this.state = state;
         this.player = player;
         this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.life = life;
-        this.damage = damage;
+        this.spec = spec;
+        this.snapshot = snapshot;
         this.pierce = pierce; this.bounce = bounce; this.hitList = [];
         this.isSalvo = isSalvo;
     }
@@ -180,7 +186,7 @@ export class Projectile {
         // Collision
         for (let e of this.state.enemies) {
             if (!e.dead && !this.hitList.includes(e) && dist2(this.x, this.y, e.x, e.y) < (15 + e.r) ** 2) {
-                this.state.combatSystem.hit(e, this.damage, this.player, this.state);
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
                 this.hitList.push(e);
                 if (this.pierce > 0) this.pierce--;
                 else if (this.bounce > 0) {
@@ -223,6 +229,7 @@ export class EnemyProjectile {
         this.life = BALANCE.projectiles.enemy.life;
         this.isBuffed = isBuffed;
         this.level = level;
+        this.spec = DamageSpecs.enemyProjectile(isBuffed, level);
     }
 
     update(dt, state) {
@@ -233,8 +240,7 @@ export class EnemyProjectile {
         const pl = state.game.p;
         if (dist2(this.x, this.y, pl.x, pl.y) < (pl.r + 5) ** 2) {
             state.combatSystem.onPlayerHit(this, state);
-            let raw = (this.isBuffed ? BALANCE.projectiles.enemy.buffedDamage : BALANCE.projectiles.enemy.damage) + this.level;
-            pl.takeDamage(raw, this);
+            DamageSystem.dealPlayerDamage(this, pl, this.spec, { state });
             return false;
         }
         return this.life > 0;
@@ -250,21 +256,24 @@ export class EnemyProjectile {
 }
 
 export class Shockwave {
-    constructor(state, player, x, y, dmg) { 
+    constructor(state, player, x, y, spec, snapshot) { 
         this.state = state; 
         this.player = player;
         this.x = x; 
         this.y = y; 
         this.r = 0; 
-        this.dmg = dmg; 
+        this.spec = spec;
+        this.snapshot = snapshot;
+        this.hitList = [];
         this.life = BALANCE.projectiles.shockwave.life; 
     }
     update(dt) {
         this.r += dt * BALANCE.projectiles.shockwave.speed; this.life -= dt;
         this.state.enemies.forEach(e => {
-            if (dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2 && !e.hitByWave) {
-                this.state.combatSystem.hit(e, this.dmg, this.player, this.state);
-                e.kb = 30; e.hitByWave = true;
+            if (!e.dead && !this.hitList.includes(e) && dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2) {
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
+                e.kb = 30;
+                this.hitList.push(e);
             }
         });
         return this.life > 0;
@@ -294,19 +303,19 @@ export class RootWave {
 }
 
 export class StaticMine {
-    constructor(state, player, x, y, dmg) { 
+    constructor(state, player, x, y, spec) { 
         this.state = state; 
         this.player = player;
         this.x = x; 
         this.y = y; 
-        this.dmg = dmg; 
+        this.spec = spec;
         this.life = BALANCE.projectiles.staticMine.life; 
     }
     update(dt) {
         this.life -= dt;
         this.state.enemies.forEach(e => {
             if (dist2(this.x, this.y, e.x, e.y) < BALANCE.projectiles.staticMine.radius ** 2) {
-                this.state.combatSystem.hit(e, this.dmg * BALANCE.projectiles.staticMine.damageMultiplier * dt, this.player, this.state, true);
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, isDoT: true, context: { dt }, particles: ParticleSystem });
             }
         });
         return this.life > 0;
@@ -315,12 +324,13 @@ export class StaticMine {
 }
 
 export class Wisp {
-    constructor(state, player, x, y, dmg) { 
+    constructor(state, player, x, y, spec, snapshot) { 
         this.state = state; 
         this.player = player;
         this.x = x; 
         this.y = y; 
-        this.dmg = dmg; 
+        this.spec = spec;
+        this.snapshot = snapshot;
         this.life = BALANCE.projectiles.wisp.life; 
         this.target = null; 
     }
@@ -331,7 +341,7 @@ export class Wisp {
             let angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
             this.x += Math.cos(angle) * BALANCE.projectiles.wisp.speed * dt; this.y += Math.sin(angle) * BALANCE.projectiles.wisp.speed * dt;
             if (dist2(this.x, this.y, this.target.x, this.target.y) < 20 * 20) {
-                this.state.combatSystem.hit(this.target, this.dmg * BALANCE.projectiles.wisp.damageMultiplier, this.player, this.state);
+                DamageSystem.dealDamage(this.player, this.target, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
                 return false;
             }
         } else {
@@ -346,12 +356,13 @@ export class Hazard {
     constructor(state, x, y, life) {
         this.state = state;
         this.x = x; this.y = y; this.life = life;
+        this.spec = DamageSpecs.hazardTick();
     }
     update(dt) {
         this.life -= dt;
         if (dist2(this.x, this.y, this.state.game.p.x, this.state.game.p.y) < (this.state.game.p.r + 5)**2) {
             this.state.combatSystem.onPlayerHit(this, this.state);
-            this.state.game.p.takeDamage(BALANCE.projectiles.hazard.damage * dt, this);
+            DamageSystem.dealPlayerDamage(this, this.state.game.p, this.spec, { state: this.state, context: { dt } });
         }
         return this.life > 0;
     }
@@ -365,14 +376,15 @@ export class Hazard {
 }
 
 export class AegisPulse {
-    constructor(state, player, x, y, radius, stacks, damage) {
+    constructor(state, player, x, y, radius, stacks, spec, snapshot) {
         this.state = state;
         this.player = player;
         this.x = x;
         this.y = y;
         this.maxRadius = radius;
         this.stacks = stacks;
-        this.damage = damage;
+        this.spec = spec;
+        this.snapshot = snapshot;
         this.life = 0.5; // Duration of the pulse visual
         this.currentRadius = 0;
         this.hitList = [];
@@ -385,7 +397,7 @@ export class AegisPulse {
         this.state.enemies.forEach(e => {
             if (!e.dead && !this.hitList.includes(e)) {
                 if (dist2(this.x, this.y, e.x, e.y) < (this.currentRadius + e.r) ** 2) {
-                    this.state.combatSystem.hit(e, this.damage, this.player, this.state);
+                    DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
                     this.hitList.push(e);
                 }
             }
