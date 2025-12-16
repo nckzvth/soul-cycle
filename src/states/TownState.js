@@ -4,6 +4,7 @@ import DungeonState from './DungeonState.js';
 import Interactable from '../entities/Interactable.js';
 import { keys } from '../core/Input.js';
 import UI from '../systems/UI.js';
+import ParticleSystem from '../systems/Particles.js';
 
 class TownState extends State {
     constructor(game) {
@@ -26,10 +27,19 @@ class TownState extends State {
         
         // Encapsulated Reset
         p.teleport(400, 300);
-        p.fullHeal();
         p.resetKillSession();
         p.clearPhials(); // Clear phials on entering town
         p.clearSkills(); // Clear skills on entering town
+
+        // Run progression resets on town return (roguelike run state).
+        p.lvl = 1;
+        p.xp = 0;
+        p.attr = { might: 0, alacrity: 0, will: 0, pts: 0 };
+        p.totalAttr = { might: 0, alacrity: 0, will: 0 };
+        p.perks = { might: false, alacrity: false, will: false };
+        p.timers = { might: 0, alacrity: 0, will: 0 };
+
+        p.fullHeal();
         p.levelPicks = { attribute: 0, weapon: 0, phial: 0 }; // Clear level picks
         console.log(`Lifetime kills: ${p.killStats.lifetime}`);
         this.showKillCounter = false;
@@ -41,6 +51,7 @@ class TownState extends State {
         
         // Update Player (False = No Combat)
         p.update(dt, this, false);
+        ParticleSystem.update(dt);
 
         // Interaction
         if (keys['KeyF']) {
@@ -83,6 +94,7 @@ class TownState extends State {
         ctx.fillText('Dungeon', portalPos.x - 5, portalPos.y + 30);
 
         p.draw(ctx, s);
+        ParticleSystem.render(ctx, s);
 
         // Overlay
         ctx.fillStyle = 'white';

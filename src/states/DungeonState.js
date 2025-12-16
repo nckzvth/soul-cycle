@@ -7,6 +7,7 @@ import CombatSystem from '../systems/CombatSystem.js';
 import LootSystem from '../systems/LootSystem.js';
 import { LootDrop as Drop } from '../entities/Pickups.js';
 import UI from '../systems/UI.js';
+import ParticleSystem from '../systems/Particles.js';
 
 class DungeonState extends State {
     constructor(game) {
@@ -49,6 +50,8 @@ class DungeonState extends State {
 
         // 1. UPDATE PLAYER (Combat Enabled)
         p.update(dt, this, true);
+
+        ParticleSystem.update(dt);
 
         // 2. WALLS (Clamp Position)
         p.x = Math.max(this.bounds.x + 12, Math.min(this.bounds.w - 12, p.x));
@@ -125,6 +128,8 @@ class DungeonState extends State {
         });
 
         p.draw(ctx, s);
+
+        ParticleSystem.render(ctx, s);
 
         // Portal
         if (this.townPortal) {

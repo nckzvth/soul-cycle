@@ -4,6 +4,7 @@ import { Phials } from "./Phials.js";
 const ELEMENT = {
   physical: "physical",
   fire: "fire",
+  air: "air",
   lightning: "lightning",
   occult: "occult",
 };
@@ -17,8 +18,32 @@ const DamageSpecs = {
       base: 0,
       coeff: BALANCE.player.pistol.damageMult,
       canCrit: false, // keep disabled to avoid unintended rebalance; enable later
-      tags: ["weapon", "projectile"],
-      element: ELEMENT.physical,
+      tags: ["weapon", "pistol", "projectile"],
+      element: ELEMENT.air,
+      snapshot: true,
+    };
+  },
+
+  pistolGust() {
+    return {
+      id: "player:pistolGust",
+      base: 0,
+      coeff: BALANCE.player.pistol.damageMult * 0.25,
+      canCrit: false,
+      tags: ["weapon", "pistol", "aoe"],
+      element: ELEMENT.air,
+      snapshot: true,
+    };
+  },
+
+  pistolDebtPop() {
+    return {
+      id: "player:pistolDebtPop",
+      base: 0,
+      coeff: BALANCE.player.pistol.damageMult * 0.6,
+      canCrit: false,
+      tags: ["weapon", "pistol", "occult", "aoe"],
+      element: ELEMENT.occult,
       snapshot: true,
     };
   },
@@ -29,7 +54,32 @@ const DamageSpecs = {
       base: 0,
       coeff: BALANCE.player.staff.damageMult,
       canCrit: false,
-      tags: ["weapon", "chain"],
+      tags: ["weapon", "staff", "chain"],
+      element: ELEMENT.lightning,
+      snapshot: true,
+    };
+  },
+
+  staffOvercharge() {
+    return {
+      id: "player:staffOvercharge",
+      base: 0,
+      // Tuned by `staffOverchargeCoeffMult` stateMods; default is a modest portion of zap.
+      coeff: BALANCE.player.staff.damageMult * 0.35,
+      canCrit: false,
+      tags: ["weapon", "staff"],
+      element: ELEMENT.lightning,
+      snapshot: true,
+    };
+  },
+
+  staffOverloadDetonation() {
+    return {
+      id: "player:staffOverloadDetonation",
+      base: 0,
+      coeff: BALANCE.player.staff.damageMult * 0.8,
+      canCrit: false,
+      tags: ["weapon", "staff", "aoe"],
       element: ELEMENT.lightning,
       snapshot: true,
     };
@@ -41,8 +91,68 @@ const DamageSpecs = {
       base: 0,
       coeff: BALANCE.player.hammer.damageMult,
       canCrit: false,
-      tags: ["weapon", "melee"],
-      element: ELEMENT.physical,
+      tags: ["weapon", "hammer", "melee"],
+      element: ELEMENT.fire,
+      snapshot: true,
+    };
+  },
+
+  hammerBurnTick() {
+    return {
+      id: "player:hammerBurnTick",
+      base: 0,
+      coeff: BALANCE.skills.hammer.burnCoeff,
+      canCrit: false,
+      tags: ["weapon", "hammer", "dot"],
+      element: ELEMENT.fire,
+      snapshot: true,
+    };
+  },
+
+  hammerTrailTick() {
+    return {
+      id: "player:hammerTrailTick",
+      base: 0,
+      coeff: BALANCE.skills.hammer.trailCoeff,
+      canCrit: false,
+      tags: ["weapon", "hammer", "aoe", "dot"],
+      element: ELEMENT.fire,
+      snapshot: true,
+    };
+  },
+
+  hammerIgniteFlare() {
+    return {
+      id: "player:hammerIgniteFlare",
+      base: 0,
+      coeff: BALANCE.skills.hammer.igniteCoeff,
+      canCrit: false,
+      tags: ["weapon", "hammer", "aoe"],
+      element: ELEMENT.fire,
+      snapshot: true,
+    };
+  },
+
+  hammerPyreBurst() {
+    return {
+      id: "player:hammerPyreBurst",
+      base: 0,
+      coeff: BALANCE.skills.hammer.pyreBurstCoeff,
+      canCrit: false,
+      tags: ["weapon", "hammer", "aoe"],
+      element: ELEMENT.fire,
+      snapshot: true,
+    };
+  },
+
+  hammerSoulBrandPop() {
+    return {
+      id: "player:hammerSoulBrandPop",
+      base: 0,
+      coeff: BALANCE.skills.hammer.soulBrandCoeff,
+      canCrit: false,
+      tags: ["weapon", "hammer", "occult", "aoe"],
+      element: ELEMENT.occult,
       snapshot: true,
     };
   },
@@ -203,4 +313,3 @@ const DamageSpecs = {
 };
 
 export default DamageSpecs;
-

@@ -61,6 +61,13 @@ export default class PlayerObj {
         this.titheKillsCounter = 0;
         this.titheCharges = 0;
         this.titheChargeGainedTimer = 0;
+
+        // Weapon state (run-reset). Used for "class" mechanics like pistol windup/cyclone.
+        this.weaponState = {
+            pistol: { windup: 0, cycloneTime: 0, cooldownTime: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneVfxTimer: 0, justEnteredCyclone: false, cycloneAngle: 0 },
+            staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
+            hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 }
+        };
         
         // Meta
         this.attr = { might: 0, alacrity: 0, will: 0, pts: 0 };
@@ -69,6 +76,7 @@ export default class PlayerObj {
         this.timers = { might: 0, alacrity: 0, will: 0 };
         
         this.skills = new Map(); 
+        this.skillMeta = { exclusive: new Map(), flags: new Set() };
         this.stats = {};
         
         // Action States
@@ -113,6 +121,12 @@ export default class PlayerObj {
 
     clearSkills() {
         this.skills.clear();
+        this.skillMeta = { exclusive: new Map(), flags: new Set() };
+        this.weaponState = {
+            pistol: { windup: 0, cycloneTime: 0, cooldownTime: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneVfxTimer: 0, justEnteredCyclone: false, cycloneAngle: 0 },
+            staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
+            hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 }
+        };
     }
 
     // --- STATE INTERFACE ---
@@ -171,7 +185,129 @@ export default class PlayerObj {
         
         // 5. Combat
         if (allowCombat) {
+            this.updateWeaponStates(dt, scene);
             this.processCombat(dt, scene);
+        }
+    }
+
+    updateWeaponStates(dt, scene) {
+        // Pistol: Cyclone VFX feedback (base kit).
+        const pistolState = this.weaponState?.pistol;
+        if (pistolState) {
+            const cfg = BALANCE.skills?.pistol || {};
+            const vfx = cfg.vfx || {};
+            if (pistolState.justEnteredCyclone) {
+                pistolState.justEnteredCyclone = false;
+                ParticleSystem.emit(this.x, this.y, vfx.cycloneBurstColor ?? "rgba(190, 240, 255, 0.9)", vfx.cycloneBurstCount ?? 18, 180, 3, 0.4);
+                ParticleSystem.emitText(this.x, this.y - this.r - 16, "CYCLONE", { color: vfx.cycloneTextColor ?? "rgba(190, 240, 255, 0.95)", size: 14, life: 0.7 });
+            }
+
+            if (pistolState.cycloneTime > 0) {
+                pistolState.cycloneVfxTimer -= dt;
+                if (pistolState.cycloneVfxTimer <= 0) {
+                    pistolState.cycloneVfxTimer = vfx.cycloneInterval ?? 0.08;
+                    const radius = vfx.cycloneRadius ?? 20;
+                    const x = this.x + (Math.random() - 0.5) * radius * 2;
+                    const y = this.y + (Math.random() - 0.5) * radius * 2;
+                    ParticleSystem.emit(x, y, vfx.cycloneColor ?? "rgba(190, 240, 255, 0.85)", vfx.cycloneCount ?? 2, 0, vfx.cycloneSize ?? 2.2, vfx.cycloneLife ?? 0.18, null, { anchoredTo: this });
+                }
+            } else {
+                pistolState.cycloneVfxTimer = 0;
+            }
+        }
+
+        // Hammer forge heat (keystone): build heat while any enemy is burning from hammer.
+        const hammerState = this.weaponState?.hammer;
+        if (hammerState) {
+            if (hammerState.igniteCd > 0) hammerState.igniteCd -= dt;
+
+            if ((this.stats.hammerForgePactEnable || 0) > 0 && scene?.enemies) {
+                const cfg = BALANCE.skills?.hammer || {};
+                const vfx = cfg.vfx || {};
+                const anyBurning = scene.enemies.some(e => e?.statuses?.has("hammer:burn"));
+                if (anyBurning) {
+                    hammerState.heat += dt * (cfg.forgeHeatGainPerSecond ?? 0.6);
+                } else {
+                    hammerState.heat -= dt * (cfg.forgeHeatDecayPerSecond ?? 0.9);
+                }
+                const max = cfg.forgeHeatMax ?? 6;
+                hammerState.heat = clamp(hammerState.heat, 0, max);
+
+                if (hammerState.heat > 0) {
+                    hammerState.heatVfxTimer -= dt;
+                    if (hammerState.heatVfxTimer <= 0) {
+                        hammerState.heatVfxTimer = vfx.heatInterval ?? 0.14;
+                        const radius = vfx.heatRadius ?? 20;
+                        const x = this.x + (Math.random() - 0.5) * radius * 2;
+                        const y = this.y + (Math.random() - 0.5) * radius * 2;
+                        const baseCount = vfx.heatBaseCount ?? 1;
+                        const count = Math.max(1, Math.round(baseCount + (vfx.heatCountPerHeat ?? 0.5) * hammerState.heat));
+                        ParticleSystem.emit(x, y, vfx.heatColor ?? "rgba(255, 120, 0, 0.65)", count, 0, vfx.heatSize ?? 2.0, vfx.heatLife ?? 0.16, null, { anchoredTo: this });
+                    }
+                } else {
+                    hammerState.heatVfxTimer = 0;
+                }
+            } else {
+                hammerState.heat = 0;
+                hammerState.heatVfxTimer = 0;
+            }
+        }
+
+        // Staff "Current" buff timer (Soul Circuit).
+        const staffState = this.weaponState?.staff;
+        if (staffState && staffState.currentTime > 0) {
+            staffState.currentTime = Math.max(0, staffState.currentTime - dt);
+        }
+
+        // Staff Voltage (upgrade): decays over time; built on successful zaps.
+        if (staffState) {
+            const cfg = BALANCE.skills?.staff || {};
+            const vfx = cfg.vfx || {};
+
+            if (staffState.currentJustGained) {
+                staffState.currentJustGained = false;
+                ParticleSystem.emit(this.x, this.y, vfx.currentBurstColor ?? "rgba(160, 235, 255, 0.95)", vfx.currentBurstCount ?? 16, 160, 3.2, 0.45);
+                ParticleSystem.emitText(this.x, this.y - this.r - 16, "CURRENT", { color: vfx.currentTextColor ?? "rgba(160, 235, 255, 0.95)", size: 14, life: 0.7 });
+            }
+
+            if (staffState.currentTime > 0) {
+                staffState.currentVfxTimer -= dt;
+                if (staffState.currentVfxTimer <= 0) {
+                    staffState.currentVfxTimer = vfx.currentInterval ?? 0.12;
+                    const radius = vfx.currentRadius ?? 22;
+                    const x = this.x + (Math.random() - 0.5) * radius * 2;
+                    const y = this.y + (Math.random() - 0.5) * radius * 2;
+                    ParticleSystem.emit(x, y, vfx.currentColor ?? "rgba(160, 235, 255, 0.8)", vfx.currentCount ?? 1, 0, vfx.currentSize ?? 2.2, vfx.currentLife ?? 0.18, null, { anchoredTo: this });
+                }
+            } else {
+                staffState.currentVfxTimer = 0;
+            }
+
+            if ((this.stats.staffVoltageEnable || 0) > 0) {
+                const decay = cfg.voltageDecayPerSecond ?? 0.9;
+                staffState.voltage = Math.max(0, (staffState.voltage || 0) - dt * decay);
+            } else {
+                staffState.voltage = 0;
+            }
+
+            if ((staffState.voltage || 0) > 0) {
+                staffState.voltageVfxTimer -= dt;
+                if (staffState.voltageVfxTimer <= 0) {
+                    staffState.voltageVfxTimer = vfx.voltageInterval ?? 0.16;
+                    const radius = vfx.voltageRadius ?? 18;
+                    const x = this.x + (Math.random() - 0.5) * radius * 2;
+                    const y = this.y + (Math.random() - 0.5) * radius * 2;
+                    const intensity = Math.min(6, Math.max(1, Math.round(staffState.voltage)));
+                    const baseCount = vfx.voltageCount ?? 1;
+                    const perStack = vfx.voltageCountPerStack;
+                    const count = typeof perStack === "number"
+                        ? Math.max(1, Math.round(baseCount + perStack * (intensity - 1)))
+                        : intensity;
+                    ParticleSystem.emit(x, y, vfx.voltageColor ?? "rgba(240, 240, 140, 0.85)", count, 0, vfx.voltageSize ?? 2.0, vfx.voltageLife ?? 0.16, null, { anchoredTo: this });
+                }
+            } else {
+                staffState.voltageVfxTimer = 0;
+            }
         }
     }
 
@@ -251,6 +387,66 @@ export default class PlayerObj {
         const w = this.gear.weapon;
         if (!w) return;
 
+        // --- Pistol windup/cyclone base kit ---
+        const pistolState = this.weaponState?.pistol;
+        const usingPistol = w.cls === "pistol";
+        const firingPistol = usingPistol && mouse.down && this.dashTimer <= 0;
+        if (pistolState) {
+            const skillsCfg = BALANCE.skills?.pistol || {};
+            const gainBase = skillsCfg.windupGainPerSecond ?? 0.8;
+            const decayBase = skillsCfg.windupDecayPerSecond ?? 1.2;
+            const cycloneBase = skillsCfg.cycloneDuration ?? 2.0;
+            const cycloneCooldown = skillsCfg.cycloneCooldown ?? 1.25;
+
+            const gainMult = 1 + (this.stats.pistolWindupGainMult || 0);
+            const decayMult = Math.max(0.05, 1 + (this.stats.pistolWindupDecayMult || 0));
+            const cycloneMult = 1 + (this.stats.pistolCycloneDurationMult || 0);
+
+            if (pistolState.cooldownTime > 0) {
+                pistolState.cooldownTime = Math.max(0, pistolState.cooldownTime - dt);
+                // Cooling: windup is suppressed to prevent immediate re-entry.
+                pistolState.windup = 0;
+            }
+
+            if (pistolState.cycloneTime > 0) {
+                pistolState.cycloneTime -= dt;
+                // If you let go, cyclone drains faster.
+                if (!firingPistol) pistolState.cycloneTime -= dt;
+                pistolState.windup = 1;
+                if (pistolState.cycloneTime <= 0) {
+                    pistolState.cycloneTime = 0;
+                    pistolState.windup = 0.75; // soft landing
+                    pistolState.cooldownTime = Math.max(pistolState.cooldownTime || 0, cycloneCooldown);
+                    ParticleSystem.emitText(this.x, this.y - this.r - 16, "COOLING", { color: skillsCfg?.vfx?.cooldownTextColor ?? "rgba(200, 200, 200, 0.95)", size: 13, life: 0.7 });
+                }
+            } else {
+                if (firingPistol && pistolState.cooldownTime <= 0) pistolState.windup = Math.min(1, pistolState.windup + dt * gainBase * gainMult);
+                else pistolState.windup = Math.max(0, pistolState.windup - dt * decayBase * decayMult);
+
+                // Enter cyclone on full windup while firing.
+                if (firingPistol && pistolState.cooldownTime <= 0 && pistolState.windup >= 1) {
+                    pistolState.cycloneTime = cycloneBase * cycloneMult;
+                    pistolState.windup = 1;
+                    pistolState.gustCounter = 0;
+                    pistolState.justEnteredCyclone = true;
+                }
+            }
+
+            // Reaper's Vortex chaining budget (occult keystone limiter).
+            if ((this.stats.pistolReapersVortexEnable || 0) > 0) {
+                const budgetMax = skillsCfg.vortexChainBudget ?? 2;
+                const regen = skillsCfg.vortexBudgetRegenPerSecond ?? 1.0;
+                pistolState.vortexBudgetTimer += dt;
+                while (pistolState.vortexBudgetTimer >= 1.0) {
+                    pistolState.vortexBudgetTimer -= 1.0;
+                    pistolState.vortexBudget = Math.min(budgetMax, pistolState.vortexBudget + regen);
+                }
+            } else {
+                pistolState.vortexBudget = 0;
+                pistolState.vortexBudgetTimer = 0;
+            }
+        }
+
         // Hammer: spiral projectile
         if (w.cls === "hammer") {
             if (mouse.down && this.atkCd <= 0) {
@@ -287,10 +483,15 @@ export default class PlayerObj {
                     }
                 }
 
-                const spec = DamageSpecs.hammerOrbit();
+                const cfg = BALANCE.skills?.hammer || {};
+                const heat = this.weaponState?.hammer?.heat || 0;
+                const heatMult = 1 + heat * (cfg.forgeHeatCoeffPerStack ?? 0.06);
+                const specBase = DamageSpecs.hammerOrbit();
+                const spec = { ...specBase, coeff: specBase.coeff * heatMult };
                 const snapshot = DamageSystem.snapshotOutgoing(this, spec);
                 scene.shots.push(new HammerProjectile(scene, this, cx, cy, initialAngle, spec, snapshot));
-                this.atkCd = hb.cooldown;
+                const cdMult = Math.max(0.2, 1 + (this.stats.hammerCooldownMult || 0));
+                this.atkCd = hb.cooldown * cdMult;
 
                 if (this.salvoCharges > 0) {
                     this.salvoCharges--;
@@ -301,7 +502,16 @@ export default class PlayerObj {
 
         // Shooting (Pistol/Staff) - Don't shoot while dashing
         if (mouse.down && this.atkCd <= 0 && this.dashTimer <= 0) {
-            let rate = BALANCE.player.pistolBaseRate / (this.stats.attackSpeed || (1 + this.stats.spd));
+            let attackSpeed = this.stats.attackSpeed || (1 + this.stats.spd);
+            if (usingPistol && pistolState) {
+                const skillsCfg = BALANCE.skills?.pistol || {};
+                const windupBonus = skillsCfg.windupAttackSpeedBonus ?? 2.0; // at full windup: +200%
+                const cycloneMult = skillsCfg.cycloneAttackSpeedMult ?? 1.0;
+                const cyclone = pistolState.cycloneTime > 0;
+                const mult = (1 + pistolState.windup * windupBonus) * (cyclone ? cycloneMult : 1);
+                attackSpeed *= mult;
+            }
+            let rate = BALANCE.player.pistolBaseRate / attackSpeed;
             
             if (w.cls === "pistol") {
                 scene.combatSystem.firePistol(this, scene);
@@ -429,6 +639,93 @@ export default class PlayerObj {
     }
 
     onHit(target, state) {
+        // --- Weapon upgrade hooks (keep phials independent) ---
+        const weapon = this.gear.weapon;
+        if (weapon?.cls === "pistol") {
+            const skillsCfg = BALANCE.skills?.pistol || {};
+            const pistolState = this.weaponState?.pistol;
+
+            // Apply Hex on pistol hits.
+            if ((this.stats.pistolHexEnable || 0) > 0) {
+                const duration = (skillsCfg.hexDuration ?? 3.0) * (1 + (this.stats.pistolHexDurationMult || 0));
+                const maxStacks = (skillsCfg.hexMaxStacks ?? 5);
+                const debtPopEnabled = (this.stats.pistolDebtPopEnable || 0) > 0;
+                const debtCoeffMult = 1 + (this.stats.pistolDebtPopCoeffMult || 0);
+                const vortexEnabled = (this.stats.pistolReapersVortexEnable || 0) > 0;
+
+                const makePopSpec = () => {
+                    const base = DamageSpecs.pistolDebtPop();
+                    return { ...base, coeff: base.coeff * debtCoeffMult };
+                };
+
+                StatusSystem.applyStatus(target, "pistol:hex", {
+                    source: this,
+                    stacks: 1,
+                    duration,
+                    tickInterval: 9999,
+                    spec: null,
+                    snapshotPolicy: "snapshot",
+                    stackMode: "add",
+                    maxStacks,
+                    vfx: {
+                        interval: skillsCfg?.vfx?.hexInterval ?? 0.4,
+                        color: skillsCfg?.vfx?.hexColor ?? "rgba(190, 120, 255, 0.85)",
+                        count: skillsCfg?.vfx?.hexCount ?? 1,
+                        countPerStack: skillsCfg?.vfx?.hexCountPerStack ?? 0.35,
+                        size: skillsCfg?.vfx?.hexSize ?? 2.3,
+                        life: skillsCfg?.vfx?.hexLife ?? 0.2,
+                        applyBurstCount: skillsCfg?.vfx?.hexApplyBurstCount ?? 3,
+                        applyBurstSpeed: skillsCfg?.vfx?.hexApplyBurstSpeed ?? 110,
+                    },
+                    onExpire: debtPopEnabled ? (tgt, st, stState) => {
+                        const popSpec = makePopSpec();
+                        const popSnapshot = DamageSystem.snapshotOutgoing(this, popSpec);
+                        const radius = skillsCfg.debtPopRadius ?? 90;
+
+                        // Primary pop.
+                        stState?.enemies?.forEach(e => {
+                            if (e.dead) return;
+                            if (dist2(tgt.x, tgt.y, e.x, e.y) < radius * radius) {
+                                DamageSystem.dealDamage(this, e, popSpec, { state: stState, snapshot: popSnapshot, particles: ParticleSystem });
+                            }
+                        });
+
+                        // Vortex: chain one additional pop to a nearby hexed enemy (budget-limited).
+                        if (vortexEnabled && pistolState && pistolState.cycloneTime > 0 && pistolState.vortexBudget > 0) {
+                            const chainRadius = skillsCfg.vortexChainRadius ?? 220;
+                            let best = null, bestD2 = chainRadius * chainRadius;
+                            stState?.enemies?.forEach(e => {
+                                if (e.dead || e === tgt) return;
+                                if (!StatusSystem.hasStatus(e, "pistol:hex")) return;
+                                const d2 = dist2(tgt.x, tgt.y, e.x, e.y);
+                                if (d2 < bestD2) { bestD2 = d2; best = e; }
+                            });
+                            if (best) {
+                                pistolState.vortexBudget = Math.max(0, pistolState.vortexBudget - 1);
+                                // Consume the chained hex to prevent double-pop later.
+                                if (best.statuses) best.statuses.delete("pistol:hex");
+                                stState?.enemies?.forEach(e => {
+                                    if (e.dead) return;
+                                    if (dist2(best.x, best.y, e.x, e.y) < radius * radius) {
+                                        DamageSystem.dealDamage(this, e, popSpec, { state: stState, snapshot: popSnapshot, particles: ParticleSystem });
+                                    }
+                                });
+                            }
+                        }
+                    } : null
+                });
+            }
+
+            // Soul Pressure: hitting hexed targets sustains windup/cyclone.
+            if ((this.stats.pistolSoulPressureEnable || 0) > 0 && pistolState && StatusSystem.hasStatus(target, "pistol:hex")) {
+                const sustainMult = 1 + (this.stats.pistolCycloneSustainMult || 0);
+                const windupGain = (skillsCfg.soulPressureWindupOnHit ?? 0.08) * sustainMult;
+                const cycloneExtend = (skillsCfg.soulPressureCycloneExtend ?? 0.08) * sustainMult;
+                if (pistolState.cycloneTime > 0) pistolState.cycloneTime += cycloneExtend;
+                else pistolState.windup = Math.min(1, pistolState.windup + windupGain);
+            }
+        }
+
         const titheStacks = this.getPhialStacks(Phials.titheEngine.id);
         if (titheStacks > 0 && this.titheCharges > 0) {
             this.titheCharges--;

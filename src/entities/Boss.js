@@ -4,6 +4,7 @@ import UI from '../systems/UI.js';
 import { BALANCE } from '../data/Balance.js';
 import DamageSystem from '../systems/DamageSystem.js';
 import DamageSpecs from '../data/DamageSpecs.js';
+import StatusSystem from '../systems/StatusSystem.js';
 
 class Boss {
     constructor(x, y) {
@@ -17,11 +18,16 @@ class Boss {
         this.phase = 1;
         this.flash = 0;
         this.isBoss = true;
+        this.stats = { damageTakenMult: 1.0 };
+        this.damageAccumulator = 0;
+        StatusSystem.init(this);
     }
 
     update(dt, p, dungeonState) {
         if (this.dead) return;
         if (this.flash > 0) this.flash -= dt;
+
+        StatusSystem.update(this, dt, dungeonState);
 
         this.attackTimer -= dt;
         if (this.attackTimer <= 0) {

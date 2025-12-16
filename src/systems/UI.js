@@ -3,6 +3,7 @@ import { SLOTS } from "../data/Constants.js";
 import { SKILLS } from "../data/Skills.js";
 import { Phials } from "../data/Phials.js";
 import { BALANCE } from "../data/Balance.js";
+import SkillOfferSystem from "./SkillOfferSystem.js";
 
 const UI = {
     dirty: true,
@@ -197,21 +198,24 @@ const UI = {
         const p = Game.p;
         const weapon = p.gear.weapon;
         if (!weapon) return [];
-
-        const availableSkills = SKILLS.filter(skill => skill.cls === weapon.cls && (p.skills.get(skill.id) || 0) < skill.max_stacks);
-        
-        const options = [];
-        while (options.length < 3 && availableSkills.length > 0) {
-            const randomIndex = Math.floor(Math.random() * availableSkills.length);
-            options.push(availableSkills.splice(randomIndex, 1)[0]);
-        }
-        return options;
+        return SkillOfferSystem.getWeaponOffers(p, weapon.cls, 3);
     },
     selectWeaponUpgrade(skillId) {
         const p = Game.p;
         if (p.levelPicks.weapon > 0) {
             const currentStacks = p.skills.get(skillId) || 0;
             p.skills.set(skillId, currentStacks + 1);
+            const picked = SKILLS.find(s => s.id === skillId);
+            if (picked) {
+                p.skillMeta = p.skillMeta || { exclusive: new Map(), flags: new Set() };
+                if (picked.exclusiveGroup && picked.exclusiveKey) {
+                    p.skillMeta.exclusive.set(picked.exclusiveGroup, picked.exclusiveKey);
+                    p.skillMeta.flags.add(`${picked.exclusiveGroup}:${picked.exclusiveKey}`);
+                }
+                if (Array.isArray(picked.flagAdds)) {
+                    picked.flagAdds.forEach(f => p.skillMeta.flags.add(f));
+                }
+            }
             p.levelPicks.weapon--;
             p.recalc();
             this.rerenderWeaponRow();

@@ -49,7 +49,7 @@ export const BALANCE = {
             angularSpeed: -7.0,
             hitRadius: 12,
             cooldown: 0.6,
-            damageMult: 1,
+            damageMult: 3,
             spinTime: 3.0,
             maxHammers: 3
         },
@@ -183,5 +183,206 @@ export const BALANCE = {
     pickups: {
         loot: { pickupRadius: 30 },
         soul: { pickupRadius: 30, extendedPickupRadius: 150, attractionSpeed: 5, baseSoulValue: 1, magnetism: 5 }
+    },
+
+    skills: {
+        rarityWeights: { common: 70, uncommon: 23, rare: 6, epic: 1 },
+
+        pistol: {
+            windupGainPerSecond: 0.8,
+            windupDecayPerSecond: 1.2,
+            windupAttackSpeedBonus: 1.2,
+            cycloneDuration: 2.0,
+            // Cyclone should feel distinct from max windup (visual + real cadence boost).
+            cycloneAttackSpeedMult: 1.35,
+            // After Cyclone ends (timer expiry), force a brief cooldown before you can ramp again.
+            cycloneCooldown: 1.25,
+            // Cyclone firing pattern: shoot in all directions (Reaper-style).
+            cycloneShotCount: 8,
+            cycloneSpinPerShot: 0.35,
+
+            gustShotsBase: 10,
+            gustRadius: 70,
+
+            hexDuration: 3.0,
+            hexMaxStacks: 5,
+            soulPressureWindupOnHit: 0.08,
+            soulPressureCycloneExtend: 0.08,
+            debtPopRadius: 90,
+            vortexChainRadius: 220,
+            vortexChainBudget: 2,
+            vortexBudgetRegenPerSecond: 1.0,
+
+            vfx: {
+                cycloneColor: "rgba(190, 240, 255, 0.85)",
+                cycloneInterval: 0.08,
+                cycloneCount: 2,
+                cycloneSize: 2.2,
+                cycloneLife: 0.18,
+                cycloneRadius: 20,
+                cycloneBurstColor: "rgba(190, 240, 255, 0.9)",
+                cycloneBurstCount: 18,
+                cycloneTextColor: "rgba(190, 240, 255, 0.95)",
+                cooldownTextColor: "rgba(200, 200, 200, 0.95)",
+
+                hexColor: "rgba(190, 120, 255, 0.85)",
+                hexInterval: 0.4,
+                hexCount: 1,
+                hexCountPerStack: 0.35,
+                hexSize: 2.3,
+                hexLife: 0.2,
+                hexApplyBurstCount: 3,
+                hexApplyBurstSpeed: 110,
+            },
+        }
+        ,
+        hammer: {
+            burnDuration: 2.0,
+            burnTickInterval: 1.0,
+            burnCoeff: 0.4,
+
+            trailDuration: 1.2,
+            trailTickInterval: 0.25,
+            trailRadius: 55,
+            trailCoeff: 0.25,
+
+            igniteStacks: 4,
+            igniteInternalCooldown: 1.0,
+            igniteCoeff: 0.8,
+
+            pyreBurstRadius: 100,
+            pyreBurstCoeff: 1.0,
+
+            soulBrandDuration: 2.0,
+            soulBrandRadius: 90,
+            soulBrandCoeff: 1.0,
+
+            forgeHeatGainPerSecond: 0.6,
+            forgeHeatDecayPerSecond: 0.9,
+            forgeHeatMax: 6,
+            forgeHeatCoeffPerStack: 0.06,
+
+            vfx: {
+                burnColor: "rgba(255, 120, 0, 0.85)",
+                burnInterval: 0.28,
+                burnCount: 1,
+                burnCountPerStack: 0.45,
+                burnSize: 2.4,
+                burnLife: 0.22,
+                burnApplyBurstCount: 4,
+                burnApplyBurstSpeed: 120,
+
+                trailColor: "rgba(255, 120, 0, 0.6)",
+                trailInterval: 0.12,
+                trailCount: 2,
+                trailSize: 2.0,
+                trailLife: 0.16,
+
+                igniteColor: "rgba(255, 190, 80, 0.9)",
+                igniteBurstCount: 16,
+                igniteBurstSpeed: 170,
+
+                pyreColor: "rgba(255, 80, 0, 0.9)",
+                pyreBurstCount: 22,
+                pyreBurstSpeed: 220,
+
+                soulBrandColor: "rgba(190, 120, 255, 0.85)",
+                soulBrandInterval: 0.28,
+                soulBrandCount: 1,
+                soulBrandSize: 2.4,
+                soulBrandLife: 0.22,
+                soulBrandApplyBurstCount: 4,
+                soulBrandApplyBurstSpeed: 120,
+                soulBrandPopBurstCount: 18,
+                soulBrandPopBurstSpeed: 190,
+
+                heatColor: "rgba(255, 120, 0, 0.65)",
+                heatInterval: 0.14,
+                heatBaseCount: 1,
+                heatCountPerHeat: 0.5,
+                heatSize: 2.0,
+                heatLife: 0.16,
+                heatRadius: 20,
+            },
+        }
+        ,
+        staff: {
+            markDuration: 2.0,
+            markMaxStacks: 3,
+
+            hexDuration: 3.0,
+            hexMaxStacks: 4,
+            // Bonus damage scaling when hitting hexed targets.
+            hexZapCoeffBonusPerStack: 0.08,
+
+            // Voltage Build: gain on successful zaps; decays over time; boosts zap damage.
+            voltageGainPerHit: 0.35,
+            voltageMax: 6,
+            voltageDecayPerSecond: 0.9,
+            voltageCoeffPerStack: 0.03,
+
+            // Soul Circuit: temporary "Current" buff duration and effects.
+            currentDuration: 2.5,
+            currentRangeMult: 0.25,
+            currentOverchargeCoeffMult: 0.25,
+
+            // Contract Conduit: links created on overload, consumed by next cast.
+            linkDuration: 2.0,
+            linkRadius: 240,
+
+            vfx: {
+                markColor: "rgba(160, 235, 255, 0.95)",
+                markInterval: 0.3,
+                markCount: 1,
+                markCountPerStack: 1,
+                markSize: 2.5,
+                markLife: 0.22,
+                markApplyBurstCount: 4,
+                markApplyBurstSpeed: 130,
+
+                hexColor: "rgba(190, 120, 255, 0.9)",
+                hexInterval: 0.35,
+                hexCount: 1,
+                hexCountPerStack: 0.5,
+                hexSize: 2.5,
+                hexLife: 0.22,
+                hexApplyBurstCount: 4,
+                hexApplyBurstSpeed: 110,
+
+                linkColor: "rgba(120, 255, 220, 0.9)",
+                linkInterval: 0.25,
+                linkCount: 1,
+                linkSize: 2.4,
+                linkLife: 0.2,
+                linkApplyBurstCount: 3,
+                linkApplyBurstSpeed: 100,
+
+                overloadColor: "rgba(160, 235, 255, 0.9)",
+                overloadBurstCount: 14,
+
+                relayColor: "rgba(160, 235, 255, 0.9)",
+                relayBurstCount: 10,
+                overchargeColor: "rgba(240, 240, 140, 0.9)",
+                overchargeBurstCount: 10,
+
+                currentColor: "rgba(160, 235, 255, 0.8)",
+                currentInterval: 0.12,
+                currentCount: 1,
+                currentSize: 2.2,
+                currentLife: 0.18,
+                currentRadius: 22,
+                currentBurstColor: "rgba(160, 235, 255, 0.95)",
+                currentBurstCount: 16,
+                currentTextColor: "rgba(160, 235, 255, 0.95)",
+
+                voltageColor: "rgba(240, 240, 140, 0.85)",
+                voltageInterval: 0.16,
+                voltageCount: 1,
+                voltageCountPerStack: 0.35,
+                voltageSize: 2.0,
+                voltageLife: 0.16,
+                voltageRadius: 18,
+            },
+        }
     }
 };

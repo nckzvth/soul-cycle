@@ -4,6 +4,7 @@ import Game from "../core/Game.js";
 import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import ParticleSystem from "../systems/Particles.js";
+import StatusSystem from "../systems/StatusSystem.js";
 
 export class TitheExplosion {
     constructor(state, player, x, y, radius, stacks, spec, snapshot) {
@@ -114,6 +115,7 @@ export class HammerProjectile {
             this.ang += Math.PI;
         }
         this.spinTimer = BALANCE.player.hammer.spinTime;
+        this.trailTimer = 0;
         this.atMaxRadius = false;
         this.creationTime = Game.time;
         this.markedForDeletion = false;
@@ -122,14 +124,22 @@ export class HammerProjectile {
 
     update(dt) {
         const hb = BALANCE.player.hammer;
+        const cfg = BALANCE.skills?.hammer || {};
+        const vfx = cfg.vfx || {};
+        const stats = this.player.stats || {};
+        const maxRadius = hb.maxRadius * (1 + (stats.hammerMaxRadiusMult || 0));
+        const spinTime = hb.spinTime * (1 + (stats.hammerSpinTimeMult || 0));
+        const hitRadius = hb.hitRadius + (stats.hammerHitRadiusAdd || 0);
+        const trailEnabled = (stats.hammerTrailEnable || 0) > 0;
 
         if (this.atMaxRadius) {
             this.spinTimer -= dt;
         } else {
             this.rad += hb.radialSpeed * dt;
-            if (this.rad >= hb.maxRadius) {
-                this.rad = hb.maxRadius;
+            if (this.rad >= maxRadius) {
+                this.rad = maxRadius;
                 this.atMaxRadius = true;
+                this.spinTimer = spinTime;
             }
         }
 
@@ -138,9 +148,122 @@ export class HammerProjectile {
         const hx = this.cx + Math.cos(this.ang) * this.rad;
         const hy = this.cy + Math.sin(this.ang) * this.rad;
 
+        // Cinderwake trail: drop short-lived fire zones along the orbit path.
+        if (trailEnabled) {
+            const baseInterval = cfg.trailTickInterval ?? 0.25;
+            this.trailTimer -= dt;
+            if (this.trailTimer <= 0) {
+                this.trailTimer = baseInterval;
+                const duration = (cfg.trailDuration ?? 1.2) * (1 + (stats.hammerTrailDurationMult || 0));
+                const radius = cfg.trailRadius ?? 55;
+                const trailSpec = DamageSpecs.hammerTrailTick();
+                const heat = this.player.weaponState?.hammer?.heat || 0;
+                const heatMult = 1 + heat * (cfg.forgeHeatCoeffPerStack ?? 0.06);
+                const trailSnapshot = DamageSystem.snapshotOutgoing(this.player, { ...trailSpec, coeff: trailSpec.coeff * heatMult }, { dt: baseInterval });
+                this.state.shots.push(new FireTrail(this.state, this.player, hx, hy, radius, duration, trailSpec, trailSnapshot, baseInterval));
+            }
+        }
+
         this.state.enemies.forEach(e => {
-            if (!e.dead && !this.hitList.includes(e) && dist2(hx, hy, e.x, e.y) < (hb.hitRadius + e.r) ** 2) {
-                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
+            if (!e.dead && !this.hitList.includes(e) && dist2(hx, hy, e.x, e.y) < (hitRadius + e.r) ** 2) {
+                const heat = this.player.weaponState?.hammer?.heat || 0;
+                const heatMult = 1 + heat * (cfg.forgeHeatCoeffPerStack ?? 0.06);
+                // Coalheart: burning foes take more hammer hit damage (not burn DoT).
+                const coal = (stats.hammerBurnDamageTakenMult || 0);
+                const burning = StatusSystem.hasStatus(e, "hammer:burn");
+                const hitSpec = (burning && coal > 0) ? { ...this.spec, coeff: this.spec.coeff * (1 + coal) } : this.spec;
+                const hitSnapshot = hitSpec === this.spec ? this.snapshot : DamageSystem.snapshotOutgoing(this.player, hitSpec);
+                DamageSystem.dealDamage(this.player, e, hitSpec, { state: this.state, snapshot: hitSnapshot, particles: ParticleSystem });
+
+                // Baseline: hammer hits always apply a short burn.
+                const duration = (cfg.burnDuration ?? 2.0) * (1 + (stats.hammerBurnDurationMult || 0));
+                const tickIntervalBase = cfg.burnTickInterval ?? 1.0;
+                const tickRateMult = 1 + (stats.hammerBurnTickRateMult || 0);
+                const tickInterval = Math.max(0.1, tickIntervalBase / tickRateMult);
+
+                const burnSpecBase = DamageSpecs.hammerBurnTick();
+                const burnSpec = { ...burnSpecBase, coeff: burnSpecBase.coeff * heatMult };
+
+                StatusSystem.applyStatus(e, "hammer:burn", {
+                    source: this.player,
+                    stacks: 1,
+                    duration,
+                    tickInterval,
+                    spec: burnSpec,
+                    snapshotPolicy: "snapshot",
+                    stackMode: "add",
+                    maxStacks: 10,
+                    dotTextMode: "perTick",
+                    vfx: {
+                        interval: vfx.burnInterval ?? 0.28,
+                        color: vfx.burnColor ?? "rgba(255, 120, 0, 0.85)",
+                        count: vfx.burnCount ?? 1,
+                        countPerStack: vfx.burnCountPerStack ?? 0.45,
+                        size: vfx.burnSize ?? 2.4,
+                        life: vfx.burnLife ?? 0.22,
+                        applyBurstCount: vfx.burnApplyBurstCount ?? 4,
+                        applyBurstSpeed: vfx.burnApplyBurstSpeed ?? 120,
+                    },
+                });
+
+                // Ignition Threshold: flare when burn stacks reach a threshold (cooldown-limited).
+                if ((stats.hammerIgniteEnable || 0) > 0) {
+                    const stacks = StatusSystem.getStacks(e, "hammer:burn");
+                    const threshold = cfg.igniteStacks ?? 4;
+                    const hammerState = this.player.weaponState?.hammer;
+                    if (hammerState && hammerState.igniteCd <= 0 && stacks >= threshold) {
+                        hammerState.igniteCd = cfg.igniteInternalCooldown ?? 1.0;
+                        const flareSpec = DamageSpecs.hammerIgniteFlare();
+                        const flareSnapshot = DamageSystem.snapshotOutgoing(this.player, { ...flareSpec, coeff: flareSpec.coeff * (1 + (stats.hammerIgniteCoeffMult || 0)) * heatMult });
+                        const radius = cfg.pyreBurstRadius ?? 100;
+                        ParticleSystem.emit(e.x, e.y, vfx.igniteColor ?? "rgba(255, 190, 80, 0.9)", vfx.igniteBurstCount ?? 16, vfx.igniteBurstSpeed ?? 170, 3.0, 0.35);
+                        this.state.enemies.forEach(e2 => {
+                            if (e2.dead) return;
+                            if (dist2(e.x, e.y, e2.x, e2.y) < radius * radius) {
+                                DamageSystem.dealDamage(this.player, e2, flareSpec, { state: this.state, snapshot: flareSnapshot, particles: ParticleSystem });
+                            }
+                        });
+                    }
+                }
+
+                // Occult: Soul Brand delayed detonation.
+                if ((stats.hammerSoulBrandEnable || 0) > 0) {
+                    const duration = cfg.soulBrandDuration ?? 2.0;
+                    const popSpecBase = DamageSpecs.hammerSoulBrandPop();
+                    const coeffMult = 1 + (stats.hammerSoulBrandCoeffMult || 0);
+                    const popSpec = { ...popSpecBase, coeff: popSpecBase.coeff * coeffMult * heatMult };
+                    const popSnapshot = DamageSystem.snapshotOutgoing(this.player, popSpec);
+                    const radius = cfg.soulBrandRadius ?? 90;
+                    StatusSystem.applyStatus(e, "hammer:soulBrand", {
+                        source: this.player,
+                        stacks: 1,
+                        duration,
+                        tickInterval: 9999,
+                        spec: null,
+                        snapshotPolicy: "snapshot",
+                        stackMode: "max",
+                        maxStacks: 1,
+                        vfx: {
+                            interval: vfx.soulBrandInterval ?? 0.28,
+                            color: vfx.soulBrandColor ?? "rgba(190, 120, 255, 0.85)",
+                            count: vfx.soulBrandCount ?? 1,
+                            size: vfx.soulBrandSize ?? 2.4,
+                            life: vfx.soulBrandLife ?? 0.22,
+                            applyBurstCount: vfx.soulBrandApplyBurstCount ?? 4,
+                            applyBurstSpeed: vfx.soulBrandApplyBurstSpeed ?? 120,
+                        },
+                        onExpire: (tgt, st, stState) => {
+                            ParticleSystem.emit(tgt.x, tgt.y, vfx.soulBrandColor ?? "rgba(190, 120, 255, 0.85)", vfx.soulBrandPopBurstCount ?? 18, vfx.soulBrandPopBurstSpeed ?? 190, 3.0, 0.35);
+                            stState?.enemies?.forEach(e2 => {
+                                if (e2.dead) return;
+                                if (dist2(tgt.x, tgt.y, e2.x, e2.y) < radius * radius) {
+                                    DamageSystem.dealDamage(this.player, e2, popSpec, { state: stState, snapshot: popSnapshot, particles: ParticleSystem });
+                                }
+                            });
+                        }
+                    });
+                }
+
                 this.hitList.push(e);
             }
         });
@@ -153,7 +276,7 @@ export class HammerProjectile {
         const hx = this.cx + Math.cos(this.ang) * this.rad;
         const hy = this.cy + Math.sin(this.ang) * this.rad;
         const hc = s(hx, hy);
-        const r = hb.hitRadius;
+        const r = hb.hitRadius + ((this.player.stats?.hammerHitRadiusAdd) || 0);
 
         const grad = ctx.createRadialGradient(hc.x, hc.y, 0, hc.x, hc.y, r * 1.5);
         grad.addColorStop(0, this.isSalvo ? "rgba(180, 220, 255, 0.8)" : "rgba(255, 240, 220, 0.8)");
@@ -168,6 +291,60 @@ export class HammerProjectile {
         ctx.beginPath();
         ctx.arc(hc.x, hc.y, r, 0, Math.PI * 2);
         ctx.fill();
+    }
+}
+
+export class FireTrail {
+    constructor(state, player, x, y, radius, life, spec, snapshot, tickInterval) {
+        this.state = state;
+        this.player = player;
+        this.x = x;
+        this.y = y;
+        this.r = radius;
+        this.life = life;
+        this.spec = spec;
+        this.snapshot = snapshot;
+        this.tickInterval = tickInterval;
+        this.tickTimer = 0;
+        this.vfxTimer = 0;
+    }
+
+    update(dt) {
+        const cfg = BALANCE.skills?.hammer || {};
+        const vfx = cfg.vfx || {};
+        this.life -= dt;
+        this.tickTimer += dt;
+
+        // Visual: flickering embers for the trail zone.
+        this.vfxTimer -= dt;
+        if (this.vfxTimer <= 0 && this.life > 0) {
+            this.vfxTimer = vfx.trailInterval ?? 0.12;
+            const x = this.x + (Math.random() - 0.5) * this.r * 1.6;
+            const y = this.y + (Math.random() - 0.5) * this.r * 1.6;
+            ParticleSystem.emit(x, y, vfx.trailColor ?? "rgba(255, 120, 0, 0.6)", vfx.trailCount ?? 2, 20, vfx.trailSize ?? 2.0, vfx.trailLife ?? 0.16);
+        }
+
+        while (this.tickTimer >= this.tickInterval && this.life > 0) {
+            this.tickTimer -= this.tickInterval;
+            this.state.enemies.forEach(e => {
+                if (e.dead) return;
+                if (dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2) {
+                    DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, isDoT: true, dotTextMode: "aggregate" });
+                }
+            });
+        }
+        return this.life > 0;
+    }
+
+    draw(ctx, s) {
+        const p = s(this.x, this.y);
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.6, this.life / 1.2);
+        ctx.fillStyle = "rgba(255, 120, 0, 0.25)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 }
 

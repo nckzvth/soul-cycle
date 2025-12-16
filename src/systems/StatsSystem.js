@@ -2,6 +2,14 @@ import { clamp } from "../core/Utils.js";
 import { BALANCE } from "../data/Balance.js";
 import { SKILLS } from "../data/Skills.js";
 
+let SKILL_BY_ID = null;
+function getSkillById() {
+  if (SKILL_BY_ID) return SKILL_BY_ID;
+  SKILL_BY_ID = new Map();
+  for (const sk of SKILLS) SKILL_BY_ID.set(sk.id, sk);
+  return SKILL_BY_ID;
+}
+
 function addNumber(stats, key, value) {
   if (!value) return;
   stats[key] = (stats[key] || 0) + value;
@@ -87,6 +95,7 @@ const StatsSystem = {
    * Preserves existing keys used elsewhere while centralizing multipliers for combat.
    */
   recalcPlayer(player) {
+    const skillById = getSkillById();
     const t = { might: player.attr.might, alacrity: player.attr.alacrity, will: player.attr.will };
     for (const slot in player.gear) {
       const item = player.gear[slot];
@@ -130,9 +139,17 @@ const StatsSystem = {
 
     // Skill mods (legacy keys, mapped into canonical via applyLegacyStat).
     player.skills.forEach((stacks, id) => {
-      const skill = SKILLS.find(sk => sk.id === id);
+      const skill = skillById.get(id);
       if (!skill) return;
-      for (const k in skill.mods) applyLegacyStat(s, k, skill.mods[k] * stacks);
+      const dial = skill.dial || {};
+
+      // Forward-looking dials: keep as numeric keys on player.stats for later weapon systems.
+      if (dial.stateMods) {
+        for (const k in dial.stateMods) addNumber(s, k, dial.stateMods[k] * stacks);
+      }
+
+      const mods = skill.mods || dial.mods || {};
+      for (const k in mods) applyLegacyStat(s, k, mods[k] * stacks);
     });
 
     // Finalize canonical multipliers.
@@ -166,4 +183,3 @@ const StatsSystem = {
 };
 
 export default StatsSystem;
-

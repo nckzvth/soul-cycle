@@ -1,4 +1,5 @@
 import { BALANCE } from "../data/Balance.js";
+import DamageSpecs from "../data/DamageSpecs.js";
 
 function hasTag(spec, tag) {
   return Array.isArray(spec.tags) && spec.tags.includes(tag);
@@ -88,6 +89,8 @@ const DamageSystem = {
   dealDamage(attacker, target, spec, meta = {}) {
     if (!target || target.dead) return { amount: 0, didCrit: false };
 
+    const wasDead = !!target.dead || (typeof target.hp === "number" && target.hp <= 0);
+
     const snapshot = spec.snapshot ? meta.snapshot || this.snapshotOutgoing(attacker, spec, meta.context || {}) : meta.snapshot;
     const { amount, didCrit } = this.computeOutgoing(attacker, target, spec, {
       ...(meta.context || {}),
@@ -102,6 +105,60 @@ const DamageSystem = {
     } else {
       target.hp -= amount;
       if (target.hp <= 0) target.dead = true;
+    }
+
+    // Staff: Soul Circuit (occult upgrade) — killing marked/hexed foes grants "Current".
+    // Kept here to avoid scattering kill math across projectiles/status sources.
+    const nowDead = !!target.dead || (typeof target.hp === "number" && target.hp <= 0);
+    if (!wasDead && nowDead && attacker?.isPlayer) {
+      const weaponCls = attacker?.gear?.weapon?.cls;
+      if (weaponCls === "staff" && (attacker.stats?.staffSoulCircuitEnable || 0) > 0) {
+        const hadMark = !!target?.statuses?.has?.("staff:mark");
+        const hadHex = !!target?.statuses?.has?.("staff:hex");
+        if (hadMark || hadHex) {
+          const cfg = BALANCE.skills?.staff || {};
+          const base = cfg.currentDuration ?? 2.5;
+          const mult = 1 + (attacker.stats?.staffCurrentDurationMult || 0);
+          const duration = Math.max(0, base * mult);
+          attacker.weaponState = attacker.weaponState || {};
+          attacker.weaponState.staff = attacker.weaponState.staff || { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false };
+          const prev = attacker.weaponState.staff.currentTime || 0;
+          attacker.weaponState.staff.currentTime = Math.max(prev, duration);
+          if (attacker.weaponState.staff.currentTime > prev + 1e-9) attacker.weaponState.staff.currentJustGained = true;
+        }
+      }
+    }
+
+    // Hammer: Pyre Burst — burning enemies explode on death (not just on-hit deaths).
+    if (!wasDead && nowDead && attacker?.isPlayer) {
+      const weaponCls = attacker?.gear?.weapon?.cls;
+      if (weaponCls === "hammer" && (attacker.stats?.hammerPyreBurstEnable || 0) > 0) {
+        const burning = !!target?.statuses?.has?.("hammer:burn");
+        const state = meta.state;
+        if (burning && state?.enemies && Array.isArray(state.enemies)) {
+          const cfg = BALANCE.skills?.hammer || {};
+          const vfx = cfg.vfx || {};
+          const heat = attacker.weaponState?.hammer?.heat || 0;
+          const heatMult = 1 + heat * (cfg.forgeHeatCoeffPerStack ?? 0.06);
+          const burstSpecBase = DamageSpecs.hammerPyreBurst();
+          const burstSpec = { ...burstSpecBase, coeff: burstSpecBase.coeff * heatMult };
+          const burstSnapshot = this.snapshotOutgoing(attacker, burstSpec);
+          const radius = cfg.pyreBurstRadius ?? 100;
+
+          if (meta.particles) {
+            meta.particles.emit(target.x, target.y, vfx.pyreColor ?? "rgba(255, 80, 0, 0.9)", vfx.pyreBurstCount ?? 22, vfx.pyreBurstSpeed ?? 220, 3.2, 0.45);
+          }
+
+          state.enemies.forEach(e2 => {
+            if (!e2 || e2.dead) return;
+            const dx = e2.x - target.x;
+            const dy = e2.y - target.y;
+            if (dx * dx + dy * dy < radius * radius) {
+              this.dealDamage(attacker, e2, burstSpec, { state, snapshot: burstSnapshot, particles: meta.particles });
+            }
+          });
+        }
+      }
     }
 
     // Floating combat text (preserve existing behavior from CombatSystem.applyDamage()).
