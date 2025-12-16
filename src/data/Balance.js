@@ -192,16 +192,15 @@ export const BALANCE = {
             windupGainPerSecond: 0.8,
             windupDecayPerSecond: 1.2,
             windupAttackSpeedBonus: 1.2,
-            cycloneDuration: 2.0,
-            // Cyclone should feel distinct from max windup (visual + real cadence boost).
-            cycloneAttackSpeedMult: 1.35,
-            // After Cyclone ends (timer expiry), force a brief cooldown before you can ramp again.
-            cycloneCooldown: 1.25,
-            // Cyclone firing pattern: shoot in all directions (Reaper-style).
+            // Cyclone is a proc: chance on pistol bullet hit to burst a 360° spray.
+            cycloneProcChanceBase: 0.01,
+            cycloneProcWindupBonus: 1.5,
+            cycloneProcIcd: 0.2,
+            cycloneProcWindow: 0.5,
+            // Cyclone burst firing pattern: 360° spray.
             cycloneShotCount: 8,
-            cycloneSpinPerShot: 0.35,
 
-            gustShotsBase: 10,
+            // Gust Spray: triggered on cyclone proc.
             gustRadius: 70,
 
             hexDuration: 3.0,
@@ -214,12 +213,6 @@ export const BALANCE = {
             vortexBudgetRegenPerSecond: 1.0,
 
             vfx: {
-                cycloneColor: "rgba(190, 240, 255, 0.85)",
-                cycloneInterval: 0.08,
-                cycloneCount: 2,
-                cycloneSize: 2.2,
-                cycloneLife: 0.18,
-                cycloneRadius: 20,
                 cycloneBurstColor: "rgba(190, 240, 255, 0.9)",
                 cycloneBurstCount: 18,
                 cycloneTextColor: "rgba(190, 240, 255, 0.95)",

@@ -197,8 +197,11 @@ const DamageSystem = {
       target.vy += Math.sin(a) * kb;
     }
 
-    // Post-hit hook for player procs (e.g., Tithe Engine).
-    if (meta.triggerOnHit !== false && attacker?.onHit && meta.state) attacker.onHit(target, meta.state);
+    // Post-hit hook for player procs (e.g., Tithe Engine, pistol cyclone proc).
+    // Pass hit context so procs can gate on spec/tags without scattering logic.
+    if (meta.triggerOnHit !== false && attacker?.onHit && meta.state) {
+      attacker.onHit(target, meta.state, { spec, meta, result: { amount, didCrit } });
+    }
 
     return { amount, didCrit };
   },

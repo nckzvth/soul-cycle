@@ -30,115 +30,71 @@ const CombatSystem = {
         const spec = DamageSpecs.pistolShot();
 
         const pistolState = player.weaponState?.pistol;
-        const cycloning = !!pistolState && pistolState.cycloneTime > 0;
-        const airLance = cycloning && (player.stats.pistolAirLanceEnable || 0) > 0;
-        const pinball = cycloning && (player.stats.pistolPinballEnable || 0) > 0;
-        const extraPierce = airLance ? 2 : 0;
-        const extraBounce = pinball ? 1 : 0;
-
-        const pierce = (player.stats.pierce ?? player.stats.hexPierce ?? 0) + extraPierce;
-        const bounce = (player.stats.bounce ?? player.stats.hexBounce ?? 0) + extraBounce;
+        const pierce = (player.stats.pierce ?? player.stats.hexPierce ?? 0);
+        const bounce = (player.stats.bounce ?? player.stats.hexBounce ?? 0);
 
         const snapshot = DamageSystem.snapshotOutgoing(player, spec);
 
-        // Cyclone: fire in all directions (Reaper-style).
-        if (cycloning && pistolState) {
-            const cfg = BALANCE.skills?.pistol || {};
-            const count = Math.max(3, cfg.cycloneShotCount ?? 8);
-            const spin = cfg.cycloneSpinPerShot ?? 0.35;
-            const base = pistolState.cycloneAngle || 0;
-            for (let i = 0; i < count; i++) {
-                const shotAngle = base + (i / count) * Math.PI * 2;
-                state.shots.push(new Proj(state, player,
-                    player.x,
-                    player.y,
-                    Math.cos(shotAngle) * BALANCE.player.pistolSpeed,
-                    Math.sin(shotAngle) * BALANCE.player.pistolSpeed,
-                    1.5,
-                    spec,
-                    snapshot,
-                    pierce,
-                    bounce
-                ));
-            }
-            pistolState.cycloneAngle = base + spin;
-        } else {
-            state.shots.push(new Proj(state, player,
-                player.x,
-                player.y,
-                Math.cos(aimAngle) * BALANCE.player.pistolSpeed,
-                Math.sin(aimAngle) * BALANCE.player.pistolSpeed,
-                1.5,
-                spec,
-                snapshot,
-                pierce,
-                bounce
-            ));
-        }
-
-        // Gust Spray: during Cyclone, every N shots emits a small gust hit near the muzzle.
-        if (cycloning && (player.stats.pistolGustEnable || 0) > 0 && pistolState) {
-            pistolState.gustCounter++;
-            const cfg = BALANCE.skills?.pistol || {};
-            const baseShots = cfg.gustShotsBase ?? 10;
-            const rateMult = 1 + (player.stats.pistolGustRateMult || 0);
-            const shotsPerGust = Math.max(3, Math.round(baseShots / rateMult));
-            if (pistolState.gustCounter >= shotsPerGust) {
-                pistolState.gustCounter = 0;
-                const gustSpec = DamageSpecs.pistolGust();
-                const gustSnapshot = DamageSystem.snapshotOutgoing(player, gustSpec);
-                const radius = cfg.gustRadius ?? 70;
-                const gx = player.x + Math.cos(aimAngle) * 60;
-                const gy = player.y + Math.sin(aimAngle) * 60;
-                state.enemies.forEach(e => {
-                    if (e.dead) return;
-                    if (dist2(gx, gy, e.x, e.y) < radius * radius) {
-                        DamageSystem.dealDamage(player, e, gustSpec, { state, snapshot: gustSnapshot, particles: ParticleSystem });
-                    }
-                });
-            }
-        }
+        state.shots.push(new Proj(state, player,
+            player.x,
+            player.y,
+            Math.cos(aimAngle) * BALANCE.player.pistolSpeed,
+            Math.sin(aimAngle) * BALANCE.player.pistolSpeed,
+            1.5,
+            spec,
+            snapshot,
+            pierce,
+            bounce
+        ));
 
         if (player.salvoCharges > 0) {
             player.salvoCharges--;
             setTimeout(() => {
-                if (cycloning && pistolState) {
-                    const cfg = BALANCE.skills?.pistol || {};
-                    const count = Math.max(3, cfg.cycloneShotCount ?? 8);
-                    const spin = cfg.cycloneSpinPerShot ?? 0.35;
-                    const base = pistolState.cycloneAngle || 0;
-                    for (let i = 0; i < count; i++) {
-                        const a2 = base + (i / count) * Math.PI * 2;
-                        state.shots.push(new Proj(state, player,
-                            player.x,
-                            player.y,
-                            Math.cos(a2) * BALANCE.player.pistolSpeed,
-                            Math.sin(a2) * BALANCE.player.pistolSpeed,
-                            1.5,
-                            spec,
-                            snapshot,
-                            pierce,
-                            bounce,
-                            true
-                        ));
-                    }
-                    pistolState.cycloneAngle = base + spin;
-                } else {
-                    const a2 = Math.atan2(w.y - player.y, w.x - player.x);
-                    state.shots.push(new Proj(state, player,
-                        player.x,
-                        player.y,
-                        Math.cos(a2) * BALANCE.player.pistolSpeed,
-                        Math.sin(a2) * BALANCE.player.pistolSpeed,
-                        1.5,
-                        spec,
-                        snapshot,
-                        pierce,
-                        bounce,
-                        true
-                    ));
-                }
+                const a2 = Math.atan2(w.y - player.y, w.x - player.x);
+                state.shots.push(new Proj(state, player,
+                    player.x,
+                    player.y,
+                    Math.cos(a2) * BALANCE.player.pistolSpeed,
+                    Math.sin(a2) * BALANCE.player.pistolSpeed,
+                    1.5,
+                    spec,
+                    snapshot,
+                    pierce,
+                    bounce,
+                    true
+                ));
             }, 100);
+        }
+    },
+
+    firePistolCycloneBurst(player, state) {
+        const cfg = BALANCE.skills?.pistol || {};
+        const count = Math.max(3, cfg.cycloneShotCount ?? 8);
+        const spec = DamageSpecs.pistolShot();
+        const snapshot = DamageSystem.snapshotOutgoing(player, spec);
+
+        const extraPierce = (player.stats.pistolAirLanceEnable || 0) > 0 ? 2 : 0;
+        const extraBounce = (player.stats.pistolPinballEnable || 0) > 0 ? 1 : 0;
+        const pierce = (player.stats.pierce ?? player.stats.hexPierce ?? 0) + extraPierce;
+        const bounce = (player.stats.bounce ?? player.stats.hexBounce ?? 0) + extraBounce;
+
+        // Randomize the ring orientation each proc.
+        const base = Math.random() * Math.PI * 2;
+        for (let i = 0; i < count; i++) {
+            const shotAngle = base + (i / count) * Math.PI * 2;
+            state.shots.push(new Proj(state, player,
+                player.x,
+                player.y,
+                Math.cos(shotAngle) * BALANCE.player.pistolSpeed,
+                Math.sin(shotAngle) * BALANCE.player.pistolSpeed,
+                1.5,
+                spec,
+                snapshot,
+                pierce,
+                bounce,
+                false,
+                { procSource: "pistol:cycloneBurst" }
+            ));
         }
     },
 

@@ -64,7 +64,7 @@ export default class PlayerObj {
 
         // Weapon state (run-reset). Used for "class" mechanics like pistol windup/cyclone.
         this.weaponState = {
-            pistol: { windup: 0, cycloneTime: 0, cooldownTime: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneVfxTimer: 0, justEnteredCyclone: false, cycloneAngle: 0 },
+            pistol: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
             staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
             hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 }
         };
@@ -123,7 +123,7 @@ export default class PlayerObj {
         this.skills.clear();
         this.skillMeta = { exclusive: new Map(), flags: new Set() };
         this.weaponState = {
-            pistol: { windup: 0, cycloneTime: 0, cooldownTime: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneVfxTimer: 0, justEnteredCyclone: false, cycloneAngle: 0 },
+            pistol: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
             staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
             hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 }
         };
@@ -191,30 +191,9 @@ export default class PlayerObj {
     }
 
     updateWeaponStates(dt, scene) {
-        // Pistol: Cyclone VFX feedback (base kit).
         const pistolState = this.weaponState?.pistol;
-        if (pistolState) {
-            const cfg = BALANCE.skills?.pistol || {};
-            const vfx = cfg.vfx || {};
-            if (pistolState.justEnteredCyclone) {
-                pistolState.justEnteredCyclone = false;
-                ParticleSystem.emit(this.x, this.y, vfx.cycloneBurstColor ?? "rgba(190, 240, 255, 0.9)", vfx.cycloneBurstCount ?? 18, 180, 3, 0.4);
-                ParticleSystem.emitText(this.x, this.y - this.r - 16, "CYCLONE", { color: vfx.cycloneTextColor ?? "rgba(190, 240, 255, 0.95)", size: 14, life: 0.7 });
-            }
-
-            if (pistolState.cycloneTime > 0) {
-                pistolState.cycloneVfxTimer -= dt;
-                if (pistolState.cycloneVfxTimer <= 0) {
-                    pistolState.cycloneVfxTimer = vfx.cycloneInterval ?? 0.08;
-                    const radius = vfx.cycloneRadius ?? 20;
-                    const x = this.x + (Math.random() - 0.5) * radius * 2;
-                    const y = this.y + (Math.random() - 0.5) * radius * 2;
-                    ParticleSystem.emit(x, y, vfx.cycloneColor ?? "rgba(190, 240, 255, 0.85)", vfx.cycloneCount ?? 2, 0, vfx.cycloneSize ?? 2.2, vfx.cycloneLife ?? 0.18, null, { anchoredTo: this });
-                }
-            } else {
-                pistolState.cycloneVfxTimer = 0;
-            }
-        }
+        if (pistolState && pistolState.cycloneProcCd > 0) pistolState.cycloneProcCd = Math.max(0, pistolState.cycloneProcCd - dt);
+        if (pistolState && pistolState.cycloneWindowTime > 0) pistolState.cycloneWindowTime = Math.max(0, pistolState.cycloneWindowTime - dt);
 
         // Hammer forge heat (keystone): build heat while any enemy is burning from hammer.
         const hammerState = this.weaponState?.hammer;
@@ -395,42 +374,12 @@ export default class PlayerObj {
             const skillsCfg = BALANCE.skills?.pistol || {};
             const gainBase = skillsCfg.windupGainPerSecond ?? 0.8;
             const decayBase = skillsCfg.windupDecayPerSecond ?? 1.2;
-            const cycloneBase = skillsCfg.cycloneDuration ?? 2.0;
-            const cycloneCooldown = skillsCfg.cycloneCooldown ?? 1.25;
 
             const gainMult = 1 + (this.stats.pistolWindupGainMult || 0);
             const decayMult = Math.max(0.05, 1 + (this.stats.pistolWindupDecayMult || 0));
-            const cycloneMult = 1 + (this.stats.pistolCycloneDurationMult || 0);
 
-            if (pistolState.cooldownTime > 0) {
-                pistolState.cooldownTime = Math.max(0, pistolState.cooldownTime - dt);
-                // Cooling: windup is suppressed to prevent immediate re-entry.
-                pistolState.windup = 0;
-            }
-
-            if (pistolState.cycloneTime > 0) {
-                pistolState.cycloneTime -= dt;
-                // If you let go, cyclone drains faster.
-                if (!firingPistol) pistolState.cycloneTime -= dt;
-                pistolState.windup = 1;
-                if (pistolState.cycloneTime <= 0) {
-                    pistolState.cycloneTime = 0;
-                    pistolState.windup = 0.75; // soft landing
-                    pistolState.cooldownTime = Math.max(pistolState.cooldownTime || 0, cycloneCooldown);
-                    ParticleSystem.emitText(this.x, this.y - this.r - 16, "COOLING", { color: skillsCfg?.vfx?.cooldownTextColor ?? "rgba(200, 200, 200, 0.95)", size: 13, life: 0.7 });
-                }
-            } else {
-                if (firingPistol && pistolState.cooldownTime <= 0) pistolState.windup = Math.min(1, pistolState.windup + dt * gainBase * gainMult);
-                else pistolState.windup = Math.max(0, pistolState.windup - dt * decayBase * decayMult);
-
-                // Enter cyclone on full windup while firing.
-                if (firingPistol && pistolState.cooldownTime <= 0 && pistolState.windup >= 1) {
-                    pistolState.cycloneTime = cycloneBase * cycloneMult;
-                    pistolState.windup = 1;
-                    pistolState.gustCounter = 0;
-                    pistolState.justEnteredCyclone = true;
-                }
-            }
+            if (firingPistol) pistolState.windup = Math.min(1, pistolState.windup + dt * gainBase * gainMult);
+            else pistolState.windup = Math.max(0, pistolState.windup - dt * decayBase * decayMult);
 
             // Reaper's Vortex chaining budget (occult keystone limiter).
             if ((this.stats.pistolReapersVortexEnable || 0) > 0) {
@@ -506,9 +455,7 @@ export default class PlayerObj {
             if (usingPistol && pistolState) {
                 const skillsCfg = BALANCE.skills?.pistol || {};
                 const windupBonus = skillsCfg.windupAttackSpeedBonus ?? 2.0; // at full windup: +200%
-                const cycloneMult = skillsCfg.cycloneAttackSpeedMult ?? 1.0;
-                const cyclone = pistolState.cycloneTime > 0;
-                const mult = (1 + pistolState.windup * windupBonus) * (cyclone ? cycloneMult : 1);
+                const mult = (1 + pistolState.windup * windupBonus);
                 attackSpeed *= mult;
             }
             let rate = BALANCE.player.pistolBaseRate / attackSpeed;
@@ -638,12 +585,60 @@ export default class PlayerObj {
         }
     }
 
-    onHit(target, state) {
+    onHit(target, state, hit) {
         // --- Weapon upgrade hooks (keep phials independent) ---
         const weapon = this.gear.weapon;
         if (weapon?.cls === "pistol") {
             const skillsCfg = BALANCE.skills?.pistol || {};
             const pistolState = this.weaponState?.pistol;
+            const spec = hit?.spec;
+            const meta = hit?.meta || {};
+
+            // Cyclone proc: chance on pistol bullet hits (not from Cyclone-burst bullets).
+            const isPistolBullet =
+                !!spec &&
+                Array.isArray(spec.tags) &&
+                spec.tags.includes("pistol") &&
+                spec.tags.includes("projectile");
+            if (isPistolBullet && meta.procSource !== "pistol:cycloneBurst" && pistolState && pistolState.cycloneProcCd <= 0) {
+                const base = skillsCfg.cycloneProcChanceBase ?? 0.01;
+                const add = this.stats.pistolCycloneProcChanceAdd || 0;
+                const mult = 1 + (this.stats.pistolCycloneProcChanceMult || 0);
+                const windupBonus = skillsCfg.cycloneProcWindupBonus ?? 1.5; // at full windup: +150% chance
+
+                let chance = (base + add) * mult;
+                chance *= (1 + (pistolState.windup || 0) * windupBonus);
+                chance = Math.max(0, Math.min(1, chance));
+
+                if (Math.random() < chance) {
+                    const icd = skillsCfg.cycloneProcIcd ?? 0.2;
+                    pistolState.cycloneProcCd = icd;
+                    pistolState.cycloneWindowTime = skillsCfg.cycloneProcWindow ?? 0.5;
+
+                    // Burst VFX
+                    const vfx = skillsCfg.vfx || {};
+                    ParticleSystem.emit(this.x, this.y, vfx.cycloneBurstColor ?? "rgba(190, 240, 255, 0.9)", vfx.cycloneBurstCount ?? 18, 180, 3, 0.4);
+                    ParticleSystem.emitText(this.x, this.y - this.r - 16, "CYCLONE", { color: vfx.cycloneTextColor ?? "rgba(190, 240, 255, 0.95)", size: 14, life: 0.7 });
+
+                    // Spawn the 360° spray.
+                    state?.combatSystem?.firePistolCycloneBurst?.(this, state);
+
+                    // Gust Spray (upgrade): cyclone bursts also emit a gust hit.
+                    if ((this.stats.pistolGustEnable || 0) > 0) {
+                        const gustSpecBase = DamageSpecs.pistolGust();
+                        const coeffMult2 = 1 + (this.stats.pistolGustRateMult || 0);
+                        const gustSpec = { ...gustSpecBase, coeff: gustSpecBase.coeff * coeffMult2 };
+                        const gustSnapshot = DamageSystem.snapshotOutgoing(this, gustSpec);
+                        const radius = skillsCfg.gustRadius ?? 70;
+                        state?.enemies?.forEach(e => {
+                            if (e.dead) return;
+                            if (dist2(this.x, this.y, e.x, e.y) < radius * radius) {
+                                DamageSystem.dealDamage(this, e, gustSpec, { state, snapshot: gustSnapshot, particles: ParticleSystem, triggerOnHit: false });
+                            }
+                        });
+                    }
+                }
+            }
 
             // Apply Hex on pistol hits.
             if ((this.stats.pistolHexEnable || 0) > 0) {
@@ -691,7 +686,7 @@ export default class PlayerObj {
                         });
 
                         // Vortex: chain one additional pop to a nearby hexed enemy (budget-limited).
-                        if (vortexEnabled && pistolState && pistolState.cycloneTime > 0 && pistolState.vortexBudget > 0) {
+                        if (vortexEnabled && pistolState && pistolState.cycloneWindowTime > 0 && pistolState.vortexBudget > 0) {
                             const chainRadius = skillsCfg.vortexChainRadius ?? 220;
                             let best = null, bestD2 = chainRadius * chainRadius;
                             stState?.enemies?.forEach(e => {
@@ -716,13 +711,13 @@ export default class PlayerObj {
                 });
             }
 
-            // Soul Pressure: hitting hexed targets sustains windup/cyclone.
+            // Soul Pressure: hitting hexed targets sustains windup / extends the post-proc window.
             if ((this.stats.pistolSoulPressureEnable || 0) > 0 && pistolState && StatusSystem.hasStatus(target, "pistol:hex")) {
                 const sustainMult = 1 + (this.stats.pistolCycloneSustainMult || 0);
                 const windupGain = (skillsCfg.soulPressureWindupOnHit ?? 0.08) * sustainMult;
-                const cycloneExtend = (skillsCfg.soulPressureCycloneExtend ?? 0.08) * sustainMult;
-                if (pistolState.cycloneTime > 0) pistolState.cycloneTime += cycloneExtend;
-                else pistolState.windup = Math.min(1, pistolState.windup + windupGain);
+                const windowExtend = (skillsCfg.soulPressureCycloneExtend ?? 0.08) * sustainMult;
+                pistolState.windup = Math.min(1, pistolState.windup + windupGain);
+                if (pistolState.cycloneWindowTime > 0) pistolState.cycloneWindowTime += windowExtend;
             }
         }
 

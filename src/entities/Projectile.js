@@ -349,7 +349,7 @@ export class FireTrail {
 }
 
 export class Projectile {
-    constructor(state, player, x, y, vx, vy, life, spec, snapshot, pierce = 0, bounce = 0, isSalvo = false) {
+    constructor(state, player, x, y, vx, vy, life, spec, snapshot, pierce = 0, bounce = 0, isSalvo = false, hitMeta = null) {
         this.state = state;
         this.player = player;
         this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.life = life;
@@ -357,13 +357,14 @@ export class Projectile {
         this.snapshot = snapshot;
         this.pierce = pierce; this.bounce = bounce; this.hitList = [];
         this.isSalvo = isSalvo;
+        this.hitMeta = hitMeta;
     }
     update(dt) {
         this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt;
         // Collision
         for (let e of this.state.enemies) {
             if (!e.dead && !this.hitList.includes(e) && dist2(this.x, this.y, e.x, e.y) < (15 + e.r) ** 2) {
-                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, ...(this.hitMeta || {}) });
                 this.hitList.push(e);
                 if (this.pierce > 0) this.pierce--;
                 else if (this.bounce > 0) {
