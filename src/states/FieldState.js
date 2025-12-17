@@ -48,59 +48,36 @@ function drawPill(ctx, x, y, width, height, radius, text) {
     ctx.fillText(text, x + width / 2, y + height / 2);
 }
 
-function drawObjectiveArrow(ctx, w, angle, pulse, label, dist) {
-    const cx = w / 2;
-    const cy = 95;
-    const size = 16 + 6 * pulse;
-    const alpha = 0.5 + 0.5 * pulse;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "rgba(215, 196, 138, 0.95)";
-    ctx.beginPath();
-    ctx.moveTo(size, 0);
-    ctx.lineTo(-size * 0.6, size * 0.6);
-    ctx.lineTo(-size * 0.6, -size * 0.6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.fillStyle = `rgba(255,255,255,${0.55 + 0.35 * pulse})`;
-    ctx.font = '14px sans-serif';
-    ctx.textAlign = 'center';
-    const d = typeof dist === "number" ? ` (${Math.round(dist)}m)` : "";
-    ctx.fillText(`${label}${d}`, cx, cy + 26);
-    ctx.restore();
+function smooth01(dt, smoothTime) {
+    const st = Math.max(0.0001, smoothTime);
+    return 1 - Math.exp(-dt / st);
 }
 
-function drawBountyArrow(ctx, w, angle, pulse, label, dist) {
-    const cx = w / 2;
-    const cy = 140;
-    const size = 14 + 6 * pulse;
-    const alpha = 0.4 + 0.6 * pulse;
+function wrapAngle(a) {
+    const tau = Math.PI * 2;
+    let x = a % tau;
+    if (x < -Math.PI) x += tau;
+    if (x > Math.PI) x -= tau;
+    return x;
+}
 
+function smoothAngle(current, target, t) {
+    const delta = wrapAngle(target - current);
+    return current + delta * t;
+}
+
+function drawWorldArrow(ctx, screenPos, angle, baseSize, color, alpha) {
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(screenPos.x, screenPos.y);
     ctx.rotate(angle);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = "rgba(255, 140, 60, 0.95)";
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(size, 0);
-    ctx.lineTo(-size * 0.6, size * 0.6);
-    ctx.lineTo(-size * 0.6, -size * 0.6);
+    ctx.moveTo(baseSize, 0);
+    ctx.lineTo(-baseSize * 0.6, baseSize * 0.55);
+    ctx.lineTo(-baseSize * 0.6, -baseSize * 0.55);
     ctx.closePath();
     ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.fillStyle = `rgba(255,200,160,${0.55 + 0.35 * pulse})`;
-    ctx.font = '13px sans-serif';
-    ctx.textAlign = 'center';
-    const d = typeof dist === "number" ? ` (${Math.round(dist)}m)` : "";
-    ctx.fillText(`${label}${d}`, cx, cy + 22);
     ctx.restore();
 }
 
@@ -159,6 +136,11 @@ class FieldState extends State {
         this.chargerPacks = [];
         this.nextChargerPackId = 1;
         this.chargerPackCooldown = 0;
+
+        this.indicators = {
+            objective: { x: 0, y: 0, angle: 0, alpha: 0, targetKey: null },
+            bounty: { x: 0, y: 0, angle: 0, alpha: 0, targetKey: null },
+        };
     }
 
     enter() {
@@ -246,6 +228,8 @@ class FieldState extends State {
                 this.objectiveTarget = null;
             }
         }
+
+        this.updateIndicators(dt);
 
         // Wave milestone cadence (reserved for future rewards).
         if (waveConfig && !this.fieldBoss) {
@@ -536,6 +520,91 @@ class FieldState extends State {
         }
     }
 
+    updateIndicators(dt) {
+        const cfg = BALANCE?.progression?.indicators || {};
+        const canvas = this.game.canvas;
+        const w = canvas?.width || 0;
+        const h = canvas?.height || 0;
+
+        const camera = {
+            left: this.p.x - w / 2,
+            right: this.p.x + w / 2,
+            top: this.p.y - h / 2,
+            bottom: this.p.y + h / 2,
+        };
+
+        const updateOne = (key, target, label, ringRadius, showDist) => {
+            const ind = this.indicators[key];
+            const posT = smooth01(dt, cfg.positionSmoothTime ?? 0.12);
+            const rotT = smooth01(dt, cfg.rotationSmoothTime ?? 0.10);
+            const fadeT = smooth01(dt, cfg.fadeSmoothTime ?? 0.18);
+
+            if (!target || typeof target.x !== "number" || typeof target.y !== "number") {
+                ind.alpha += (0 - ind.alpha) * fadeT;
+                return;
+            }
+
+            const dx = target.x - this.p.x;
+            const dy = target.y - this.p.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < 1e-6) {
+                ind.alpha += (0 - ind.alpha) * fadeT;
+                return;
+            }
+
+            const dist = Math.sqrt(d2);
+            const show = dist > showDist;
+            let desiredAlpha = show ? 1.0 : 0.0;
+
+            // Fade down if target is already on-screen (still leave a hint).
+            const onScreen =
+                target.x >= camera.left && target.x <= camera.right &&
+                target.y >= camera.top && target.y <= camera.bottom;
+            if (onScreen) desiredAlpha *= (cfg.onScreenFadeMult ?? 0.25);
+
+            // Retargeting: snap position/rotation, fade only (no "move from last place").
+            const targetKey = `${label}:${Math.round(target.x)}:${Math.round(target.y)}`;
+            const didRetarget = ind.targetKey !== targetKey;
+            ind.targetKey = targetKey;
+
+            const inv = 1 / (dist || 1);
+            const dirX = dx * inv;
+            const dirY = dy * inv;
+            const desiredX = this.p.x + dirX * ringRadius;
+            const desiredY = this.p.y + dirY * ringRadius - 18; // lift above feet
+
+            const desiredAngle = Math.atan2(dirY, dirX);
+            const snappingIn = ind.alpha < 0.05 && desiredAlpha > 0.15;
+            if (snappingIn || didRetarget) {
+                ind.x = desiredX;
+                ind.y = desiredY;
+                ind.angle = desiredAngle;
+            } else {
+                ind.x += (desiredX - ind.x) * posT;
+                ind.y += (desiredY - ind.y) * posT;
+                ind.angle = smoothAngle(ind.angle, desiredAngle, rotT);
+            }
+
+            ind.alpha += (desiredAlpha - ind.alpha) * fadeT;
+        };
+
+        // Objective priority: dungeon portal > shrine/chest objectiveTarget.
+        let objTarget = null;
+        let objLabel = "Objective";
+        if (this.dungeonPortal) {
+            objTarget = { x: this.dungeonPortal.x, y: this.dungeonPortal.y };
+            objLabel = "Dungeon";
+        } else if (this.objectiveTarget) {
+            objTarget = { x: this.objectiveTarget.x, y: this.objectiveTarget.y };
+            objLabel = this.objectiveTarget.label || "Objective";
+        }
+
+        const bountyTarget = this.bounty ? { x: this.bounty.x, y: this.bounty.y } : null;
+
+        updateOne("objective", objTarget, objLabel, cfg.objectiveRingRadius ?? 120, cfg.objectiveShowDistance ?? 250);
+        updateOne("bounty", bountyTarget, "Bounty", cfg.bountyRingRadius ?? 150, cfg.bountyShowDistance ?? 300);
+    }
+
     spawnChargerPack(x, y) {
         const cfg = BALANCE?.progression?.fieldEvents?.chargerPack || {};
         if ((this.chargerPackCooldown || 0) > 0) return;
@@ -747,27 +816,16 @@ class FieldState extends State {
             ctx.restore();
         }
 
-        // Objective compass arrow (always points to active objective).
-        if (this.objectiveTarget) {
-            const ox = this.objectiveTarget.x;
-            const oy = this.objectiveTarget.y;
-            const dx = ox - p.x;
-            const dy = oy - p.y;
-            const angle = Math.atan2(dy, dx);
-            const dist = Math.sqrt(dx * dx + dy * dy) / 50;
-            const pulse = Math.sin(this.game.time * 4.0) * 0.5 + 0.5;
-            drawObjectiveArrow(ctx, w, angle, pulse, this.objectiveTarget.label, dist);
-        }
+        // World-space indicators (player-anchored ring, smoothed in update).
+        const renderIndicator = (ind, color, baseSize) => {
+            if (!ind || ind.alpha <= 0.02) return;
+            const world = { x: ind.x, y: ind.y };
+            const sp = s(world.x, world.y);
+            drawWorldArrow(ctx, sp, ind.angle, baseSize, color, ind.alpha);
+        };
 
-        // Bounty arrow (separate from objective arrow).
-        if (this.bounty && !this.fieldBoss) {
-            const dx = this.bounty.x - p.x;
-            const dy = this.bounty.y - p.y;
-            const angle = Math.atan2(dy, dx);
-            const dist = Math.sqrt(dx * dx + dy * dy) / 50;
-            const pulse = Math.sin(this.game.time * 4.3) * 0.5 + 0.5;
-            drawBountyArrow(ctx, w, angle, pulse, "Bounty", dist);
-        }
+        renderIndicator(this.indicators?.objective, "rgba(215, 196, 138, 0.95)", 13);
+        renderIndicator(this.indicators?.bounty, "rgba(255, 140, 60, 0.95)", 12);
 
         const gaugeX = w / 2 - 100;
         const gaugeY = h - 30;

@@ -48,6 +48,25 @@ export const BALANCE = {
             attractSpeedMult: 3.0,
             eliteDropChance: 0.0075,
         },
+        indicators: {
+            // World-space ring around the player.
+            objectiveRingRadius: 120,
+            bountyRingRadius: 150,
+            // Hide/fade when close enough.
+            objectiveShowDistance: 250,
+            bountyShowDistance: 300,
+            // Smoothing (seconds to converge).
+            positionSmoothTime: 0.12,
+            rotationSmoothTime: 0.10,
+            fadeSmoothTime: 0.18,
+            // Animation (keep at 0 for clear compass-style indicators).
+            bobAmplitude: 0,
+            bobSpeed: 0,
+            pulseAmount: 0,
+            pulseSpeed: 0,
+            // If target is on-screen, reduce alpha to declutter.
+            onScreenFadeMult: 0.25,
+        },
         fieldObjectives: {
             // Spawn events during Field waves (not during the Field Boss gate).
             shrine: {
