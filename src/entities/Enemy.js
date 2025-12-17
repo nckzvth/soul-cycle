@@ -228,6 +228,38 @@ export class Charger extends Enemy {
     }
 
     performAI(dt, player, fieldState) {
+        // Formation packs: used for bat-pack style chargers (synced charge cadence).
+        if (this.packId && fieldState?.chargerPacks && Array.isArray(fieldState.chargerPacks)) {
+            const pack = fieldState.chargerPacks.find(p => p && p.id === this.packId);
+            if (pack) {
+                if (pack.phase === "charge") {
+                    this.applyFriction = false;
+                    if (this.packChargeSeq !== pack.chargeSeq) {
+                        this.packChargeSeq = pack.chargeSeq;
+                        const a = pack.chargeAngle ?? Math.atan2(player.y - this.y, player.x - this.x);
+                        const spd = pack.chargeSpeed ?? BALANCE.enemies.charger.dashSpeed;
+                        this.vx = Math.cos(a) * spd;
+                        this.vy = Math.sin(a) * spd;
+                        // Light telegraph for the pack cadence.
+                        Telegraph.create(this.x, this.y, 20, 500, 0.25, 'rect', a + Math.PI / 2);
+                    }
+                    return;
+                }
+
+                // Formation mode: spring toward assigned offset around pack anchor.
+                this.applyFriction = true;
+                const off = this.packOffset || { x: 0, y: 0 };
+                const tx = (pack.x ?? this.x) + off.x;
+                const ty = (pack.y ?? this.y) + off.y;
+                const dx = tx - this.x;
+                const dy = ty - this.y;
+                const stiffness = pack.stiffness ?? 7.0;
+                this.vx += dx * stiffness * dt;
+                this.vy += dy * stiffness * dt;
+                return;
+            }
+        }
+
         let dx = player.x - this.x, dy = player.y - this.y;
         let dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
@@ -301,6 +333,27 @@ export class Spitter extends Enemy {
     }
 
     performAI(dt, player, fieldState) {
+        // Bounty pattern: orbiting ring that shoots on cadence.
+        if (this.orbit && typeof this.orbit.cx === "number" && typeof this.orbit.cy === "number") {
+            const o = this.orbit;
+            const omega = o.omega ?? 1.35;
+            o.angle = (o.angle ?? 0) + omega * dt;
+            const tx = o.cx + Math.cos(o.angle) * (o.radius ?? 220);
+            const ty = o.cy + Math.sin(o.angle) * (o.radius ?? 220);
+            const dx = tx - this.x;
+            const dy = ty - this.y;
+            this.vx += dx * 6.0 * dt;
+            this.vy += dy * 6.0 * dt;
+
+            this.orbitShootCd = (this.orbitShootCd ?? 0) - dt;
+            if (this.orbitShootCd <= 0) {
+                this.orbitShootCd = o.shootInterval ?? 2.4;
+                const a = Math.atan2(player.y - this.y, player.x - this.x);
+                fieldState.shots.push(new EnemyProjectile(this.x, this.y, a, this.isBuffed, this.level));
+            }
+            return;
+        }
+
         let dx = player.x - this.x, dy = player.y - this.y;
         let dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
@@ -321,10 +374,10 @@ export class Spitter extends Enemy {
             if (this.isElite) {
                 for (let i = 0; i < 8; i++) {
                     let angle = a + (i - 3.5) * 0.1;
-                    fieldState.shots.push(new EnemyProjectile(this.x, this.y, angle, this.isBuffed, player.lvl));
+                    fieldState.shots.push(new EnemyProjectile(this.x, this.y, angle, this.isBuffed, this.level));
                 }
             } else {
-                fieldState.shots.push(new EnemyProjectile(this.x, this.y, a, this.isBuffed, player.lvl));
+                fieldState.shots.push(new EnemyProjectile(this.x, this.y, a, this.isBuffed, this.level));
             }
         }
     }

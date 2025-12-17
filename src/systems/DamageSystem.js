@@ -13,6 +13,13 @@ function roundDamage(value) {
   return Math.round(value);
 }
 
+function getCombatBuffMult(attacker, key) {
+  const buffs = attacker?.combatBuffs;
+  if (!buffs) return 1.0;
+  const v = buffs[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : 1.0;
+}
+
 const DamageSystem = {
   /**
    * Computes outgoing damage using a single canonical order.
@@ -37,6 +44,7 @@ const DamageSystem = {
       if (typeof context.dt === "number") amount *= context.dt;
 
       amount *= attackerStats.powerMult ?? 1.0;
+      amount *= getCombatBuffMult(attacker, "powerMult");
       if (hasTag(spec, "dot")) amount *= attackerStats.dotMult ?? 1.0;
       if (hasTag(spec, "aoe")) amount *= attackerStats.aoeMult ?? 1.0;
 
@@ -72,6 +80,7 @@ const DamageSystem = {
     if (typeof context.dt === "number") amount *= context.dt;
 
     amount *= attackerStats.powerMult ?? 1.0;
+    amount *= getCombatBuffMult(attacker, "powerMult");
     if (hasTag(spec, "dot")) amount *= attackerStats.dotMult ?? 1.0;
     if (hasTag(spec, "aoe")) amount *= attackerStats.aoeMult ?? 1.0;
 

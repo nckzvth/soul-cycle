@@ -1,4 +1,124 @@
 export const BALANCE = {
+    progression: {
+        field: {
+            durationSec: 900,
+            dungeonDecisionSec: 30,
+        },
+        dungeon: {
+            durationSec: 300,
+            scoreThresholds: [120, 260, 420],
+        },
+        xp: {
+            // Goal: ~level 10 around 15 minutes with normal play.
+            reqBase: 15,
+            reqGrowth: 1.27,
+            basePerKill: 0.28,
+            // Early field pacing: start faster then taper into the main curve.
+            earlyFieldMultStart: 1.45,
+            earlyFieldMultEnd: 1.0,
+            earlyFieldMultDurationSec: 240,
+            // Diminish XP when kill rate is very high to break the spawn→XP feedback loop.
+            killRateThreshold: 2.5, // kills/sec before diminishing
+            diminishK: 0.18,
+            diminishP: 1.3,
+            minMult: 0.2,
+        },
+        enemyTier: {
+            base: 1,
+            perWave: 1.0,
+            perMinute: 0.75,
+            dungeonBase: 10,
+            dungeonPerMinute: 1.5,
+        },
+        director: {
+            // Limit how far kill-rate can push desired alive enemies over baseline.
+            desiredBonusCap: 40,
+            killRateExponent: 0.6,
+        },
+        healOrbs: {
+            eliteDropChance: 0.45,
+            nonEliteDropChance: 0.05,
+            healPctMaxHp: 0.20,
+            highHpThreshold: 0.80,
+            highHpChanceMult: 0.25,
+        },
+        soulMagnet: {
+            durationSec: 6.0,
+            attractRadius: 5000,
+            attractSpeedMult: 3.0,
+        },
+        fieldObjectives: {
+            // Spawn events during Field waves (not during the Field Boss gate).
+            shrine: {
+                cooldownSec: 75,
+                spawnMinSec: 35,
+                spawnChancePerRoll: 0.85,
+                // Distance ring around player.
+                minSpawnRadius: 420,
+                maxSpawnRadius: 680,
+                // Effect
+                hpSacrificePctMax: 0.10,
+                powerMult: 1.30,
+                durationSec: 20,
+            },
+            chest: {
+                cooldownSec: 120,
+                spawnMinSec: 50,
+                spawnChancePerRoll: 0.20,
+                minSpawnRadius: 450,
+                maxSpawnRadius: 750,
+                // Reward
+                bonusSouls: 25,
+                bonusPhialShards: 2,
+            },
+        },
+        fieldEvents: {
+            bounty: {
+                cooldownSec: 70,
+                spawnMinSec: 40,
+                spawnChancePerRoll: 0.55,
+                minSpawnRadius: 420,
+                maxSpawnRadius: 780,
+                durationSec: 20,
+                // Encounter
+                pattern: "orbitingSpitters",
+                orbitingSpitters: {
+                    ringCount: 8,
+                    ringRadius: 220,
+                    angularSpeed: 1.35, // radians/sec
+                    shootIntervalSec: 2.4,
+                },
+                // Rewards (spawned at bounty center on success)
+                rewardHealthOrbs: 1,
+                rewardPhialShards: 1,
+                rewardSoulOrbs: 18,
+            },
+            chargerPack: {
+                // If a charger would spawn, chance to spawn a formation pack instead.
+                chanceOnChargerSpawn: 1.0,
+                size: 6,
+                // Formation behavior
+                formSpeed: 520,
+                stiffness: 7.0,
+                // Charge cadence
+                chargeIntervalSec: 2.4,
+                chargeDurationSec: 0.55,
+                chargeSpeed: 1050,
+            },
+        },
+        softCaps: {
+            attackSpeed: 3.0,
+            powerMult: 3.0,
+            area: 2.5,
+            chainRangeMult: 2.0,
+            pierce: 6,
+            bounce: 4,
+        },
+        phials: {
+            maxStacks: 6,
+        },
+    },
+
     perks: {
         soulBlast: {
             vfx: {
@@ -164,7 +284,7 @@ export const BALANCE = {
         // Per-wave configuration
         sequence: [
             { // Wave 1
-                duration: 60,
+                duration: 180,
                 baseAlive: 3, // Reduced from 10
                 bufferSeconds: 3,
                 maxAlive: 50,
@@ -174,7 +294,7 @@ export const BALANCE = {
                 ]
             },
             { // Wave 2
-                duration: 60,
+                duration: 180,
                 baseAlive: 8, // Reduced from 15
                 bufferSeconds: 4,
                 maxAlive: 80,
@@ -184,7 +304,7 @@ export const BALANCE = {
                 ]
             },
             { // Wave 3
-                duration: 60,
+                duration: 180,
                 baseAlive: 12, // Reduced from 20
                 bufferSeconds: 5,
                 maxAlive: 100,
@@ -194,7 +314,7 @@ export const BALANCE = {
                 ]
             },
             { // Wave 4
-                duration: 60,
+                duration: 180,
                 baseAlive: 16, // Reduced from 25
                 bufferSeconds: 5,
                 maxAlive: 120,
@@ -204,7 +324,7 @@ export const BALANCE = {
                 ]
             },
             { // Wave 5
-                duration: 60,
+                duration: 180,
                 baseAlive: 20, // Reduced from 30
                 bufferSeconds: 6,
                 maxAlive: 150,
@@ -214,6 +334,13 @@ export const BALANCE = {
                 ]
             }
         ]
+    },
+
+    fieldBoss: {
+        hp: 3500,
+        radius: 34,
+        phase1: { attackInterval: 2.0, projectileCount: 10, projectileSpeed: 220, projectileDamage: 12 },
+        phase2: { attackInterval: 1.2, projectileCount: 18, projectileSpeed: 240, projectileDamage: 14 }
     },
 
     enemies: {

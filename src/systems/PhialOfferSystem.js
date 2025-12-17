@@ -1,4 +1,5 @@
 import { Phials } from "../data/Phials.js";
+import { BALANCE } from "../data/Balance.js";
 
 function pickRandom(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return null;
@@ -18,13 +19,20 @@ function getOwnedPhialIds(player) {
   return Array.from(player.phials.keys());
 }
 
+function isCapped(player, id) {
+  const cap = BALANCE?.progression?.phials?.maxStacks;
+  if (typeof cap !== "number" || !Number.isFinite(cap)) return false;
+  const stacks = typeof player?.getPhialStacks === "function" ? player.getPhialStacks(id) : (player?.phials?.get(id) || 0);
+  return stacks >= cap;
+}
+
 const PhialOfferSystem = {
   getPhialOffers(player, count = 3) {
     const allIds = Object.values(Phials).map(p => p.id);
     const owned = getOwnedPhialIds(player);
     const ownedSet = new Set(owned);
     let newPool = allIds.filter(id => !ownedSet.has(id));
-    let upgradePool = owned.slice();
+    let upgradePool = owned.filter(id => !isCapped(player, id));
 
     const offers = [];
     const haveThree = owned.length >= 3;
@@ -59,4 +67,3 @@ const PhialOfferSystem = {
 };
 
 export default PhialOfferSystem;
-

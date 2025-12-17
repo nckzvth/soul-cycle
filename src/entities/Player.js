@@ -11,6 +11,7 @@ import StatsSystem from "../systems/StatsSystem.js";
 import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import StatusSystem from "../systems/StatusSystem.js";
+import ProgressionSystem from "../systems/ProgressionSystem.js";
 
 export default class PlayerObj {
     constructor() {
@@ -68,6 +69,11 @@ export default class PlayerObj {
         this.titheCharges = 0;
         this.titheChargeGainedTimer = 0;
 
+        // Temporary buffs
+        this.soulMagnetTimer = 0;
+        this.combatBuffs = { powerMult: 1.0 };
+        this.combatBuffTimers = { powerMult: 0 };
+
         // Weapon state (run-reset). Used for "class" mechanics like pistol windup/cyclone.
         this.weaponState = {
             pistol: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
@@ -103,7 +109,12 @@ export default class PlayerObj {
         if (!this.phials.has(id)) {
             this.phials.set(id, 0);
         }
-        this.phials.set(id, this.phials.get(id) + 1);
+        const maxStacks = BALANCE?.progression?.phials?.maxStacks;
+        const current = this.phials.get(id) || 0;
+        if (typeof maxStacks === "number" && Number.isFinite(maxStacks) && current >= maxStacks) {
+            return;
+        }
+        this.phials.set(id, current + 1);
         this.recentPhialGains.set(id, 1.0); // Start pop animation timer (1.0s)
     }
 
@@ -170,6 +181,11 @@ export default class PlayerObj {
 
         // 3. Cooldowns & Regen
         if (this.atkCd > 0) this.atkCd -= dt;
+        if (this.soulMagnetTimer > 0) this.soulMagnetTimer = Math.max(0, this.soulMagnetTimer - dt);
+        if (this.combatBuffTimers.powerMult > 0) {
+            this.combatBuffTimers.powerMult = Math.max(0, this.combatBuffTimers.powerMult - dt);
+            if (this.combatBuffTimers.powerMult <= 0) this.combatBuffs.powerMult = 1.0;
+        }
         if (this.dashCharges < BALANCE.player.baseDashCharges) {
             this.dashRechargeTimer += dt;
             if (this.dashRechargeTimer >= BALANCE.player.dashRechargeTime) {
@@ -563,7 +579,7 @@ export default class PlayerObj {
     
     giveXp(n) {
         this.xp += n;
-        let req = Math.floor(10 * Math.pow(1.2, this.lvl - 1));
+        let req = ProgressionSystem.getXpRequired(this.lvl);
         while (this.xp >= req) {
             this.xp -= req;
             this.lvl++;
@@ -573,7 +589,7 @@ export default class PlayerObj {
             this.hp = this.hpMax;
             UI.toast("LEVEL UP!");
             this.recalc();
-            req = Math.floor(10 * Math.pow(1.2, this.lvl - 1));
+            req = ProgressionSystem.getXpRequired(this.lvl);
             
             // Trigger VFX
             ParticleSystem.emit(this.x, this.y, 'gold', 20, 150, 4, 1.5);

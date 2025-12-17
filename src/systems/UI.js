@@ -5,6 +5,7 @@ import { Phials } from "../data/Phials.js";
 import { BALANCE } from "../data/Balance.js";
 import SkillOfferSystem from "./SkillOfferSystem.js";
 import PhialOfferSystem from "./PhialOfferSystem.js";
+import ProgressionSystem from "./ProgressionSystem.js";
 
 const UI = {
     dirty: true,
@@ -55,7 +56,7 @@ const UI = {
 
         document.getElementById("uiLvl").innerText = p.lvl;
         document.getElementById("uiSouls").innerText = p.souls;
-        const xpRequired = Math.floor(12 * Math.pow(1.2, p.lvl - 1));
+        const xpRequired = ProgressionSystem.getXpRequired(p.lvl);
         const xpProgress = (p.xp / xpRequired) * 100;
         document.getElementById("xp-bar-fill").style.width = `${xpProgress}%`;
         document.getElementById("txtHp").innerText = `${Math.ceil(p.hp)}/${p.hpMax}`;

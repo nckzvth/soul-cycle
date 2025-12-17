@@ -7,17 +7,22 @@ import DamageSpecs from '../data/DamageSpecs.js';
 import StatusSystem from '../systems/StatusSystem.js';
 
 class Boss {
-    constructor(x, y) {
+    constructor(x, y, options = {}) {
+        const variant = options.variant === "field" ? "field" : "dungeon";
+        const cfg = variant === "field" ? BALANCE.fieldBoss : BALANCE.boss;
+
         this.x = x;
         this.y = y;
-        this.hp = BALANCE.boss.hp;
-        this.hpMax = BALANCE.boss.hp;
-        this.r = BALANCE.boss.radius;
+        this.variant = variant;
+        this.hp = cfg.hp;
+        this.hpMax = cfg.hp;
+        this.r = cfg.radius;
         this.dead = false;
         this.attackTimer = 0;
         this.phase = 1;
         this.flash = 0;
         this.isBoss = true;
+        this.isFieldBoss = variant === "field";
         this.stats = { damageTakenMult: 1.0 };
         this.damageAccumulator = 0;
         StatusSystem.init(this);
@@ -32,7 +37,8 @@ class Boss {
         this.attackTimer -= dt;
         if (this.attackTimer <= 0) {
             this.attack(p, dungeonState);
-            this.attackTimer = this.phase === 1 ? BALANCE.boss.phase1.attackInterval : BALANCE.boss.phase2.attackInterval;
+            const cfg = this.variant === "field" ? BALANCE.fieldBoss : BALANCE.boss;
+            this.attackTimer = this.phase === 1 ? cfg.phase1.attackInterval : cfg.phase2.attackInterval;
         }
 
         if (this.hp < this.hpMax / 2 && this.phase === 1) {
@@ -51,9 +57,11 @@ class Boss {
     }
 
     attack(p, dungeonState) {
-        const projectileCount = this.phase === 1 ? BALANCE.boss.phase1.projectileCount : BALANCE.boss.phase2.projectileCount;
-        const projectileSpeed = this.phase === 1 ? BALANCE.boss.phase1.projectileSpeed : BALANCE.boss.phase2.projectileSpeed;
-        const spec = DamageSpecs.bossProjectile(this.phase);
+        const cfg = this.variant === "field" ? BALANCE.fieldBoss : BALANCE.boss;
+        const projectileCount = this.phase === 1 ? cfg.phase1.projectileCount : cfg.phase2.projectileCount;
+        const projectileSpeed = this.phase === 1 ? cfg.phase1.projectileSpeed : cfg.phase2.projectileSpeed;
+        const spec = DamageSpecs.bossProjectile(this.phase, this.variant);
+        const source = this;
 
         for (let i = 0; i < projectileCount; i++) {
             const angle = (i / projectileCount) * Math.PI * 2;
@@ -72,7 +80,7 @@ class Boss {
 
                     // Check collision with player
                     if (dist2(this.x, this.y, p.x, p.y) < (p.r + 5)**2) {
-                        DamageSystem.dealPlayerDamage(state.boss, p, this.spec, { state, ui: UI });
+                        DamageSystem.dealPlayerDamage(source, p, this.spec, { state, ui: UI });
                         return false; // Projectile is destroyed on hit
                     }
 

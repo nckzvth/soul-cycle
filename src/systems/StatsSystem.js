@@ -19,6 +19,18 @@ function toNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function softCapAsymptote(value, cap, gain, k) {
+  const v = toNumber(value);
+  const c = toNumber(cap);
+  if (c <= 0) return v;
+  if (v <= c) return v;
+
+  const g = toNumber(gain);
+  const extra = v - c;
+  const kk = toNumber(k) || 1.0;
+  return c + g * (1 - Math.exp(-kk * extra));
+}
+
 /**
  * Canonical player stats schema (combat-relevant + existing non-combat keys used elsewhere).
  * This keeps UI/pickup code working while migrating combat off legacy fields.
@@ -173,6 +185,34 @@ const StatsSystem = {
 
     s.critChance = clamp(s.critChance, 0, 1);
     s.critMult = Math.max(1.0, toNumber(s.critMult) || 1.5);
+
+    // --- Soft caps / guardrails (v1 pacing) ---
+    const softCaps = BALANCE?.progression?.softCaps || {};
+    const attackSpeedCap = toNumber(softCaps.attackSpeed);
+    if (attackSpeedCap > 0) {
+      s.attackSpeed = softCapAsymptote(s.attackSpeed, attackSpeedCap, attackSpeedCap * 0.5, 0.9);
+    }
+
+    const powerMultCap = toNumber(softCaps.powerMult);
+    if (powerMultCap > 0) {
+      s.powerMult = softCapAsymptote(s.powerMult, powerMultCap, powerMultCap * 0.5, 0.9);
+    }
+
+    const areaCap = toNumber(softCaps.area);
+    if (areaCap > 0) {
+      s.area = softCapAsymptote(s.area, areaCap, 1.0, 0.8);
+    }
+
+    const chainRangeCap = toNumber(softCaps.chainRangeMult);
+    if (chainRangeCap > 0) {
+      s.chainRangeMult = softCapAsymptote(s.chainRangeMult, chainRangeCap, 1.0, 0.9);
+    }
+
+    const pierceCap = toNumber(softCaps.pierce);
+    if (pierceCap > 0) s.pierce = Math.min(s.pierce, pierceCap);
+
+    const bounceCap = toNumber(softCaps.bounce);
+    if (bounceCap > 0) s.bounce = Math.min(s.bounce, bounceCap);
 
     // Cleanup private accumulators to reduce UI noise.
     delete s._powerMultAdd;

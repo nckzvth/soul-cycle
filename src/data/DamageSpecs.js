@@ -358,10 +358,11 @@ const DamageSpecs = {
     };
   },
 
-  bossProjectile(phase) {
-    const dmg = phase === 2 ? BALANCE.boss.phase2.projectileDamage : BALANCE.boss.phase1.projectileDamage;
+  bossProjectile(phase, variant = "dungeon") {
+    const cfg = variant === "field" ? BALANCE.fieldBoss : BALANCE.boss;
+    const dmg = phase === 2 ? cfg.phase2.projectileDamage : cfg.phase1.projectileDamage;
     return {
-      id: `boss:projectile:p${phase}`,
+      id: `boss:${variant}:projectile:p${phase}`,
       base: dmg,
       coeff: 0,
       canCrit: false,

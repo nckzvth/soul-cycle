@@ -5,9 +5,13 @@ import Interactable from '../entities/Interactable.js';
 import { keys } from '../core/Input.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import LootSystem from '../systems/LootSystem.js';
-import { LootDrop as Drop } from '../entities/Pickups.js';
+import { LootDrop as Drop, HealthOrb, SoulMagnet } from '../entities/Pickups.js';
 import UI from '../systems/UI.js';
 import ParticleSystem from '../systems/Particles.js';
+import ProgressionSystem from '../systems/ProgressionSystem.js';
+import { Walker, Charger, Spitter, Anchor } from "../entities/Enemy.js";
+import { SoulOrb as Soul } from "../entities/Pickups.js";
+import { BALANCE } from "../data/Balance.js";
 
 class DungeonState extends State {
     constructor(game) {
@@ -16,11 +20,17 @@ class DungeonState extends State {
         this.enemies = [];
         this.shots = []; 
         this.drops = [];
+        this.souls = [];
         this.townPortal = null;
         this.chains = [];
         // Room bounds
         this.bounds = { x: 0, y: 0, w: 800, h: 600 };
         this.showKillCounter = true;
+        this.timer = 0;
+        this.elapsed = 0;
+        this.riftScore = 0;
+        this.spawnCredit = 0;
+        this.hardEnemyCap = 220;
         
         this.combatSystem = CombatSystem; // Expose CombatSystem to entities
     }
@@ -37,8 +47,13 @@ class DungeonState extends State {
         this.enemies = [this.boss];
         this.shots = [];
         this.drops = [];
+        this.souls = [];
         this.townPortal = null;
         this.showKillCounter = true;
+        this.timer = ProgressionSystem.getDungeonDurationSec();
+        this.elapsed = 0;
+        this.riftScore = 0;
+        this.spawnCredit = 0;
         UI.updateLevelUpPrompt();
     }
 
@@ -48,6 +63,15 @@ class DungeonState extends State {
 
     update(dt) {
         const p = this.game.p;
+        this.elapsed += dt;
+        this.timer -= dt;
+
+        // Rift timer expiry: fail if boss not dead.
+        if (this.timer <= 0 && this.boss && !this.boss.dead && !this.townPortal) {
+            UI.toast("RIFT FAILED");
+            this.game.stateManager.switchState(new TownState(this.game));
+            return;
+        }
 
         // 1. UPDATE PLAYER (Combat Enabled)
         p.update(dt, this, true);
@@ -59,11 +83,25 @@ class DungeonState extends State {
         p.y = Math.max(this.bounds.y + 12, Math.min(this.bounds.h - 12, p.y));
 
         // 3. BOSS/ENEMIES
-        if (this.boss.dead && !this.townPortal) {
-            this.onEnemyDeath(this.boss);
-        } else if (!this.boss.dead) {
-            this.boss.update(dt, p, this);
-        }
+        // Reset per-frame buff state; Anchors re-apply during enemy updates and it must persist into shot updates.
+        this.enemies.forEach(e => {
+            if (!e) return;
+            e.isBuffed = false;
+            if (e.stats) e.stats.damageTakenMult = 1.0;
+        });
+
+        // Spawn rift mobs (intensity comes from density; rewards come from thresholds).
+        this.spawnMobs(dt);
+
+        // Update all enemies (boss + mobs).
+        this.enemies.forEach(e => e.update?.(dt, p, this));
+        this.enemies = this.enemies.filter(e => {
+            if (!e || e.dead) {
+                if (e) this.onEnemyDeath(e);
+                return false;
+            }
+            return true;
+        });
         
         // 4. PROJECTILES
         // Use a standard for loop to handle projectiles spawning other projectiles (like TitheExplosion)
@@ -76,6 +114,7 @@ class DungeonState extends State {
         }
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
         this.drops = this.drops.filter(d => d.update(dt, p));
+        this.souls = this.souls.filter(s => s.update(dt, p));
 
         // 5. INTERACTION
         if (this.townPortal && keys['KeyF'] && this.townPortal.checkInteraction(p)) {
@@ -91,19 +130,122 @@ class DungeonState extends State {
 
         if (enemy === this.boss) {
             console.log("Boss defeated!");
-            this.drops.push(new Drop(this.boss.x, this.boss.y, LootSystem.loot("weapon")));
+            const tier = this.computeRewardTier();
+            for (let i = 0; i < tier; i++) {
+                this.drops.push(new Drop(this.boss.x, this.boss.y, LootSystem.loot(i === 0 ? "weapon" : null)));
+            }
+
             this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
                 this.game.stateManager.switchState(new TownState(this.game));
             });
             CombatSystem.onRoomOrWaveClear(this);
+            UI.toast(`RIFT CLEARED (T${tier})`);
+            return;
+        }
+
+        // Regular rift mobs: grant XP and score.
+        this.souls.push(new Soul(this, enemy.x, enemy.y));
+        const v = enemy.soulValue || 1;
+        this.riftScore += v;
+
+        // Limited sustain in rift (dialed separately later; reuse field dials for now).
+        const healCfg = BALANCE?.progression?.healOrbs || {};
+        const hpRatio = p.hpMax > 0 ? (p.hp / p.hpMax) : 1;
+        let chance = enemy.isElite ? (healCfg.eliteDropChance ?? 0.45) : (healCfg.nonEliteDropChance ?? 0.05);
+        if (hpRatio >= (healCfg.highHpThreshold ?? 0.80)) chance *= (healCfg.highHpChanceMult ?? 0.25);
+        if (!enemy.isBoss && Math.random() < chance) {
+            this.drops.push(new HealthOrb(enemy.x, enemy.y));
+        }
+        if (enemy.isElite && Math.random() < 0.08) {
+            this.drops.push(new SoulMagnet(enemy.x, enemy.y));
         }
     }
 
     findTarget(exclude, x, y) {
-        if (!this.boss.dead && this.boss !== exclude) {
-            return this.boss;
+        let t = null;
+        let min = 400 * 400;
+        const ox = x ?? this.game.p.x;
+        const oy = y ?? this.game.p.y;
+        this.enemies.forEach(e => {
+            if (!e || e.dead || e === exclude) return;
+            const dx = e.x - ox;
+            const dy = e.y - oy;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < min) { min = d2; t = e; }
+        });
+        return t;
+    }
+
+    getSpawnPosition() {
+        const p = this.game.p;
+        const margin = 30;
+        for (let i = 0; i < 12; i++) {
+            const x = this.bounds.x + margin + Math.random() * (this.bounds.w - margin * 2);
+            const y = this.bounds.y + margin + Math.random() * (this.bounds.h - margin * 2);
+            const dx = x - p.x;
+            const dy = y - p.y;
+            if (dx * dx + dy * dy > 180 * 180) return { x, y };
         }
-        return null;
+        return { x: this.bounds.x + 100, y: this.bounds.y + 100 };
+    }
+
+    spawnEnemy(type = null, isElite = false) {
+        if (this.enemies.length >= this.hardEnemyCap) return;
+        const { x, y } = this.getSpawnPosition();
+        const lvl = ProgressionSystem.getEnemyLevelForDungeon(this);
+        const pick = type || (() => {
+            const t = this.elapsed;
+            if (t < 60) return "walker";
+            const r = Math.random();
+            if (r < 0.5) return "walker";
+            if (r < 0.75) return "charger";
+            if (r < 0.95) return "spitter";
+            return "anchor";
+        })();
+
+        let enemy;
+        switch (pick) {
+            case "charger": enemy = new Charger(x, y, lvl, isElite); break;
+            case "spitter": enemy = new Spitter(x, y, lvl, isElite); break;
+            case "anchor": enemy = new Anchor(x, y, lvl, isElite); break;
+            default: enemy = new Walker(x, y, lvl, isElite); break;
+        }
+
+        // Score weight (also matches how "fodder vs elites" should feel).
+        const table = { walker: 1, charger: 2, spitter: 2, anchor: 5 };
+        enemy.soulValue = (table[pick] ?? 1) * (isElite ? 3 : 1);
+        this.enemies.push(enemy);
+        CombatSystem.onEnemySpawn(enemy, this);
+    }
+
+    spawnMobs(dt) {
+        // Don't spawn after the rift is complete.
+        if (!this.boss || this.boss.dead) return;
+
+        const baseAlive = 22;
+        const maxAlive = 120;
+        const alive = this.enemies.length;
+        const desired = Math.min(maxAlive, baseAlive + Math.floor(this.elapsed / 30) * 4);
+
+        if (alive >= desired) return;
+
+        this.spawnCredit += 5 * dt;
+        while (this.spawnCredit >= 1 && this.enemies.length < desired) {
+            const eliteChance = Math.min(0.25, 0.05 + this.elapsed / 600);
+            this.spawnEnemy(null, Math.random() < eliteChance);
+            this.spawnCredit -= 1;
+        }
+    }
+
+    computeRewardTier() {
+        const timeLeft = Math.max(0, this.timer);
+        const thresholds = BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420];
+        let tier = 1;
+        thresholds.forEach((t, i) => {
+            if (this.riftScore >= t) tier = Math.max(tier, i + 2);
+        });
+        if (timeLeft >= 60) tier += 1;
+        return Math.max(1, Math.min(5, tier));
     }
 
     render(ctx) {
@@ -115,9 +257,10 @@ class DungeonState extends State {
         ctx.fillStyle = '#4a2a5a'; ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = 'white'; ctx.strokeRect(0, 0, w, h);
 
-        if (!this.boss.dead) this.boss.draw(ctx, s);
+        this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
         this.shots.forEach(shot => shot.draw(ctx, s));
         this.drops.forEach(d => d.draw(ctx, s));
+        this.souls.forEach(o => o.draw(ctx, s));
         
         // Chains
         ctx.lineWidth = 2;
@@ -147,10 +290,16 @@ class DungeonState extends State {
         }
 
         // Boss UI
-        if (!this.boss.dead) {
+        if (this.boss && !this.boss.dead) {
             ctx.fillStyle = 'red'; ctx.fillRect(w / 2 - 250, 20, 500 * (this.boss.hp / this.boss.hpMax), 20);
             ctx.strokeStyle = 'white'; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
         }
+
+        // Rift UI
+        ctx.fillStyle = 'white'; ctx.font = '18px sans-serif'; ctx.textAlign = 'left';
+        ctx.fillText(`Time: ${Math.max(0, Math.ceil(this.timer))}s`, 16, 30);
+        ctx.fillText(`Score: ${this.riftScore}`, 16, 52);
+        ctx.textAlign = 'start';
     }
 }
 
