@@ -80,6 +80,7 @@ export default class PlayerObj {
         this.totalAttr = { might: 0, alacrity: 0, will: 0 };
         this.perks = { might: false, alacrity: false, will: false };
         this.timers = { might: 0, alacrity: 0, will: 0 };
+        this.activeOrbitalWisps = 0;
         
         this.skills = new Map(); 
         this.skillMeta = { exclusive: new Map(), flags: new Set() };
@@ -312,6 +313,7 @@ export default class PlayerObj {
             this.levelUpOffers.weaponMeta = { weaponCls: null };
             this.levelUpOffers.phial = null;
         }
+        this.activeOrbitalWisps = 0;
     }
 
     /** Move player without physics interpolation */
@@ -453,6 +455,7 @@ export default class PlayerObj {
                 scene.shots.push(new HammerProjectile(scene, this, cx, cy, initialAngle, spec, snapshot));
                 const cdMult = Math.max(0.2, 1 + (this.stats.hammerCooldownMult || 0));
                 this.atkCd = hb.cooldown * cdMult;
+                this.onAttack(scene, { weaponCls: "hammer" });
 
                 if (this.salvoCharges > 0) {
                     this.salvoCharges--;
@@ -475,9 +478,72 @@ export default class PlayerObj {
             if (w.cls === "pistol") {
                 scene.combatSystem.firePistol(this, scene);
                 this.atkCd = rate;
+                this.onAttack(scene, { weaponCls: "pistol" });
             } else if (w.cls === "staff") {
                 scene.combatSystem.fireZap(this, scene);
                 this.atkCd = rate * BALANCE.player.staffRateMult;
+                this.onAttack(scene, { weaponCls: "staff" });
+            }
+        }
+    }
+
+    onAttack(state, meta = {}) {
+        const p = this;
+        const t = p.totalAttr || p.attr;
+        const bp = BALANCE.player;
+        const perkVfx = BALANCE.perks || {};
+
+        const computeChance = (val) => {
+            const threshold = bp.perkThreshold ?? 25;
+            const base = bp.perkProcBaseChance ?? 0.05;
+            const perPick = bp.perkProcPerPickChance ?? 0.01;
+            const softCap = bp.perkProcSoftCap ?? 0.35;
+            const gain = bp.perkProcSoftCapGain ?? 0.20;
+            const k = bp.perkProcSoftCapK ?? 0.35;
+
+            const picks = Math.max(0, Math.floor((val - threshold) / 5));
+            const pre = base + perPick * picks;
+            if (pre <= softCap) return Math.max(0, Math.min(0.95, pre));
+
+            const softCapPicks = Math.max(0, Math.floor((softCap - base) / perPick));
+            const extra = Math.max(0, picks - softCapPicks);
+            const post = softCap + gain * (1 - Math.exp(-k * extra));
+            return Math.max(0, Math.min(0.95, post));
+        };
+
+        // Might: Soul Blast (shockwave)
+        if ((p.perkLevel?.might || 0) >= 1) {
+            const chance = computeChance(t.might || 0);
+            if (Math.random() < chance) {
+                const vfx = perkVfx.soulBlast?.vfx || {};
+                ParticleSystem.emit(p.x, p.y, vfx.procColor ?? "rgba(215, 196, 138, 0.9)", vfx.procBurstCount ?? 12, vfx.procBurstSpeed ?? 140, vfx.procBurstSize ?? 3.0, vfx.procBurstLife ?? 0.35);
+                ParticleSystem.emitText(p.x, p.y - p.r - 14, "SOUL BLAST", { color: vfx.textColor ?? "rgba(215, 196, 138, 0.95)", size: 14, life: 0.7 });
+                state?.combatSystem?.fireShockwave?.(p, state, { perkTier: p.perkLevel.might });
+            }
+        }
+
+        // Alacrity: Soul Tempest
+        if ((p.perkLevel?.alacrity || 0) >= 1) {
+            const chance = computeChance(t.alacrity || 0);
+            if (Math.random() < chance) {
+                const vfx = perkVfx.tempest?.vfx || {};
+                ParticleSystem.emit(p.x, p.y, vfx.procColor ?? "rgba(120, 255, 220, 0.85)", 10, 130, 2.7, 0.3);
+                ParticleSystem.emitText(p.x, p.y - p.r - 14, "TEMPEST", { color: vfx.textColor ?? "rgba(120, 255, 220, 0.95)", size: 14, life: 0.7 });
+                state?.combatSystem?.fireSoulTempest?.(p, state, { perkTier: p.perkLevel.alacrity });
+            }
+        }
+
+        // Will: Orbital Wisp (capped)
+        if ((p.perkLevel?.will || 0) >= 1) {
+            const chance = computeChance(t.will || 0);
+            if (Math.random() < chance) {
+                const cap = bp.perkWillMaxWisps ?? 3;
+                if ((p.activeOrbitalWisps || 0) < cap) {
+                    const vfx = perkVfx.orbitalWisp?.vfx || {};
+                    ParticleSystem.emit(p.x, p.y, vfx.procColor ?? "rgba(160, 235, 255, 0.85)", 8, 120, 2.6, 0.28);
+                    ParticleSystem.emitText(p.x, p.y - p.r - 14, "WISP", { color: vfx.textColor ?? "rgba(160, 235, 255, 0.95)", size: 14, life: 0.7 });
+                    state?.combatSystem?.fireOrbitalWisp?.(p, state, { perkTier: p.perkLevel.will });
+                }
             }
         }
     }
@@ -532,21 +598,7 @@ export default class PlayerObj {
     }
 
     updatePerks(dt, state) {
-        if (this.perks.might) {
-            this.timers.might -= dt;
-            if (this.timers.might <= 0) { this.timers.might = 3.0; state.combatSystem.fireShockwave(this, state); }
-        }
-        if (this.perks.alacrity) {
-            this.timers.alacrity -= dt;
-            // Check keys here instead of local state for cleaner logic
-            if (this.timers.alacrity <= 0 && (keys["KeyW"] || keys["KeyS"] || keys["KeyA"] || keys["KeyD"])) { 
-                this.timers.alacrity = 0.5; state.combatSystem.fireStaticMine(this, state); 
-            }
-        }
-        if (this.perks.will) {
-            this.timers.will -= dt;
-            if (this.timers.will <= 0) { this.timers.will = 1.5; state.combatSystem.fireWisp(this, state); }
-        }
+        // Perks are now on-attack procs (see `onAttack`).
     }
 
     updatePhials(dt, state) {

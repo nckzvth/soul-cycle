@@ -85,6 +85,7 @@ class FieldState extends State {
         console.log("Entering Field State");
         this.reset();
         this.startNextWave();
+        this.p.activeOrbitalWisps = 0;
         UI.updateLevelUpPrompt();
     }
 
@@ -258,7 +259,7 @@ class FieldState extends State {
         ctx.lineWidth = 2;
         this.chains.forEach(c => {
             if (c.pts.length < 2) return;
-            ctx.strokeStyle = c.isSalvo ? "#a0ebff" : "#fff";
+            ctx.strokeStyle = c.color ?? (c.isSalvo ? "#a0ebff" : "#fff");
             ctx.beginPath(); ctx.moveTo(s(c.pts[0].x, c.pts[0].y).x, s(c.pts[0].x, c.pts[0].y).y);
             ctx.lineTo(s(c.pts[1].x, c.pts[1].y).x, s(c.pts[1].x, c.pts[1].y).y);
             ctx.globalAlpha = c.t * 5; ctx.stroke(); ctx.globalAlpha = 1;

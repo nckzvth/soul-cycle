@@ -434,7 +434,7 @@ export class EnemyProjectile {
 }
 
 export class Shockwave {
-    constructor(state, player, x, y, spec, snapshot) { 
+    constructor(state, player, x, y, spec, snapshot, meta = {}) { 
         this.state = state; 
         this.player = player;
         this.x = x; 
@@ -442,6 +442,7 @@ export class Shockwave {
         this.r = 0; 
         this.spec = spec;
         this.snapshot = snapshot;
+        this.meta = meta;
         this.hitList = [];
         this.life = BALANCE.projectiles.shockwave.life; 
     }
@@ -449,7 +450,29 @@ export class Shockwave {
         this.r += dt * BALANCE.projectiles.shockwave.speed; this.life -= dt;
         this.state.enemies.forEach(e => {
             if (!e.dead && !this.hitList.includes(e) && dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2) {
-                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
+                if ((this.meta?.perkTier || 0) >= 2) {
+                    const burnSpec = DamageSpecs.soulBlastBurnTick();
+                    const burnCfg = BALANCE.projectiles.soulBlastBurn || { duration: 2.0, tickInterval: 1.0 };
+                    const burnColor = (BALANCE.perks?.soulBlast?.vfx?.burnVfxColor) || "rgba(255, 120, 0, 0.85)";
+                    StatusSystem.applyStatus(e, "perk:soulBlastBurn", {
+                        source: this.player,
+                        stacks: 1,
+                        duration: burnCfg.duration,
+                        tickInterval: burnCfg.tickInterval,
+                        spec: burnSpec,
+                        snapshotPolicy: "snapshot",
+                        triggerOnHit: false,
+                        dotTextMode: "perTick",
+                        vfx: {
+                            interval: 0.3,
+                            color: burnColor,
+                            count: 1,
+                            size: 2.2,
+                            life: 0.18,
+                        },
+                    });
+                }
                 e.kb = 30;
                 this.hitList.push(e);
             }
@@ -458,7 +481,12 @@ export class Shockwave {
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.strokeStyle = `rgba(255,100,100,${this.life * 2})`;
+        const vfx = BALANCE.perks?.soulBlast?.vfx || {};
+        const tier = this.meta?.perkTier || 1;
+        const fade = Math.max(0, Math.min(1, this.life * 2));
+        const baseColor = tier >= 2 ? (vfx.ringColorTier2 ?? "rgba(255, 140, 60, 0.85)") : (vfx.ringColor ?? "rgba(215, 196, 138, 0.8)");
+        const m = /^rgba\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\)$/.exec(baseColor);
+        ctx.strokeStyle = m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${Number(m[4]) * fade})` : baseColor;
         ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.stroke();
     }
 }
@@ -493,7 +521,7 @@ export class StaticMine {
         this.life -= dt;
         this.state.enemies.forEach(e => {
             if (dist2(this.x, this.y, e.x, e.y) < BALANCE.projectiles.staticMine.radius ** 2) {
-                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, isDoT: true, context: { dt }, particles: ParticleSystem });
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, isDoT: true, context: { dt }, particles: ParticleSystem, triggerOnHit: false });
             }
         });
         return this.life > 0;
@@ -519,7 +547,7 @@ export class Wisp {
             let angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
             this.x += Math.cos(angle) * BALANCE.projectiles.wisp.speed * dt; this.y += Math.sin(angle) * BALANCE.projectiles.wisp.speed * dt;
             if (dist2(this.x, this.y, this.target.x, this.target.y) < 20 * 20) {
-                DamageSystem.dealDamage(this.player, this.target, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
+                DamageSystem.dealDamage(this.player, this.target, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
                 return false;
             }
         } else {
@@ -528,6 +556,197 @@ export class Wisp {
         return this.life > 0;
     }
     draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = "#6b8cc4"; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 6.28); ctx.fill(); }
+}
+
+export class SoulTempest {
+    constructor(state, player, x, y, spec, snapshot, meta = {}) {
+        this.state = state;
+        this.player = player;
+        this.x = x;
+        this.y = y;
+        this.spec = spec;
+        this.snapshot = snapshot;
+        this.meta = meta;
+        this.life = (meta.isSplit ? BALANCE.projectiles.soulTempestSplit.life : BALANCE.projectiles.soulTempest.life);
+        this.speed = (meta.isSplit ? BALANCE.projectiles.soulTempestSplit.speed : BALANCE.projectiles.soulTempest.speed);
+        this.hitRadius = (meta.isSplit ? BALANCE.projectiles.soulTempestSplit.hitRadius : BALANCE.projectiles.soulTempest.hitRadius);
+        this.target = null;
+        this.vx = meta.vx || 0;
+        this.vy = meta.vy || 0;
+        this.hitSet = new Set();
+        this.didSplit = false;
+        this.vfxTimer = 0;
+    }
+
+    split() {
+        if (this.didSplit) return;
+        this.didSplit = true;
+        if ((this.meta?.perkTier || 0) < 2) return;
+        if (this.meta?.isSplit) return;
+
+        const baseAngle = Math.atan2(this.vy || 0, this.vx || 1);
+        const angles = [baseAngle - 0.7, baseAngle + 0.7];
+        const spec = DamageSpecs.soulTempestSplitHit();
+        const snapshot = DamageSystem.snapshotOutgoing(this.player, spec);
+        for (const a of angles) {
+            const vx = Math.cos(a) * BALANCE.projectiles.soulTempestSplit.speed;
+            const vy = Math.sin(a) * BALANCE.projectiles.soulTempestSplit.speed;
+            this.state.shots.push(new SoulTempest(this.state, this.player, this.x, this.y, spec, snapshot, { perkTier: this.meta.perkTier, isSplit: true, vx, vy }));
+        }
+        ParticleSystem.emit(this.x, this.y, "rgba(120, 255, 220, 0.85)", 12, 160, 2.6, 0.25);
+    }
+
+    update(dt) {
+        this.life -= dt;
+        this.vfxTimer -= dt;
+
+        if (!this.meta?.isSplit) {
+            if (!this.target || this.target.dead) this.target = this.state.findTarget(null, this.x, this.y);
+            if (this.target) {
+                const ang = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                this.vx = Math.cos(ang) * this.speed;
+                this.vy = Math.sin(ang) * this.speed;
+            }
+        }
+
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        const vfx = BALANCE.perks?.tempest?.vfx || {};
+        if (this.vfxTimer <= 0) {
+            this.vfxTimer = vfx.trailInterval ?? 0.06;
+            ParticleSystem.emit(this.x, this.y, vfx.trailColor ?? "rgba(120, 255, 220, 0.35)", vfx.trailCount ?? 1, vfx.trailSpeed ?? 0, vfx.trailSize ?? 2.2, vfx.trailLife ?? 0.18);
+        }
+
+        if (this.meta?.isSplit) {
+            this.state.enemies.forEach(e => {
+                if (e.dead) return;
+                if (this.hitSet.has(e)) return;
+                if (dist2(this.x, this.y, e.x, e.y) < (this.hitRadius + e.r) ** 2) {
+                    DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
+                    this.hitSet.add(e);
+                }
+            });
+        } else if (this.target && !this.target.dead) {
+            if (dist2(this.x, this.y, this.target.x, this.target.y) < (this.hitRadius + this.target.r) ** 2) {
+                DamageSystem.dealDamage(this.player, this.target, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
+                this.split();
+                return false;
+            }
+        }
+
+        if (this.life <= 0) {
+            this.split();
+        }
+        return this.life > 0;
+    }
+
+    draw(ctx, s) {
+        const p = s(this.x, this.y);
+        const alpha = Math.max(0, Math.min(1, this.life / 2));
+        const vfx = BALANCE.perks?.tempest?.vfx || {};
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = this.meta?.isSplit ? (vfx.splitColor ?? "rgba(120, 255, 220, 0.8)") : (vfx.bodyColor ?? "rgba(120, 255, 220, 0.95)");
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.meta?.isSplit ? 5 : 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+export class OrbitalWisp {
+    constructor(state, player, spec, snapshot, meta = {}) {
+        this.state = state;
+        this.player = player;
+        this.spec = spec;
+        this.snapshot = snapshot;
+        this.meta = meta;
+        this.life = BALANCE.projectiles.orbitalWisp.life;
+        this.radius = BALANCE.projectiles.orbitalWisp.orbitRadius;
+        this.angularSpeed = BALANCE.projectiles.orbitalWisp.angularSpeed;
+        this.hitRadius = BALANCE.projectiles.orbitalWisp.hitRadius;
+        this.angle = Math.random() * Math.PI * 2;
+        this.hitSet = new Set();
+        this.x = player.x;
+        this.y = player.y;
+        this.vfxTimer = 0;
+    }
+
+    update(dt) {
+        this.life -= dt;
+        this.vfxTimer -= dt;
+        if (this.life <= 0) {
+            this.player.activeOrbitalWisps = Math.max(0, (this.player.activeOrbitalWisps || 0) - 1);
+            return false;
+        }
+
+        this.angle += this.angularSpeed * dt;
+        this.x = this.player.x + Math.cos(this.angle) * this.radius;
+        this.y = this.player.y + Math.sin(this.angle) * this.radius;
+
+        const vfx = BALANCE.perks?.orbitalWisp?.vfx || {};
+        if (this.vfxTimer <= 0) {
+            this.vfxTimer = vfx.trailInterval ?? 0.05;
+            ParticleSystem.emit(this.x, this.y, vfx.trailColor ?? "rgba(160, 235, 255, 0.35)", vfx.trailCount ?? 1, vfx.trailSpeed ?? 20, vfx.trailSize ?? 2.0, vfx.trailLife ?? 0.22);
+        }
+
+        this.state.enemies.forEach(e => {
+            if (e.dead) return;
+            if (this.hitSet.has(e)) return;
+            if (dist2(this.x, this.y, e.x, e.y) < (this.hitRadius + e.r) ** 2) {
+                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
+                this.hitSet.add(e);
+
+                if ((this.meta?.perkTier || 0) >= 2) {
+                    const range = BALANCE.projectiles.perkLightning.range;
+                    const maxChains = BALANCE.projectiles.perkLightning.maxChains;
+                    const lightningSpec = DamageSpecs.orbitalWispLightning();
+                    const lightningSnapshot = DamageSystem.snapshotOutgoing(this.player, lightningSpec);
+
+                    let from = e;
+                    const visited = new Set([e]);
+                    const pickNext = (src) => {
+                        let best = null;
+                        let bestD2 = range * range;
+                        this.state.enemies.forEach(cand => {
+                            if (!cand || cand.dead) return;
+                            if (visited.has(cand)) return;
+                            const d2 = dist2(src.x, src.y, cand.x, cand.y);
+                            if (d2 < bestD2) { bestD2 = d2; best = cand; }
+                        });
+                        return best;
+                    };
+                    for (let i = 0; i < maxChains; i++) {
+                        const next = pickNext(from);
+                        if (!next) break;
+                        visited.add(next);
+                        DamageSystem.dealDamage(this.player, next, lightningSpec, { state: this.state, snapshot: lightningSnapshot, particles: ParticleSystem, triggerOnHit: false });
+                        const chainColor = vfx.lightningColor ?? "rgba(160, 235, 255, 0.95)";
+                        this.state.chains.push({ t: 0.15, pts: [{ x: from.x, y: from.y }, { x: next.x, y: next.y }], color: chainColor });
+                        ParticleSystem.emit(from.x, from.y, chainColor, vfx.lightningBurstCount ?? 8, vfx.lightningBurstSpeed ?? 120, vfx.lightningBurstSize ?? 2.6, vfx.lightningBurstLife ?? 0.22);
+                        ParticleSystem.emit(next.x, next.y, chainColor, vfx.lightningBurstCount ?? 8, vfx.lightningBurstSpeed ?? 120, vfx.lightningBurstSize ?? 2.6, vfx.lightningBurstLife ?? 0.22);
+                        from = next;
+                    }
+                }
+            }
+        });
+
+        return true;
+    }
+
+    draw(ctx, s) {
+        const p = s(this.x, this.y);
+        const alpha = Math.max(0.2, Math.min(1, this.life / BALANCE.projectiles.orbitalWisp.life));
+        const vfx = BALANCE.perks?.orbitalWisp?.vfx || {};
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = vfx.bodyColor ?? "rgba(160, 235, 255, 0.9)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
 }
 
 export class Hazard {

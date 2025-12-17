@@ -1,4 +1,56 @@
 export const BALANCE = {
+    perks: {
+        soulBlast: {
+            vfx: {
+                procColor: "rgba(215, 196, 138, 0.9)",
+                textColor: "rgba(215, 196, 138, 0.95)",
+                ringColor: "rgba(215, 196, 138, 0.8)",
+                ringColorTier2: "rgba(255, 140, 60, 0.85)",
+                procBurstCount: 12,
+                procBurstSpeed: 140,
+                procBurstSize: 3.0,
+                procBurstLife: 0.35,
+                burnVfxColor: "rgba(255, 120, 0, 0.85)",
+            },
+        },
+        tempest: {
+            vfx: {
+                procColor: "rgba(120, 255, 220, 0.85)",
+                textColor: "rgba(120, 255, 220, 0.95)",
+                bodyColor: "rgba(120, 255, 220, 0.95)",
+                splitColor: "rgba(120, 255, 220, 0.8)",
+                trailColor: "rgba(120, 255, 220, 0.35)",
+                trailInterval: 0.06,
+                trailCount: 1,
+                trailSpeed: 0,
+                trailSize: 2.2,
+                trailLife: 0.18,
+                splitBurstCount: 12,
+                splitBurstSpeed: 160,
+                splitBurstSize: 2.6,
+                splitBurstLife: 0.25,
+            },
+        },
+        orbitalWisp: {
+            vfx: {
+                procColor: "rgba(160, 235, 255, 0.85)",
+                textColor: "rgba(160, 235, 255, 0.95)",
+                bodyColor: "rgba(160, 235, 255, 0.9)",
+                trailColor: "rgba(160, 235, 255, 0.35)",
+                trailInterval: 0.05,
+                trailCount: 1,
+                trailSpeed: 20,
+                trailSize: 2.0,
+                trailLife: 0.22,
+                lightningColor: "rgba(160, 235, 255, 0.95)",
+                lightningBurstCount: 8,
+                lightningBurstSpeed: 120,
+                lightningBurstSize: 2.6,
+                lightningBurstLife: 0.22,
+            },
+        },
+    },
+
     player: {
         // Core stats
         baseHp: 80,
@@ -23,7 +75,16 @@ export const BALANCE = {
         soulGainPerWill: 0.1,
 
         // Perk thresholds
-        perkThreshold: 20,
+        perkThreshold: 25,
+        perkThreshold2: 50,
+
+        // Perk proc chance (on-attack)
+        perkProcBaseChance: 0.05,
+        perkProcPerPickChance: 0.01, // +1% per +5 beyond threshold
+        perkProcSoftCap: 0.35,
+        perkProcSoftCapGain: 0.20, // asymptote adds up to +20% beyond soft cap
+        perkProcSoftCapK: 0.35,
+        perkWillMaxWisps: 3,
 
         // Dash
         baseDashCharges: 2,
@@ -73,8 +134,13 @@ export const BALANCE = {
         // Skill multipliers
         orbitDamageMult: 0.6,
         shockwaveDamageMult: 2.0,
+        soulBlastBurnDamageMult: 0.25,
         staticMineDamageMult: 1.0,
         wispDamageMult: 1.0,
+        soulTempestDamageMult: 1.2,
+        soulTempestSplitDamageMult: 0.55,
+        orbitalWispDamageMult: 0.7,
+        orbitalWispLightningDamageMult: 0.55,
 
         // Zap settings
         zapChainRange: 250,
@@ -177,6 +243,11 @@ export const BALANCE = {
         rootWave: { speed: 400, life: 0.5, duration: 2 },
         staticMine: { life: 3.0, radius: 25, damageMultiplier: 3 },
         wisp: { life: 4.0, speed: 350, damageMultiplier: 1.5 },
+        soulTempest: { life: 3.0, speed: 300, hitRadius: 16 },
+        soulTempestSplit: { life: 2.0, speed: 360, hitRadius: 14 },
+        orbitalWisp: { life: 3.0, orbitRadius: 52, angularSpeed: 7.5, hitRadius: 16 },
+        perkLightning: { range: 250, maxChains: 2 },
+        soulBlastBurn: { duration: 2.0, tickInterval: 1.0 },
         hazard: { life: 2, damage: 10 }
     },
 

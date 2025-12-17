@@ -170,6 +170,18 @@ const DamageSpecs = {
     };
   },
 
+  soulBlastBurnTick() {
+    return {
+      id: "perk:soulBlastBurnTick",
+      base: 0,
+      coeff: BALANCE.combat.soulBlastBurnDamageMult,
+      canCrit: false,
+      tags: ["perk", "dot"],
+      element: ELEMENT.fire,
+      snapshot: true,
+    };
+  },
+
   staticMineTick() {
     // Old behavior: (power * staticMineDamageMult) * staticMine.damageMultiplier * dt
     return {
@@ -192,6 +204,54 @@ const DamageSpecs = {
       canCrit: false,
       tags: ["perk", "projectile"],
       element: ELEMENT.occult,
+      snapshot: true,
+    };
+  },
+
+  soulTempestHit() {
+    return {
+      id: "perk:soulTempestHit",
+      base: 0,
+      coeff: BALANCE.combat.soulTempestDamageMult,
+      canCrit: false,
+      tags: ["perk", "projectile"],
+      element: ELEMENT.air,
+      snapshot: true,
+    };
+  },
+
+  soulTempestSplitHit() {
+    return {
+      id: "perk:soulTempestSplitHit",
+      base: 0,
+      coeff: BALANCE.combat.soulTempestSplitDamageMult,
+      canCrit: false,
+      tags: ["perk", "projectile"],
+      element: ELEMENT.air,
+      snapshot: true,
+    };
+  },
+
+  orbitalWispHit() {
+    return {
+      id: "perk:orbitalWispHit",
+      base: 0,
+      coeff: BALANCE.combat.orbitalWispDamageMult,
+      canCrit: false,
+      tags: ["perk", "projectile"],
+      element: ELEMENT.occult,
+      snapshot: true,
+    };
+  },
+
+  orbitalWispLightning() {
+    return {
+      id: "perk:orbitalWispLightning",
+      base: 0,
+      coeff: BALANCE.combat.orbitalWispLightningDamageMult,
+      canCrit: false,
+      tags: ["perk", "chain"],
+      element: ELEMENT.lightning,
       snapshot: true,
     };
   },

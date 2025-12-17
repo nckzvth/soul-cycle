@@ -31,6 +31,7 @@ class DungeonState extends State {
         // Encapsulated Teleport
         p.teleport(400, 500);
         p.recalc();
+        p.activeOrbitalWisps = 0;
 
         this.boss = new Boss(400, 200);
         this.enemies = [this.boss];
@@ -119,10 +120,11 @@ class DungeonState extends State {
         this.drops.forEach(d => d.draw(ctx, s));
         
         // Chains
-        ctx.lineWidth = 2; ctx.strokeStyle = "#a0ebff";
+        ctx.lineWidth = 2;
         this.chains.forEach(c => {
             let p1 = s(c.pts[0].x, c.pts[0].y);
             let p2 = s(c.pts[1].x, c.pts[1].y);
+            ctx.strokeStyle = c.color ?? (c.isSalvo ? "#a0ebff" : "#a0ebff");
             ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
             ctx.globalAlpha = c.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
         });

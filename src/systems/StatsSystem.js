@@ -125,10 +125,17 @@ const StatsSystem = {
     s.soulGain += t.will * bp.soulGainPerWill;
     s.magnetism += t.will * BALANCE.pickups.soul.magnetism;
 
-    // Perk thresholds (keep existing behavior).
-    player.perks.might = t.might >= bp.perkThreshold;
-    player.perks.alacrity = t.alacrity >= bp.perkThreshold;
-    player.perks.will = t.will >= bp.perkThreshold;
+    // Perk tiers (keep booleans for compatibility, but drive gameplay with perkLevel).
+    const perkLevel = {
+      might: t.might >= (bp.perkThreshold2 ?? (bp.perkThreshold * 2)) ? 2 : (t.might >= bp.perkThreshold ? 1 : 0),
+      alacrity: t.alacrity >= (bp.perkThreshold2 ?? (bp.perkThreshold * 2)) ? 2 : (t.alacrity >= bp.perkThreshold ? 1 : 0),
+      will: t.will >= (bp.perkThreshold2 ?? (bp.perkThreshold * 2)) ? 2 : (t.will >= bp.perkThreshold ? 1 : 0),
+    };
+    player.perkLevel = perkLevel;
+    player.perks = player.perks || { might: false, alacrity: false, will: false };
+    player.perks.might = perkLevel.might >= 1;
+    player.perks.alacrity = perkLevel.alacrity >= 1;
+    player.perks.will = perkLevel.will >= 1;
 
     // Gear stats (legacy + canonical mapping where needed).
     for (const slot in player.gear) {

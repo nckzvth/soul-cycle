@@ -1,6 +1,6 @@
 // src/systems/CombatSystem.js
 import { dist2 } from "../core/Utils.js";
-import { Projectile as Proj, Shockwave, StaticMine, Wisp } from "../entities/Projectile.js";
+import { Projectile as Proj, Shockwave, StaticMine, Wisp, SoulTempest, OrbitalWisp } from "../entities/Projectile.js";
 import { mouse } from "../core/Input.js";
 import DungeonState from "../states/DungeonState.js";
 import { BALANCE } from "../data/Balance.js";
@@ -399,7 +399,7 @@ const CombatSystem = {
         }
     },
 
-    fireShockwave(player, state) {
+    fireShockwave(player, state, opts = {}) {
         const spec = DamageSpecs.shockwave();
         const snapshot = DamageSystem.snapshotOutgoing(player, spec);
         state.shots.push(new Shockwave(
@@ -408,7 +408,8 @@ const CombatSystem = {
             player.x,
             player.y,
             spec,
-            snapshot
+            snapshot,
+            { perkTier: opts.perkTier || 1 }
         ));
     },
 
@@ -433,6 +434,33 @@ const CombatSystem = {
             player.y,
             spec,
             snapshot
+        ));
+    },
+
+    fireSoulTempest(player, state, opts = {}) {
+        const spec = DamageSpecs.soulTempestHit();
+        const snapshot = DamageSystem.snapshotOutgoing(player, spec);
+        state.shots.push(new SoulTempest(
+            state,
+            player,
+            player.x,
+            player.y,
+            spec,
+            snapshot,
+            { perkTier: opts.perkTier || 1, isSplit: false }
+        ));
+    },
+
+    fireOrbitalWisp(player, state, opts = {}) {
+        const spec = DamageSpecs.orbitalWispHit();
+        const snapshot = DamageSystem.snapshotOutgoing(player, spec);
+        player.activeOrbitalWisps = (player.activeOrbitalWisps || 0) + 1;
+        state.shots.push(new OrbitalWisp(
+            state,
+            player,
+            spec,
+            snapshot,
+            { perkTier: opts.perkTier || 1 }
         ));
     }
 };

@@ -34,13 +34,10 @@ const UI = {
         // Build Attr UI
         const c = document.getElementById("attr-container");
         c.innerHTML = `
-        <div class="stat-row" style="border-color:var(--red)"><div><b style="color:var(--red)">MIGHT</b><span id="perkMight" style="font-size:9px;margin-left:4px;opacity:0.5">(20: Battle Rhythm)</span><br><small>Dmg/Knockback</small></div><div style="display:flex;gap:4px"><b id="valMight">0</b><button class="stat-btn" id="btn-up-might">+</button></div></div>
-        <div class="stat-row" style="border-color:var(--green)"><div><b style="color:var(--green)">ALACRITY</b><span id="perkAlac" style="font-size:9px;margin-left:4px;opacity:0.5">(20: Static Trail)</span><br><small>Spd/Dash</small></div><div style="display:flex;gap:4px"><b id="valAlac">0</b><button class="stat-btn" id="btn-up-alac">+</button></div></div>
-        <div class="stat-row" style="border-color:var(--blue)"><div><b style="color:var(--blue)">WILL</b><span id="perkWill" style="font-size:9px;margin-left:4px;opacity:0.5">(20: Soul Wisps)</span><br><small>Area/Soul</small></div><div style="display:flex;gap:4px"><b id="valWill">0</b><button class="stat-btn" id="btn-up-will">+</button></div></div>
+        <div class="stat-row" style="border-color:var(--red)"><div><b style="color:var(--red)">MIGHT</b><span id="perkMight" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Soul Blast • 50: Burn)</span><br><small>Dmg/Knockback</small></div><div style="display:flex;gap:4px"><b id="valMight">0</b></div></div>
+        <div class="stat-row" style="border-color:var(--green)"><div><b style="color:var(--green)">ALACRITY</b><span id="perkAlac" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Tempest • 50: Split)</span><br><small>Spd/Dash</small></div><div style="display:flex;gap:4px"><b id="valAlac">0</b></div></div>
+        <div class="stat-row" style="border-color:var(--blue)"><div><b style="color:var(--blue)">WILL</b><span id="perkWill" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Wisps • 50: Rod)</span><br><small>Area/Soul</small></div><div style="display:flex;gap:4px"><b id="valWill">0</b></div></div>
         `;
-        document.getElementById("btn-up-might").onclick = () => Game.p.upAttr('might');
-        document.getElementById("btn-up-alac").onclick = () => Game.p.upAttr('alacrity');
-        document.getElementById("btn-up-will").onclick = () => Game.p.upAttr('will');
 
         document.getElementById("btn-inv").onclick = () => this.toggle('inv');
         document.getElementById("btn-close-inv").onclick = () => this.toggle('inv');
@@ -109,14 +106,16 @@ const UI = {
     },
     renderInv() {
         let p = Game.p;
-        document.getElementById("uiPts").innerText = p.attr.pts;
         document.getElementById("valMight").innerText = p.totalAttr.might;
         document.getElementById("valAlac").innerText = p.totalAttr.alacrity;
         document.getElementById("valWill").innerText = p.totalAttr.will;
 
-        document.getElementById("perkMight").className = p.perks.might ? "perk-active" : "";
-        document.getElementById("perkAlac").className = p.perks.alacrity ? "perk-active" : "";
-        document.getElementById("perkWill").className = p.perks.will ? "perk-active" : "";
+        const m = p.perkLevel?.might || 0;
+        const a = p.perkLevel?.alacrity || 0;
+        const w = p.perkLevel?.will || 0;
+        document.getElementById("perkMight").className = m > 0 ? "perk-active" : "";
+        document.getElementById("perkAlac").className = a > 0 ? "perk-active" : "";
+        document.getElementById("perkWill").className = w > 0 ? "perk-active" : "";
 
         let txt = ""; for (let k in p.stats) if (p.stats[k]) txt += `${k}: ${Math.round(p.stats[k] * 100) / 100}, `;
         document.getElementById("statText").innerText = txt;
@@ -222,7 +221,7 @@ const UI = {
     selectAttribute(attr, sourceBtn) {
         const p = Game.p;
         if (p.levelPicks.attribute > 0) {
-            p.attr[attr]++;
+            p.attr[attr] += 5;
             p.levelPicks.attribute--;
             p.recalc();
             const color = attr === 'might' ? 'rgba(196,107,107,0.75)' : (attr === 'alacrity' ? 'rgba(107,196,140,0.75)' : 'rgba(107,140,196,0.75)');
