@@ -27,6 +27,12 @@ export default class PlayerObj {
         // Level Up Picks
         this.levelPicks = { attribute: 0, weapon: 0, phial: 0 };
         this.weaponRerollsUsed = 0;
+        this.phialRerollsUsed = 0;
+        this.levelUpOffers = {
+            weapon: null,
+            weaponMeta: { weaponCls: null },
+            phial: null,
+        };
 
         // Dash
         this.dashCharges = BALANCE.player.baseDashCharges;
@@ -300,6 +306,12 @@ export default class PlayerObj {
         this.dashCharges = BALANCE.player.baseDashCharges;
         this.dashRechargeTimer = 0;
         this.weaponRerollsUsed = 0;
+        this.phialRerollsUsed = 0;
+        if (this.levelUpOffers) {
+            this.levelUpOffers.weapon = null;
+            this.levelUpOffers.weaponMeta = { weaponCls: null };
+            this.levelUpOffers.phial = null;
+        }
     }
 
     /** Move player without physics interpolation */

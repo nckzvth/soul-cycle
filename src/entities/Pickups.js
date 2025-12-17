@@ -1,7 +1,6 @@
 import { dist2 } from "../core/Utils.js";
 import UI from "../systems/UI.js";
 import { BALANCE } from "../data/Balance.js";
-import { Phials } from "../data/Phials.js";
 
 export class LootDrop {
     constructor(x, y, item) {
@@ -86,14 +85,6 @@ export class PhialShard {
             if (r > BALANCE.pickups.loot.pickupRadius) { this.x += (p.x - this.x) * BALANCE.pickups.soul.attractionSpeed * dt; this.y += (p.y - this.y) * BALANCE.pickups.soul.attractionSpeed * dt; }
             if (d2 < BALANCE.pickups.loot.pickupRadius ** 2) {
                 p.phialShards++;
-                if (p.phialShards % 2 === 0) {
-                    const phialIds = Object.keys(Phials);
-                    const randomPhialId = phialIds[Math.floor(Math.random() * phialIds.length)];
-                    p.addPhial(randomPhialId);
-                    const phialName = Phials[randomPhialId].id.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-                    console.log(`${phialName} x${p.getPhialStacks(randomPhialId)}`);
-                    UI.toast(`New Phial: ${Phials[randomPhialId].description}`);
-                }
                 UI.dirty = true;
                 return false;
             }

@@ -4,6 +4,7 @@ import { SKILLS } from "../data/Skills.js";
 import { Phials } from "../data/Phials.js";
 import { BALANCE } from "../data/Balance.js";
 import SkillOfferSystem from "./SkillOfferSystem.js";
+import PhialOfferSystem from "./PhialOfferSystem.js";
 
 const UI = {
     dirty: true,
@@ -140,8 +141,10 @@ const UI = {
         const p = Game.p;
         const body = document.querySelector('#modal_levelup .modal-body');
         
-        const weaponOptions = this.getWeaponUpgradeOptions();
+        const weaponOptions = this.ensureWeaponOffers();
         const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
+        const phialOptions = this.ensurePhialOffers();
+        const phialRerollCost = this.getPhialRerollCost();
 
         body.innerHTML = `
             <div class="levelup-row" id="levelup-attributes">
@@ -162,8 +165,20 @@ const UI = {
                 </div>
             </div>
             <div class="levelup-row" id="levelup-phial">
-                <div class="sec-title">Phial (x${p.levelPicks.phial})</div>
-                <div class="levelup-options"></div>
+                <div class="sec-title-container">
+                    <div class="sec-title">Phial (x${p.levelPicks.phial})</div>
+                    <button class="btn-reroll" id="btn-reroll-phial">Reroll (${phialRerollCost} Shards)</button>
+                </div>
+                <div class="levelup-options" id="phial-options">
+                    ${phialOptions.map(id => {
+                        const stacks = p.getPhialStacks(id);
+                        const phial = Object.values(Phials).find(ph => ph.id === id);
+                        const title = phial?.name || id;
+                        const desc = phial?.description || "";
+                        const tag = stacks > 0 ? `Upgrade (x${stacks + 1})` : "New";
+                        return `<button class="btn-upgrade" data-phial-id="${id}">${title}<small>${tag} — ${desc}</small></button>`;
+                    }).join('')}
+                </div>
             </div>
         `;
 
@@ -174,10 +189,12 @@ const UI = {
         document.getElementById('btn-will').onclick = () => this.selectAttribute('will');
 
         document.querySelectorAll('.btn-upgrade').forEach(btn => {
-            btn.onclick = () => this.selectWeaponUpgrade(btn.dataset.skillId);
+            if (btn.dataset.skillId) btn.onclick = () => this.selectWeaponUpgrade(btn.dataset.skillId);
+            if (btn.dataset.phialId) btn.onclick = () => this.selectPhial(btn.dataset.phialId);
         });
         
         document.getElementById('btn-reroll-weapon').onclick = () => this.rerollWeaponOptions();
+        document.getElementById('btn-reroll-phial').onclick = () => this.rerollPhialOptions();
     },
     selectAttribute(attr) {
         const p = Game.p;
@@ -199,6 +216,38 @@ const UI = {
         const weapon = p.gear.weapon;
         if (!weapon) return [];
         return SkillOfferSystem.getWeaponOffers(p, weapon.cls, 3);
+    },
+    ensureWeaponOffers() {
+        const p = Game.p;
+        if (!p.levelUpOffers) {
+            p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+        }
+        const weaponCls = p.gear.weapon?.cls || null;
+        if (!weaponCls) {
+            p.levelUpOffers.weapon = [];
+            p.levelUpOffers.weaponMeta.weaponCls = null;
+            return [];
+        }
+        const invalid = p.levelUpOffers.weaponMeta?.weaponCls !== weaponCls;
+        if (!Array.isArray(p.levelUpOffers.weapon) || p.levelUpOffers.weapon.length === 0 || invalid) {
+            p.levelUpOffers.weapon = this.getWeaponUpgradeOptions();
+            p.levelUpOffers.weaponMeta.weaponCls = weaponCls;
+        }
+        return p.levelUpOffers.weapon;
+    },
+    getPhialOptions() {
+        const p = Game.p;
+        return PhialOfferSystem.getPhialOffers(p, 3);
+    },
+    ensurePhialOffers() {
+        const p = Game.p;
+        if (!p.levelUpOffers) {
+            p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+        }
+        if (!Array.isArray(p.levelUpOffers.phial) || p.levelUpOffers.phial.length === 0) {
+            p.levelUpOffers.phial = this.getPhialOptions();
+        }
+        return p.levelUpOffers.phial;
     },
     selectWeaponUpgrade(skillId) {
         const p = Game.p;
@@ -236,7 +285,12 @@ const UI = {
             rerollBtn.classList.remove('disabled');
         }
 
-        const weaponOptions = this.getWeaponUpgradeOptions();
+        if (!p.levelUpOffers) {
+            p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+        }
+        p.levelUpOffers.weapon = this.getWeaponUpgradeOptions();
+        p.levelUpOffers.weaponMeta.weaponCls = p.gear.weapon?.cls || null;
+        const weaponOptions = p.levelUpOffers.weapon;
         const optionsContainer = weaponRow.querySelector('#weapon-upgrade-options');
         optionsContainer.innerHTML = weaponOptions.map(skill => `<button class="btn-upgrade" data-skill-id="${skill.id}">${skill.name}<small>${skill.desc}</small></button>`).join('');
         
@@ -255,6 +309,66 @@ const UI = {
             this.rerenderWeaponRow();
         }
     },
+    getPhialRerollCost() {
+        const p = Game.p;
+        return 1 + (p.phialRerollsUsed || 0);
+    },
+    selectPhial(phialId) {
+        const p = Game.p;
+        if (p.levelPicks.phial > 0) {
+            p.addPhial(phialId);
+            p.levelPicks.phial--;
+            if (!p.levelUpOffers) p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+            p.levelUpOffers.phial = null;
+            this.rerenderPhialRow();
+            this.dirty = true;
+        }
+    },
+    rerenderPhialRow() {
+        const p = Game.p;
+        const phialRow = document.getElementById('levelup-phial');
+        if (!phialRow) return;
+        phialRow.querySelector('.sec-title').innerText = `Phial (x${p.levelPicks.phial})`;
+
+        const rerollBtn = phialRow.querySelector('#btn-reroll-phial');
+        const rerollCost = this.getPhialRerollCost();
+        if (rerollBtn) {
+            rerollBtn.innerText = `Reroll (${rerollCost} Shards)`;
+            if ((p.phialShards || 0) < rerollCost) rerollBtn.classList.add('disabled');
+            else rerollBtn.classList.remove('disabled');
+        }
+
+        const phialOptions = this.ensurePhialOffers();
+        const optionsContainer = phialRow.querySelector('#phial-options');
+        if (optionsContainer) {
+            optionsContainer.innerHTML = phialOptions.map(id => {
+                const stacks = p.getPhialStacks(id);
+                const phial = Object.values(Phials).find(ph => ph.id === id);
+                const title = phial?.name || id;
+                const desc = phial?.description || "";
+                const tag = stacks > 0 ? `Upgrade (x${stacks + 1})` : "New";
+                return `<button class="btn-upgrade" data-phial-id="${id}">${title}<small>${tag} — ${desc}</small></button>`;
+            }).join('');
+            optionsContainer.querySelectorAll('.btn-upgrade').forEach(btn => {
+                if (btn.dataset.phialId) btn.onclick = () => this.selectPhial(btn.dataset.phialId);
+            });
+        }
+
+        if (rerollBtn) rerollBtn.onclick = () => this.rerollPhialOptions();
+        this.updateRowCompletion();
+    },
+    rerollPhialOptions() {
+        const p = Game.p;
+        const rerollCost = this.getPhialRerollCost();
+        if ((p.phialShards || 0) >= rerollCost) {
+            p.phialShards -= rerollCost;
+            p.phialRerollsUsed = (p.phialRerollsUsed || 0) + 1;
+            if (!p.levelUpOffers) p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+            p.levelUpOffers.phial = null;
+            this.rerenderPhialRow();
+            this.dirty = true;
+        }
+    },
     updateRowCompletion() {
         const p = Game.p;
         const attrRow = document.getElementById('levelup-attributes');
@@ -269,6 +383,16 @@ const UI = {
                 row.appendChild(overlay);
             }
         };
+        const clearComplete = (row) => {
+            if (!row) return;
+            row.classList.remove('complete');
+            const overlay = row.querySelector('.row-overlay');
+            if (overlay) overlay.remove();
+        };
+
+        if (p.levelPicks.attribute > 0) clearComplete(attrRow);
+        if (p.levelPicks.weapon > 0) clearComplete(weaponRow);
+        if (p.levelPicks.phial > 0) clearComplete(phialRow);
 
         if (p.levelPicks.attribute === 0) {
             attrRow.classList.add('complete');
@@ -279,10 +403,18 @@ const UI = {
             const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
             if(rerollBtn) rerollBtn.style.display = 'none';
             addOverlay(weaponRow, 'NO PENDING SKILLS');
+        } else {
+            const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
+            if (rerollBtn) rerollBtn.style.display = '';
         }
         if (p.levelPicks.phial === 0) {
             phialRow.classList.add('complete');
+            const rerollBtn = phialRow.querySelector('#btn-reroll-phial');
+            if (rerollBtn) rerollBtn.style.display = 'none';
             addOverlay(phialRow, 'NO PENDING PHIALS');
+        } else {
+            const rerollBtn = phialRow.querySelector('#btn-reroll-phial');
+            if (rerollBtn) rerollBtn.style.display = '';
         }
         
         const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
@@ -293,6 +425,13 @@ const UI = {
             } else {
                 rerollBtn.classList.remove('disabled');
             }
+        }
+
+        const phialRerollBtn = phialRow.querySelector('#btn-reroll-phial');
+        if (phialRerollBtn) {
+            const cost = this.getPhialRerollCost();
+            if ((p.phialShards || 0) < cost) phialRerollBtn.classList.add('disabled');
+            else phialRerollBtn.classList.remove('disabled');
         }
     },
     toast(m) { let t = document.getElementById("toast"); t.innerText = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2000); },
