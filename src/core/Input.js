@@ -17,7 +17,11 @@ export function initInput() {
     };
     window.onkeyup = e => keys[e.code] = false;
 
-    window.onmousedown = () => mouse.down = true;
+    window.onmousedown = (e) => {
+        // Only treat canvas clicks as "fire weapon" input; UI clicks shouldn't shoot or interfere.
+        if (e.button !== 0) return;
+        if (e.target && e.target.id === "game") mouse.down = true;
+    };
     window.onmouseup = () => mouse.down = false;
     window.onmousemove = e => {
         mouse.x = e.clientX;

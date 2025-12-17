@@ -8,6 +8,28 @@ import PhialOfferSystem from "./PhialOfferSystem.js";
 
 const UI = {
     dirty: true,
+    playChoiceConfirm(btn, color) {
+        if (!btn) return;
+        const parseRgba = (s) => {
+            const m = /^rgba\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\)$/.exec(s);
+            if (!m) return null;
+            return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a: Number(m[4]) };
+        };
+        const rgba = parseRgba(color);
+        if (rgba) {
+            btn.style.setProperty('--confirm-color', `rgba(${rgba.r},${rgba.g},${rgba.b},1)`);
+            btn.style.setProperty('--confirm-glow', `rgba(${rgba.r},${rgba.g},${rgba.b},0.65)`);
+            btn.style.setProperty('--confirm-fill', `rgba(${rgba.r},${rgba.g},${rgba.b},0.35)`);
+        } else {
+            btn.style.setProperty('--confirm-color', color);
+            btn.style.setProperty('--confirm-glow', 'rgba(215,196,138,0.65)');
+            btn.style.setProperty('--confirm-fill', 'rgba(215,196,138,0.35)');
+        }
+        btn.classList.remove('btn-choice-confirm');
+        void btn.offsetWidth;
+        btn.classList.add('btn-choice-confirm');
+        window.setTimeout(() => btn.classList.remove('btn-choice-confirm'), 320);
+    },
     init() {
         // Build Attr UI
         const c = document.getElementById("attr-container");
@@ -24,7 +46,8 @@ const UI = {
         document.getElementById("btn-close-inv").onclick = () => this.toggle('inv');
         document.getElementById("btn-save").onclick = () => Game.save();
         
-        document.getElementById('levelup-prompt').onclick = () => {
+        document.getElementById('levelup-prompt').onmousedown = (e) => {
+            e.preventDefault();
             this.toggle('levelup');
         };
         document.getElementById('btn-close-levelup').onclick = () => this.toggle('levelup');
@@ -184,24 +207,26 @@ const UI = {
 
         this.updateRowCompletion();
 
-        document.getElementById('btn-might').onclick = () => this.selectAttribute('might');
-        document.getElementById('btn-alacrity').onclick = () => this.selectAttribute('alacrity');
-        document.getElementById('btn-will').onclick = () => this.selectAttribute('will');
+        document.getElementById('btn-might').onclick = (e) => this.selectAttribute('might', e.currentTarget);
+        document.getElementById('btn-alacrity').onclick = (e) => this.selectAttribute('alacrity', e.currentTarget);
+        document.getElementById('btn-will').onclick = (e) => this.selectAttribute('will', e.currentTarget);
 
         document.querySelectorAll('.btn-upgrade').forEach(btn => {
-            if (btn.dataset.skillId) btn.onclick = () => this.selectWeaponUpgrade(btn.dataset.skillId);
-            if (btn.dataset.phialId) btn.onclick = () => this.selectPhial(btn.dataset.phialId);
+            if (btn.dataset.skillId) btn.onclick = (e) => this.selectWeaponUpgrade(btn.dataset.skillId, e.currentTarget);
+            if (btn.dataset.phialId) btn.onclick = (e) => this.selectPhial(btn.dataset.phialId, e.currentTarget);
         });
         
         document.getElementById('btn-reroll-weapon').onclick = () => this.rerollWeaponOptions();
         document.getElementById('btn-reroll-phial').onclick = () => this.rerollPhialOptions();
     },
-    selectAttribute(attr) {
+    selectAttribute(attr, sourceBtn) {
         const p = Game.p;
         if (p.levelPicks.attribute > 0) {
             p.attr[attr]++;
             p.levelPicks.attribute--;
             p.recalc();
+            const color = attr === 'might' ? 'rgba(196,107,107,0.75)' : (attr === 'alacrity' ? 'rgba(107,196,140,0.75)' : 'rgba(107,140,196,0.75)');
+            this.playChoiceConfirm(sourceBtn, color);
             this.rerenderAttributeRow();
         }
     },
@@ -249,7 +274,7 @@ const UI = {
         }
         return p.levelUpOffers.phial;
     },
-    selectWeaponUpgrade(skillId) {
+    selectWeaponUpgrade(skillId, sourceBtn) {
         const p = Game.p;
         if (p.levelPicks.weapon > 0) {
             const currentStacks = p.skills.get(skillId) || 0;
@@ -267,7 +292,8 @@ const UI = {
             }
             p.levelPicks.weapon--;
             p.recalc();
-            this.rerenderWeaponRow();
+            this.playChoiceConfirm(sourceBtn, 'rgba(215,196,138,0.75)');
+            window.setTimeout(() => this.rerenderWeaponRow(), 180);
         }
     },
     rerenderWeaponRow() {
@@ -313,14 +339,15 @@ const UI = {
         const p = Game.p;
         return 1 + (p.phialRerollsUsed || 0);
     },
-    selectPhial(phialId) {
+    selectPhial(phialId, sourceBtn) {
         const p = Game.p;
         if (p.levelPicks.phial > 0) {
             p.addPhial(phialId);
             p.levelPicks.phial--;
             if (!p.levelUpOffers) p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
             p.levelUpOffers.phial = null;
-            this.rerenderPhialRow();
+            this.playChoiceConfirm(sourceBtn, 'rgba(215,196,138,0.75)');
+            window.setTimeout(() => this.rerenderPhialRow(), 180);
             this.dirty = true;
         }
     },
@@ -350,7 +377,7 @@ const UI = {
                 return `<button class="btn-upgrade" data-phial-id="${id}">${title}<small>${tag} — ${desc}</small></button>`;
             }).join('');
             optionsContainer.querySelectorAll('.btn-upgrade').forEach(btn => {
-                if (btn.dataset.phialId) btn.onclick = () => this.selectPhial(btn.dataset.phialId);
+                if (btn.dataset.phialId) btn.onclick = (e) => this.selectPhial(btn.dataset.phialId, e.currentTarget);
             });
         }
 
@@ -438,6 +465,13 @@ const UI = {
     updateLevelUpPrompt() {
         const prompt = document.getElementById('levelup-prompt');
         const p = Game.p;
+        const levelupModal = document.getElementById('modal_levelup');
+        const levelupOpen = !!levelupModal && levelupModal.classList.contains('show');
+        if (levelupOpen) {
+            prompt.style.display = 'none';
+            prompt.classList.remove('glow');
+            return;
+        }
         if (p && (p.levelPicks.attribute > 0 || p.levelPicks.weapon > 0 || p.levelPicks.phial > 0)) {
             const totalPicks = p.levelPicks.attribute + p.levelPicks.weapon + p.levelPicks.phial;
             prompt.innerHTML = `Level Up!<small>${totalPicks} available</small>`;
