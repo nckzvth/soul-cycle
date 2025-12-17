@@ -503,19 +503,34 @@ class FieldState extends State {
             pack.x += (dx / dist) * speed * dt * 0.22;
             pack.y += (dy / dist) * speed * dt * 0.22;
 
-            pack.chargeTimer -= dt;
-            if (pack.chargeTimer <= 0) {
-                pack.chargeTimer = pack.chargeInterval ?? cfg.chargeIntervalSec ?? 2.4;
-                pack.chargeSeq = (pack.chargeSeq || 0) + 1;
-                pack.phase = "charge";
-                pack.phaseT = pack.chargeDuration ?? cfg.chargeDurationSec ?? 0.55;
-                pack.chargeAngle = Math.atan2(this.p.y - pack.y, this.p.x - pack.x);
-                pack.chargeSpeed = pack.chargeSpeed ?? cfg.chargeSpeed ?? 1050;
-            }
-
-            if (pack.phase === "charge") {
+            // State machine: form -> windup -> charge -> form
+            if (pack.phase === "windup" || pack.phase === "charge") {
                 pack.phaseT -= dt;
-                if (pack.phaseT <= 0) pack.phase = "form";
+                if (pack.phaseT <= 0) {
+                    if (pack.phase === "windup") {
+                        pack.phase = "charge";
+                        pack.phaseT = pack.chargeDuration ?? cfg.chargeDurationSec ?? 0.65;
+                        pack.chargeSeq = (pack.chargeSeq || 0) + 1;
+                    } else {
+                        pack.phase = "form";
+                        pack.chargeTimer = pack.chargeInterval ?? cfg.chargeIntervalSec ?? 3.2;
+                    }
+                }
+            } else {
+                pack.chargeTimer -= dt;
+                if (pack.chargeTimer <= 0) {
+                    // Range gate so off-screen/low-res play is fair.
+                    const maxStart = pack.maxChargeStartDistance ?? cfg.maxChargeStartDistance ?? 650;
+                    if (dist > maxStart) {
+                        pack.chargeTimer = 0.5;
+                    } else {
+                        pack.chargeAngle = Math.atan2(this.p.y - pack.y, this.p.x - pack.x);
+                        pack.chargeSpeed = pack.chargeSpeed ?? cfg.chargeSpeed ?? 820;
+                        pack.maxChargeRange = pack.maxChargeRange ?? cfg.maxChargeRange ?? 520;
+                        pack.phase = "windup";
+                        pack.phaseT = pack.windupDuration ?? cfg.windupDurationSec ?? 0.65;
+                    }
+                }
             }
         }
     }
@@ -633,6 +648,7 @@ class FieldState extends State {
             const c = new Charger(px, py, lvl, false);
             c.packId = id;
             c.packOffset = { x: nx * t * spacing, y: ny * t * spacing };
+            if (i === 0) c.isPackLeader = true;
             members.push(c);
             this.enemies.push(c);
             CombatSystem.onEnemySpawn(c, this);
@@ -644,10 +660,11 @@ class FieldState extends State {
             y,
             members,
             phase: "form",
-            chargeTimer: cfg.chargeIntervalSec ?? 2.4,
-            chargeInterval: cfg.chargeIntervalSec ?? 2.4,
-            chargeDuration: cfg.chargeDurationSec ?? 0.55,
-            chargeSpeed: cfg.chargeSpeed ?? 1050,
+            chargeTimer: cfg.chargeIntervalSec ?? 3.2,
+            chargeInterval: cfg.chargeIntervalSec ?? 3.2,
+            windupDuration: cfg.windupDurationSec ?? 0.65,
+            chargeDuration: cfg.chargeDurationSec ?? 0.65,
+            chargeSpeed: cfg.chargeSpeed ?? 820,
             formSpeed: cfg.formSpeed ?? 520,
             stiffness: cfg.stiffness ?? 7.0,
             chargeSeq: 0,

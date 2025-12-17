@@ -123,9 +123,13 @@ export const BALANCE = {
                 formSpeed: 520,
                 stiffness: 7.0,
                 // Charge cadence
-                chargeIntervalSec: 2.4,
-                chargeDurationSec: 0.55,
-                chargeSpeed: 1050,
+                chargeIntervalSec: 3.2,
+                windupDurationSec: 0.65,
+                chargeDurationSec: 0.65,
+                chargeSpeed: 820,
+                // Readability gates
+                maxChargeStartDistance: 650,
+                maxChargeRange: 520,
             },
         },
         softCaps: {

@@ -232,6 +232,22 @@ export class Charger extends Enemy {
         if (this.packId && fieldState?.chargerPacks && Array.isArray(fieldState.chargerPacks)) {
             const pack = fieldState.chargerPacks.find(p => p && p.id === this.packId);
             if (pack) {
+                if (pack.phase === "windup") {
+                    // Telegraph where the charge will go; keep it growing during windup.
+                    this.applyFriction = true;
+                    this.vx *= 0.5;
+                    this.vy *= 0.5;
+
+                    const a = pack.chargeAngle ?? Math.atan2(player.y - this.y, player.x - this.x);
+                    const thick = 26;
+                    const len = pack.maxChargeRange ?? 520;
+                    if (this.packTelegraphSeq !== pack.chargeSeq) {
+                        this.packTelegraphSeq = pack.chargeSeq;
+                        Telegraph.create(this.x, this.y, len, thick, pack.phaseT || 0.65, 'rect', { rotation: a, grow: true, anchor: "start" });
+                    }
+                    return;
+                }
+
                 if (pack.phase === "charge") {
                     this.applyFriction = false;
                     if (this.packChargeSeq !== pack.chargeSeq) {
@@ -240,8 +256,6 @@ export class Charger extends Enemy {
                         const spd = pack.chargeSpeed ?? BALANCE.enemies.charger.dashSpeed;
                         this.vx = Math.cos(a) * spd;
                         this.vy = Math.sin(a) * spd;
-                        // Light telegraph for the pack cadence.
-                        Telegraph.create(this.x, this.y, 20, 500, 0.25, 'rect', a + Math.PI / 2);
                     }
                     return;
                 }
@@ -263,33 +277,67 @@ export class Charger extends Enemy {
         let dx = player.x - this.x, dy = player.y - this.y;
         let dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
+        const packCfg = BALANCE?.progression?.fieldEvents?.chargerPack || {};
+        const windupDuration = packCfg.windupDurationSec ?? 0.65;
+        const chargeDuration = packCfg.chargeDurationSec ?? 0.65;
+        const chargeSpeed = packCfg.chargeSpeed ?? BALANCE.enemies.charger.dashSpeed;
+        const maxStart = packCfg.maxChargeStartDistance ?? 650;
+        const maxRange = packCfg.maxChargeRange ?? 520;
+
         if (this.state === 0) { // Chase
             this.applyFriction = true;
             this.vx += (dx / dist) * this.speed * dt;
             this.vy += (dy / dist) * this.speed * dt;
             if (dist < 180) {
                 this.state = 1;
-                this.timer = 0.6;
+                this.timer = this.isElite ? windupDuration : 0.6;
+                this.chargeAngle = Math.atan2(dy, dx);
+                this.telegraphSpawned = false;
             }
         } else if (this.state === 1) { // Prep
             this.applyFriction = true;
             this.vx *= 0.5;
             this.vy *= 0.5;
+
+            // Range gate to avoid unfair off-screen charges.
+            if (dist > maxStart) {
+                this.state = 0;
+                this.timer = 0;
+                this.chargeAngle = null;
+                this.telegraphSpawned = false;
+                return;
+            }
+
+            // Lock direction for readability (don't jitter with micro-movement).
+            if (typeof this.chargeAngle !== "number") this.chargeAngle = Math.atan2(dy, dx);
+
+            // Elite readable windup: show a growing lane during prep, then charge.
+            if (this.isElite && !this.telegraphSpawned) {
+                this.telegraphSpawned = true;
+                const thick = 28;
+                Telegraph.create(this.x, this.y, maxRange, thick, Math.max(0.05, this.timer), 'rect', {
+                    rotation: this.chargeAngle,
+                    grow: true,
+                    anchor: "start",
+                });
+            }
+
             this.timer -= dt;
             if (this.timer <= 0) {
                 this.state = 2;
-                this.timer = 0.4;
-                let ang = Math.atan2(dy, dx);
-                this.vx = Math.cos(ang) * BALANCE.enemies.charger.dashSpeed;
-                this.vy = Math.sin(ang) * BALANCE.enemies.charger.dashSpeed;
-                if (this.isElite) {
-                    Telegraph.create(this.x, this.y, 20, 500, 0.4, 'rect', ang + Math.PI / 2);
-                }
+                this.timer = this.isElite ? chargeDuration : 0.4;
+                const ang = typeof this.chargeAngle === "number" ? this.chargeAngle : Math.atan2(dy, dx);
+                const spd = this.isElite ? chargeSpeed : BALANCE.enemies.charger.dashSpeed;
+                this.vx = Math.cos(ang) * spd;
+                this.vy = Math.sin(ang) * spd;
             }
         } else { // Dash
             this.applyFriction = false;
             this.timer -= dt;
-            if (this.timer <= 0) this.state = 0;
+            if (this.timer <= 0) {
+                this.state = 0;
+                this.chargeAngle = null;
+            }
             if (this.isElite) {
                 fieldState.shots.push(new Hazard(fieldState, this.x, this.y, 2));
             }
