@@ -151,12 +151,17 @@ class DungeonState extends State {
         // Limited sustain in rift (dialed separately later; reuse field dials for now).
         const healCfg = BALANCE?.progression?.healOrbs || {};
         const hpRatio = p.hpMax > 0 ? (p.hp / p.hpMax) : 1;
-        let chance = enemy.isElite ? (healCfg.eliteDropChance ?? 0.45) : (healCfg.nonEliteDropChance ?? 0.05);
-        if (hpRatio >= (healCfg.highHpThreshold ?? 0.80)) chance *= (healCfg.highHpChanceMult ?? 0.25);
-        if (!enemy.isBoss && Math.random() < chance) {
-            this.drops.push(new HealthOrb(enemy.x, enemy.y));
+        const atFullHp = hpRatio >= 0.999;
+        if (!atFullHp) {
+            let chance = enemy.isElite ? (healCfg.eliteDropChance ?? 0.20) : (healCfg.nonEliteDropChance ?? 0.01);
+            if (hpRatio >= (healCfg.highHpThreshold ?? 0.99)) chance *= (healCfg.highHpChanceMult ?? 0.15);
+            if (!enemy.isBoss && Math.random() < chance) {
+                this.drops.push(new HealthOrb(enemy.x, enemy.y));
+            }
         }
-        if (enemy.isElite && Math.random() < 0.08) {
+        const magnetCfg = BALANCE?.progression?.soulMagnet || {};
+        const magnetChance = magnetCfg.eliteDropChance ?? 0.0075;
+        if (enemy.isElite && !enemy.isBoss && Math.random() < magnetChance) {
             this.drops.push(new SoulMagnet(enemy.x, enemy.y));
         }
     }

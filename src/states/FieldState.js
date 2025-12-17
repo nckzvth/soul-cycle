@@ -158,6 +158,7 @@ class FieldState extends State {
 
         this.chargerPacks = [];
         this.nextChargerPackId = 1;
+        this.chargerPackCooldown = 0;
     }
 
     enter() {
@@ -246,16 +247,10 @@ class FieldState extends State {
             }
         }
 
-        // Wave milestone cadence (queue drops to attach to future elite deaths).
+        // Wave milestone cadence (reserved for future rewards).
         if (waveConfig && !this.fieldBoss) {
-            if (!this.waveMilestones.sixty && this.waveElapsed >= 60) {
-                this.waveMilestones.sixty = true;
-                this.pendingMilestoneDrop = this.pendingMilestoneDrop || "soulMagnet";
-            }
-            if (!this.waveMilestones.oneTwenty && this.waveElapsed >= 120) {
-                this.waveMilestones.oneTwenty = true;
-                this.pendingMilestoneDrop = this.pendingMilestoneDrop || "soulMagnet";
-            }
+            if (!this.waveMilestones.sixty && this.waveElapsed >= 60) this.waveMilestones.sixty = true;
+            if (!this.waveMilestones.oneTwenty && this.waveElapsed >= 120) this.waveMilestones.oneTwenty = true;
         }
 
         // --- Spawning System ---
@@ -505,6 +500,7 @@ class FieldState extends State {
 
     updateChargerPacks(dt) {
         const cfg = BALANCE?.progression?.fieldEvents?.chargerPack || {};
+        this.chargerPackCooldown = Math.max(0, (this.chargerPackCooldown || 0) - dt);
         for (let i = this.chargerPacks.length - 1; i >= 0; i--) {
             const pack = this.chargerPacks[i];
 
@@ -542,6 +538,10 @@ class FieldState extends State {
 
     spawnChargerPack(x, y) {
         const cfg = BALANCE?.progression?.fieldEvents?.chargerPack || {};
+        if ((this.chargerPackCooldown || 0) > 0) return;
+        const maxActive = cfg.maxActivePacks ?? 1;
+        if (typeof maxActive === "number" && this.chargerPacks.length >= maxActive) return;
+
         const hardCap = BALANCE.waves.hardEnemyCap;
         const want = Math.max(3, cfg.size ?? 6);
         const room = Math.max(0, hardCap - this.enemies.length);
@@ -584,6 +584,8 @@ class FieldState extends State {
             chargeSeq: 0,
             chargeAngle: ang,
         });
+
+        this.chargerPackCooldown = cfg.cooldownSec ?? 60;
     }
 
     spawnShrine(x, y) {
@@ -617,14 +619,16 @@ class FieldState extends State {
             p.phialShards += shards;
             p.souls += souls;
 
-            // Grant 1 random phial if possible; fallback to extra shards.
+            // Reward upgrades only (no new phials from events).
             const cap = BALANCE?.progression?.phials?.maxStacks;
-            const ids = Object.values(Phials).map(ph => ph.id);
-            const eligible = typeof cap === "number" ? ids.filter(id => (p.getPhialStacks(id) || 0) < cap) : ids;
+            const owned = Array.from(p.phials?.keys?.() || []);
+            const eligible = typeof cap === "number"
+                ? owned.filter(id => (p.getPhialStacks(id) || 0) < cap)
+                : owned;
             if (eligible.length > 0) {
                 const id = eligible[Math.floor(Math.random() * eligible.length)];
                 p.addPhial(id);
-                UI.toast("CHEST: PHIAL");
+                UI.toast("CHEST: PHIAL UPGRADE");
             } else {
                 p.phialShards += 2;
                 UI.toast("CHEST");
@@ -828,15 +832,19 @@ class FieldState extends State {
         // Health orbs: primary sustain outside level-ups (dialed).
         const healCfg = BALANCE?.progression?.healOrbs || {};
         const hpRatio = this.p.hpMax > 0 ? (this.p.hp / this.p.hpMax) : 1;
-        let chance = enemy.isElite ? (healCfg.eliteDropChance ?? 0.45) : (healCfg.nonEliteDropChance ?? 0.05);
-        if (hpRatio >= (healCfg.highHpThreshold ?? 0.80)) chance *= (healCfg.highHpChanceMult ?? 0.25);
-        if (!enemy.isBoss && Math.random() < chance) {
-            this.pickups.push(new HealthOrb(enemy.x, enemy.y));
+        const atFullHp = hpRatio >= 0.999;
+        if (!atFullHp) {
+            let chance = enemy.isElite ? (healCfg.eliteDropChance ?? 0.20) : (healCfg.nonEliteDropChance ?? 0.01);
+            if (hpRatio >= (healCfg.highHpThreshold ?? 0.99)) chance *= (healCfg.highHpChanceMult ?? 0.15);
+            if (!enemy.isBoss && Math.random() < chance) {
+                this.pickups.push(new HealthOrb(enemy.x, enemy.y));
+            }
         }
 
-        // Milestone reward: next elite drops a Soul Magnet.
-        if (!this.fieldBoss && enemy.isElite && this.pendingMilestoneDrop === "soulMagnet") {
-            this.pendingMilestoneDrop = null;
+        // Soul Magnet: rare elite drop.
+        const magnetCfg = BALANCE?.progression?.soulMagnet || {};
+        const magnetChance = magnetCfg.eliteDropChance ?? 0.0075;
+        if (enemy.isElite && !enemy.isBoss && Math.random() < magnetChance) {
             this.pickups.push(new SoulMagnet(enemy.x, enemy.y));
         }
 
@@ -928,8 +936,11 @@ class FieldState extends State {
         const packWaveGate = (this.waveIndex || 0) >= 2;
         const canPack = packWaveGate && !isElite && !(meta?.forceSingle) && spawnInfo.type === "charger" && !this.fieldBoss;
         if (canPack && Math.random() < (packCfg.chanceOnChargerSpawn ?? 1.0)) {
+            const before = this.chargerPacks.length;
             this.spawnChargerPack(x, y);
-            return;
+            // Pack spawns are rate-limited; if it doesn't spawn, replace chargers with safer fodder.
+            if (this.chargerPacks.length !== before) return;
+            spawnInfo = waveConfig.weights.find(w => w.type === "walker") || waveConfig.weights[0];
         }
 
         let enemy;

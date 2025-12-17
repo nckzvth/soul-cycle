@@ -36,16 +36,17 @@ export const BALANCE = {
             killRateExponent: 0.6,
         },
         healOrbs: {
-            eliteDropChance: 0.45,
-            nonEliteDropChance: 0.05,
+            eliteDropChance: 0.20,
+            nonEliteDropChance: 0.01,
             healPctMaxHp: 0.20,
-            highHpThreshold: 0.80,
-            highHpChanceMult: 0.25,
+            highHpThreshold: 0.99,
+            highHpChanceMult: 0.15,
         },
         soulMagnet: {
             durationSec: 6.0,
             attractRadius: 5000,
             attractSpeedMult: 3.0,
+            eliteDropChance: 0.0075,
         },
         fieldObjectives: {
             // Spawn events during Field waves (not during the Field Boss gate).
@@ -96,6 +97,8 @@ export const BALANCE = {
             chargerPack: {
                 // If a charger would spawn, chance to spawn a formation pack instead.
                 chanceOnChargerSpawn: 1.0,
+                cooldownSec: 60,
+                maxActivePacks: 1,
                 size: 6,
                 // Formation behavior
                 formSpeed: 520,
