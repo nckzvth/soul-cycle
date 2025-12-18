@@ -172,6 +172,29 @@ export const BALANCE = {
         anchor: { enemyType: "anchor" },
     },
 
+    loot: {
+        // Drop frequency (Field): prefer reward moments over kill spam.
+        dropChances: {
+            field: {
+                elite: 0.12,      // chance per elite kill
+                bounty: 0.50,     // chance per bounty completion
+                chest: 1.0,       // chance per chest interaction
+                fieldBoss: 1.0,   // guaranteed reward
+            },
+        },
+
+        // Rarity tables are per-drop (not cumulative). Each table should sum <= 1.
+        // Targets (approx): Field legendary is very rare; dungeon boss slightly higher but still rare.
+        rarityBySource: {
+            field:       { legendary: 0.005, epic: 0.015, rare: 0.10, uncommon: 0.35 },
+            fieldElite:  { legendary: 0.006, epic: 0.018, rare: 0.12, uncommon: 0.38 },
+            fieldChest:  { legendary: 0.007, epic: 0.020, rare: 0.14, uncommon: 0.45 },
+            fieldBounty: { legendary: 0.007, epic: 0.020, rare: 0.14, uncommon: 0.45 },
+            fieldBoss:   { legendary: 0.010, epic: 0.030, rare: 0.18, uncommon: 0.50 },
+            dungeonBoss: { legendary: 0.012, epic: 0.040, rare: 0.22, uncommon: 0.55 },
+        },
+    },
+
     perks: {
         soulBlast: {
             vfx: {
@@ -278,12 +301,12 @@ export const BALANCE = {
         // Weapon configs
         hammer: {
             startRadius: 20,
-            maxRadius: 120,
+            maxRadius: 100,
             radialSpeed: 180,
             angularSpeed: -7.0,
             hitRadius: 12,
             cooldown: 0.6,
-            damageMult: 3,
+            damageMult: 1.5,
             spinTime: 3.0,
             maxHammers: 3
         },
@@ -597,7 +620,7 @@ export const BALANCE = {
                 maxTier: 5,
                 // Merge control (performance + feel).
                 enabled: true,
-                radius: 240,
+                radius: 120,
                 intervalSec: 0.35,
                 maxMergesPerTick: 4,
                 onlyWhenOrbsAtLeast: 20,

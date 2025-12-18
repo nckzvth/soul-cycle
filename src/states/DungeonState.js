@@ -143,7 +143,7 @@ class DungeonState extends State {
             console.log("Boss defeated!");
             const tier = this.computeRewardTier();
             for (let i = 0; i < tier; i++) {
-                this.drops.push(new Drop(this.boss.x, this.boss.y, LootSystem.loot(i === 0 ? "weapon" : null)));
+                this.drops.push(new Drop(this.boss.x, this.boss.y, LootSystem.loot(i === 0 ? "weapon" : null, { source: "dungeonBoss" })));
             }
 
             this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {

@@ -551,6 +551,12 @@ class FieldState extends State {
         for (let i = 0; i < shardCount; i++) this.pickups.push(new PhialShard(x, y));
         for (let i = 0; i < soulOrbs; i++) this.souls.push(new Soul(this, x, y));
 
+        const lootCfg = BALANCE?.loot?.dropChances?.field || {};
+        const bountyChance = lootCfg.bounty ?? 0.5;
+        if (Math.random() < bountyChance) {
+            this.drops.push(new Drop(x, y, LootSystem.loot(null, { source: "fieldBounty" })));
+        }
+
         UI.toast("BOUNTY COMPLETE");
         this.bounty = null;
         this.bountyCooldown = cfg.cooldownSec ?? 70;
@@ -794,6 +800,12 @@ class FieldState extends State {
                 UI.toast("CHEST");
             }
 
+            const lootCfg = BALANCE?.loot?.dropChances?.field || {};
+            const chestChance = lootCfg.chest ?? 1.0;
+            if (Math.random() < chestChance) {
+                this.drops.push(new Drop(x, y, LootSystem.loot(null, { source: "fieldChest" })));
+            }
+
             UI.dirty = true;
         });
 
@@ -1000,8 +1012,13 @@ class FieldState extends State {
         if (enemy.isElite) {
             this.pickups.push(new PhialShard(enemy.x, enemy.y));
         }
-        if (!this.fieldBoss && (enemy.isElite || Math.random() < 0.3)) {
-            this.drops.push(new Drop(enemy.x, enemy.y, LootSystem.loot()));
+        // Loot: greatly reduced frequency; prefer objective/bounty/boss rewards.
+        if (!this.fieldBoss && enemy.isElite && !enemy.isBoss) {
+            const lootCfg = BALANCE?.loot?.dropChances?.field || {};
+            const eliteChance = lootCfg.elite ?? 0.12;
+            if (Math.random() < eliteChance) {
+                this.drops.push(new Drop(enemy.x, enemy.y, LootSystem.loot(null, { source: "fieldElite" })));
+            }
         }
 
         if (!this.fieldBoss) {
@@ -1015,6 +1032,11 @@ class FieldState extends State {
         }
 
         if (enemy === this.fieldBoss) {
+            const lootCfg = BALANCE?.loot?.dropChances?.field || {};
+            const bossChance = lootCfg.fieldBoss ?? 1.0;
+            if (Math.random() < bossChance) {
+                this.drops.push(new Drop(enemy.x, enemy.y, LootSystem.loot("weapon", { source: "fieldBoss" })));
+            }
             this.fieldBoss = null;
             this.fieldCleared = true;
             this.dungeonDecisionTimer = ProgressionSystem.getFieldDungeonDecisionSec();
