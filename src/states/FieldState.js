@@ -17,6 +17,8 @@ import ParticleSystem from '../systems/Particles.js';
 import LootSystem from '../systems/LootSystem.js';
 import ProgressionSystem from '../systems/ProgressionSystem.js';
 import Boss from '../entities/Boss.js';
+import SpawnSystem from '../systems/SpawnSystem.js';
+import SoulOrbMergeSystem from '../systems/SoulOrbMergeSystem.js';
 
 const PHIAL_ICONS = {
     ashenHalo: "🔆",
@@ -66,6 +68,19 @@ function smoothAngle(current, target, t) {
     return current + delta * t;
 }
 
+function clamp01(x) {
+    return Math.max(0, Math.min(1, x));
+}
+
+function smoothstep01(x) {
+    const t = clamp01(x);
+    return t * t * (3 - 2 * t);
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
 function drawWorldArrow(ctx, screenPos, angle, baseSize, color, alpha) {
     ctx.save();
     ctx.translate(screenPos.x, screenPos.y);
@@ -98,6 +113,10 @@ class FieldState extends State {
         this.pickups = [];
         this.chains = [];
         this.dungeonPortal = null;
+        this._frameId = 0;
+        this._sepGrid = null;
+        this._sepGridFrame = -1;
+        this._sepCellSize = 70;
 
         this.waveIndex = 0;
         this.waveTimer = 0;
@@ -141,6 +160,8 @@ class FieldState extends State {
             objective: { x: 0, y: 0, angle: 0, alpha: 0, targetKey: null },
             bounty: { x: 0, y: 0, angle: 0, alpha: 0, targetKey: null },
         };
+
+        this.prevWaveBaseAlive = null;
     }
 
     enter() {
@@ -156,6 +177,11 @@ class FieldState extends State {
     }
 
     startNextWave() {
+        const prevConfig = BALANCE.waves.sequence[this.waveIndex - 1];
+        if (prevConfig && typeof prevConfig.baseAlive === "number") {
+            this.prevWaveBaseAlive = prevConfig.baseAlive;
+        }
+
         this.waveIndex++;
         const waveConfig = BALANCE.waves.sequence[this.waveIndex - 1];
         if (!waveConfig) {
@@ -183,7 +209,49 @@ class FieldState extends State {
             BALANCE.waves.soulGaugeThresholdPerWave * (this.waveIndex - 1);
     }
 
+    getWaveFillRate(waveConfig) {
+        const raw = waveConfig?.fillRate ?? BALANCE.waves.director.fillRate;
+        if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+
+        const cfg = raw || {};
+        const start = cfg.start ?? BALANCE.waves.director.fillRate;
+        const peak = cfg.peak ?? start;
+        const end = cfg.end ?? peak;
+        const rampUpSec = cfg.rampUpSec ?? 20;
+        const rampDownSec = cfg.rampDownSec ?? 15;
+
+        let rate = peak;
+        if (rampUpSec > 0) {
+            const tUp = smoothstep01((this.waveElapsed || 0) / rampUpSec);
+            rate = lerp(start, peak, tUp);
+        }
+
+        if (rampDownSec > 0) {
+            const remaining = Math.max(0, this.waveTimer || 0);
+            if (remaining < rampDownSec) {
+                const tDown = smoothstep01(remaining / rampDownSec);
+                rate = lerp(end, rate, tDown);
+            }
+        }
+
+        return Math.max(0, rate);
+    }
+
+    getWaveBaseAlive(waveConfig) {
+        const base = waveConfig?.baseAlive ?? 0;
+        const maxAlive = waveConfig?.maxAlive ?? base;
+        const rampSec = waveConfig?.baseAliveRampSec ?? 0;
+        if (!(rampSec > 0)) return base;
+        const from =
+            typeof this.prevWaveBaseAlive === "number"
+                ? this.prevWaveBaseAlive
+                : (typeof waveConfig?.baseAliveStart === "number" ? waveConfig.baseAliveStart : 0);
+        const t = smoothstep01((this.waveElapsed || 0) / rampSec);
+        return Math.min(maxAlive, lerp(from, base, t));
+    }
+
     update(dt) {
+        this._frameId++;
         // --- Timers & State ---
         this.p.update(dt, this, true);
         if (this.gaugeFlash > 0) this.gaugeFlash -= dt * 2;
@@ -269,7 +337,9 @@ class FieldState extends State {
 
         // 3. Spawn from Ambient Director
         if (waveConfig && !this.fieldBoss) {
-            const { baseAlive, bufferSeconds, maxAlive } = waveConfig;
+            const bufferSeconds = waveConfig.bufferSeconds;
+            const maxAlive = waveConfig.maxAlive;
+            const baseAlive = this.getWaveBaseAlive(waveConfig);
             const dirCfg = BALANCE.progression?.director || {};
             const exp = dirCfg.killRateExponent ?? 0.6;
             const bonusCap = dirCfg.desiredBonusCap ?? 40;
@@ -278,7 +348,8 @@ class FieldState extends State {
             const missing = desired - alive;
 
             if (missing > 0) {
-                this.directorCredit += BALANCE.waves.director.fillRate * dt;
+                const fillRate = this.getWaveFillRate(waveConfig);
+                this.directorCredit += fillRate * dt;
                 while (this.directorCredit >= 1 && this.enemies.length < hardCap && this.enemies.length < desired) {
                     this.spawnEnemy(); // Spawn ambient enemy
                     this.directorCredit -= 1;
@@ -292,7 +363,9 @@ class FieldState extends State {
         // Reset per-frame buff state; Anchors re-apply during enemy updates and it must persist into shot updates.
         this.enemies.forEach(e => {
             e.isBuffed = false;
-            if (e.stats) e.stats.damageTakenMult = 1.0;
+            if (e.stats) {
+                e.stats.damageTakenMult = 1.0;
+            }
         });
         
         this.enemies.forEach(e => e.update(dt, this.p, this));
@@ -318,6 +391,7 @@ class FieldState extends State {
 
         this.drops = this.drops.filter(d => d.update(dt, this.p));
         this.souls = this.souls.filter(s => s.update(dt, this.p));
+        this.souls = SoulOrbMergeSystem.merge(this.souls, dt, this);
         this.pickups = this.pickups.filter(p => p.update(dt, this.game.p));
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
 
@@ -1015,17 +1089,23 @@ class FieldState extends State {
             this.spawnChargerPack(x, y);
             // Pack spawns are rate-limited; if it doesn't spawn, replace chargers with safer fodder.
             if (this.chargerPacks.length !== before) return;
-            spawnInfo = waveConfig.weights.find(w => w.type === "walker") || waveConfig.weights[0];
+            spawnInfo = waveConfig.weights.find(w => w.type === "walker" || w.type === "thrall_t1") || waveConfig.weights[0];
         }
 
-        let enemy;
         const lvl = ProgressionSystem.getEnemyLevelForField(this);
-        switch (spawnInfo.type) {
-            case 'charger': enemy = new Charger(x, y, lvl, isElite); break;
-            case 'spitter': enemy = new Spitter(x, y, lvl, isElite); break;
-            case 'anchor': enemy = new Anchor(x, y, lvl, isElite); break;
-            default: enemy = new Walker(x, y, lvl, isElite); break;
-        }
+
+        const legacyToSpawnId = (id) => {
+            if (id === "walker_thrall") return "thrall";
+            if (id === "walker_brute") return "brute";
+            if (id === "walker_cursed") return "cursed";
+            return id;
+        };
+
+        const spawnId = legacyToSpawnId(spawnInfo.type);
+        const spec = SpawnSystem.getSpawnSpec(spawnId) || SpawnSystem.getSpawnSpec("walker");
+        const enemy = SpawnSystem.createEnemyFromSpec(spec, x, y, lvl, isElite);
+        if (!enemy) return;
+        SpawnSystem.applyTierScaling(enemy, spec?.tier, { playerLevel: this.p?.lvl ?? 1 });
         
         enemy.soulValue = spawnInfo.soulValue * (isElite ? 3 : 1);
         if (meta?.bountyId) enemy.bountyId = meta.bountyId;

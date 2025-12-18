@@ -12,6 +12,8 @@ import ProgressionSystem from '../systems/ProgressionSystem.js';
 import { Walker, Charger, Spitter, Anchor } from "../entities/Enemy.js";
 import { SoulOrb as Soul } from "../entities/Pickups.js";
 import { BALANCE } from "../data/Balance.js";
+import SpawnSystem from "../systems/SpawnSystem.js";
+import SoulOrbMergeSystem from "../systems/SoulOrbMergeSystem.js";
 
 class DungeonState extends State {
     constructor(game) {
@@ -31,6 +33,10 @@ class DungeonState extends State {
         this.riftScore = 0;
         this.spawnCredit = 0;
         this.hardEnemyCap = 220;
+        this._frameId = 0;
+        this._sepGrid = null;
+        this._sepGridFrame = -1;
+        this._sepCellSize = 70;
         
         this.combatSystem = CombatSystem; // Expose CombatSystem to entities
     }
@@ -54,6 +60,9 @@ class DungeonState extends State {
         this.elapsed = 0;
         this.riftScore = 0;
         this.spawnCredit = 0;
+        this._frameId = 0;
+        this._sepGrid = null;
+        this._sepGridFrame = -1;
         UI.updateLevelUpPrompt();
     }
 
@@ -62,6 +71,7 @@ class DungeonState extends State {
     }
 
     update(dt) {
+        this._frameId++;
         const p = this.game.p;
         this.elapsed += dt;
         this.timer -= dt;
@@ -115,6 +125,7 @@ class DungeonState extends State {
         this.chains = this.chains.filter(c => { c.t -= dt; return c.t > 0; });
         this.drops = this.drops.filter(d => d.update(dt, p));
         this.souls = this.souls.filter(s => s.update(dt, p));
+        this.souls = SoulOrbMergeSystem.merge(this.souls, dt, this);
 
         // 5. INTERACTION
         if (this.townPortal && keys['KeyF'] && this.townPortal.checkInteraction(p)) {
@@ -200,24 +211,41 @@ class DungeonState extends State {
         const lvl = ProgressionSystem.getEnemyLevelForDungeon(this);
         const pick = type || (() => {
             const t = this.elapsed;
-            if (t < 60) return "walker";
+            if (t < 60) return "thrall_t2";
+            if (t < 180) {
+                const r = Math.random();
+                if (r < 0.55) return "thrall_t3";
+                if (r < 0.80) return "thrall_t2";
+                if (r < 0.90) return "charger";
+                if (r < 0.98) return "spitter";
+                return "anchor";
+            }
             const r = Math.random();
-            if (r < 0.5) return "walker";
-            if (r < 0.75) return "charger";
-            if (r < 0.95) return "spitter";
+            if (r < 0.50) return "thrall_t4";
+            if (r < 0.78) return "thrall_t3";
+            if (r < 0.88) return "charger";
+            if (r < 0.96) return "spitter";
             return "anchor";
         })();
 
-        let enemy;
-        switch (pick) {
-            case "charger": enemy = new Charger(x, y, lvl, isElite); break;
-            case "spitter": enemy = new Spitter(x, y, lvl, isElite); break;
-            case "anchor": enemy = new Anchor(x, y, lvl, isElite); break;
-            default: enemy = new Walker(x, y, lvl, isElite); break;
+        const spec = SpawnSystem.getSpawnSpec(pick);
+        let enemy = null;
+        if (spec) {
+            enemy = SpawnSystem.createEnemyFromSpec(spec, x, y, lvl, isElite);
+            SpawnSystem.applyTierScaling(enemy, spec?.tier, { playerLevel: this.game?.p?.lvl ?? 1 });
+        } else {
+            // Back-compat fallback.
+            switch (pick) {
+                case "charger": enemy = new Charger(x, y, lvl, isElite); break;
+                case "spitter": enemy = new Spitter(x, y, lvl, isElite); break;
+                case "anchor": enemy = new Anchor(x, y, lvl, isElite); break;
+                default: enemy = new Walker(x, y, lvl, isElite); break;
+            }
         }
+        if (!enemy) return;
 
         // Score weight (also matches how "fodder vs elites" should feel).
-        const table = { walker: 1, charger: 2, spitter: 2, anchor: 5 };
+        const table = { thrall_t2: 1, thrall_t3: 1, thrall_t4: 1, walker: 1, charger: 2, spitter: 2, anchor: 5 };
         enemy.soulValue = (table[pick] ?? 1) * (isElite ? 3 : 1);
         this.enemies.push(enemy);
         CombatSystem.onEnemySpawn(enemy, this);

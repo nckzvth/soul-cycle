@@ -33,9 +33,10 @@ export class Enemy {
         // --- State Variables ---
         this.flash = 0;
         this.isBuffed = false;
-        this.stats = { damageTakenMult: 1.0 };
+        this.stats = { damageTakenMult: 1.0, knockbackTakenMult: 1.0 };
         this.iframes = 0;
         this.applyFriction = true;
+        this.friction = (BALANCE?.enemies?.friction ?? 0.92);
         this.blinded = 0;
         this.damageAccumulator = 0;
         StatusSystem.init(this);
@@ -65,8 +66,9 @@ export class Enemy {
         StatusSystem.update(this, dt, fieldState);
 
         if (this.applyFriction) {
-            this.vx *= 0.92;
-            this.vy *= 0.92;
+            const f = typeof this.friction === "number" && Number.isFinite(this.friction) ? this.friction : 0.92;
+            this.vx *= f;
+            this.vy *= f;
         }
 
         // Only run AI movement if NOT blinded
@@ -81,25 +83,68 @@ export class Enemy {
             this.handlePlayerCollision(player, fieldState, dt);
         }
 
-        this.applySeparation(player, fieldState.enemies);
+        this.applySeparation(player, fieldState.enemies, fieldState);
     }
     
-    applySeparation(player, allEnemies) {
+    applySeparation(player, allEnemies, state) {
         const separationForce = 0.5;
 
-        allEnemies.forEach(other => {
-            if (this === other || other.dead) return;
-            const d2 = dist2(this.x, this.y, other.x, other.y);
-            const combinedRadii = (this.r + other.r) ** 2;
-            if (d2 < combinedRadii && d2 > 0) {
-                const d = Math.sqrt(d2);
-                const overlap = (this.r + other.r) - d;
-                const pushX = (this.x - other.x) / d * overlap * separationForce;
-                const pushY = (this.y - other.y) / d * overlap * separationForce;
-                this.x += pushX;
-                this.y += pushY;
+        const useGrid = !!state && (allEnemies?.length || 0) >= 90;
+        if (useGrid) {
+            const cellSize = state._sepCellSize ?? 70;
+            const frame = state._frameId ?? 0;
+            if (state._sepGridFrame !== frame || !state._sepGrid) {
+                const grid = new Map();
+                for (const e of allEnemies) {
+                    if (!e || e.dead) continue;
+                    const cx = Math.floor(e.x / cellSize);
+                    const cy = Math.floor(e.y / cellSize);
+                    const key = `${cx},${cy}`;
+                    let bucket = grid.get(key);
+                    if (!bucket) { bucket = []; grid.set(key, bucket); }
+                    bucket.push(e);
+                }
+                state._sepGrid = grid;
+                state._sepGridFrame = frame;
+                state._sepCellSize = cellSize;
             }
-        });
+
+            const cx = Math.floor(this.x / cellSize);
+            const cy = Math.floor(this.y / cellSize);
+            for (let oy = -1; oy <= 1; oy++) {
+                for (let ox = -1; ox <= 1; ox++) {
+                    const bucket = state._sepGrid.get(`${cx + ox},${cy + oy}`);
+                    if (!bucket) continue;
+                    for (const other of bucket) {
+                        if (this === other || other.dead) continue;
+                        const d2 = dist2(this.x, this.y, other.x, other.y);
+                        const combinedRadii = (this.r + other.r) ** 2;
+                        if (d2 < combinedRadii && d2 > 0) {
+                            const d = Math.sqrt(d2);
+                            const overlap = (this.r + other.r) - d;
+                            const pushX = (this.x - other.x) / d * overlap * separationForce;
+                            const pushY = (this.y - other.y) / d * overlap * separationForce;
+                            this.x += pushX;
+                            this.y += pushY;
+                        }
+                    }
+                }
+            }
+        } else {
+            allEnemies.forEach(other => {
+                if (this === other || other.dead) return;
+                const d2 = dist2(this.x, this.y, other.x, other.y);
+                const combinedRadii = (this.r + other.r) ** 2;
+                if (d2 < combinedRadii && d2 > 0) {
+                    const d = Math.sqrt(d2);
+                    const overlap = (this.r + other.r) - d;
+                    const pushX = (this.x - other.x) / d * overlap * separationForce;
+                    const pushY = (this.y - other.y) / d * overlap * separationForce;
+                    this.x += pushX;
+                    this.y += pushY;
+                }
+            });
+        }
 
         const playerDist2 = dist2(this.x, this.y, player.x, player.y);
         const playerCombinedRadii = (this.r + player.r) ** 2;
@@ -146,9 +191,12 @@ export class Enemy {
 // --- SUBCLASSES ---
 
 export class Walker extends Enemy {
-    constructor(x, y, level, isElite) {
+    constructor(x, y, level, isElite, variant = null) {
         super(x, y, level, isElite);
-        const cfg = BALANCE.enemies.walker;
+        const v = variant || "walker";
+        const variants = BALANCE.enemies?.walkerVariants || {};
+        const cfg = variants[v] || BALANCE.enemies.walker;
+        this.variant = v;
         
         this.hp = cfg.baseHp + level * cfg.hpPerLevel;
         if (this.isElite) {
@@ -157,9 +205,21 @@ export class Walker extends Enemy {
         this.hpMax = this.hp;
 
         this.speed = cfg.speed;
-        this.color = "#c44e4e";
+        if (typeof cfg.friction === "number" && Number.isFinite(cfg.friction)) this.friction = cfg.friction;
+        this.r = cfg.radius ?? this.r;
+        this.color = cfg.color ?? "#c44e4e";
+        this.stats.knockbackTakenMult = cfg.knockbackTakenMult ?? 1.0;
         this.eliteSkillCd = 5;
         this.rooting = 0;
+    }
+
+    handlePlayerCollision(player, fieldState, dt) {
+        CombatSystem.onPlayerHit(this, fieldState);
+        const spec = DamageSpecs.enemyContact("walker", this.isBuffed);
+        DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
+        if (this.variant === "cursed") {
+            player.rooted = Math.max(player.rooted || 0, 0.25);
+        }
     }
 
     performAI(dt, player, fieldState) {
@@ -182,15 +242,12 @@ export class Walker extends Enemy {
         }
     }
 
-    handlePlayerCollision(player, fieldState, dt) {
-        CombatSystem.onPlayerHit(this, fieldState);
-        const spec = DamageSpecs.enemyContact("walker", this.isBuffed);
-        DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
-    }
-
     draw(ctx, s) {
         let p = s(this.x, this.y);
         let baseColor = this.isElite ? [255, 215, 0] : [196, 78, 78];
+        if (!this.isElite && this.variant === "thrall") baseColor = [210, 90, 120];
+        if (!this.isElite && this.variant === "brute") baseColor = [120, 60, 60];
+        if (!this.isElite && this.variant === "cursed") baseColor = [150, 80, 210];
         if (this.rooting > 0) {
             const t = 1 - (this.rooting / BALANCE.projectiles.rootWave.life);
             const r = Math.floor(baseColor[0] * (1 - t) + 255 * t);

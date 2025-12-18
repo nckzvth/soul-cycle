@@ -202,8 +202,9 @@ const DamageSystem = {
     if (attacker?.stats && target.vx !== undefined && target.vy !== undefined) {
       const a = Math.atan2(target.y - attacker.y, target.x - attacker.x);
       const kb = (attacker.stats.knockback ?? attacker.stats.kb ?? 0) + BALANCE.combat.knockbackBase;
-      target.vx += Math.cos(a) * kb;
-      target.vy += Math.sin(a) * kb;
+      const kbTakenMult = target?.stats?.knockbackTakenMult ?? 1.0;
+      target.vx += Math.cos(a) * kb * kbTakenMult;
+      target.vy += Math.sin(a) * kb * kbTakenMult;
     }
 
     // Post-hit hook for player procs (e.g., Tithe Engine, pistol cyclone proc).

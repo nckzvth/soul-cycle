@@ -143,6 +143,33 @@ export const BALANCE = {
         phials: {
             maxStacks: 6,
         },
+
+        // Tier scaling: data-driven modifiers you can attach to any spawn spec.
+        // Current usage: thrall tiers (fodder pressure) via `BALANCE.spawns.*.tier`.
+        enemyTiers: {
+            t1: { hpBonusPerPlayerLevel: 0, maxBonusHp: 0, eliteHpBonusMult: 1.0 },
+            t2: { hpBonusPerPlayerLevel: 6, maxBonusHp: 120, eliteHpBonusMult: 1.0 },
+            t3: { hpBonusPerPlayerLevel: 10, maxBonusHp: 220, eliteHpBonusMult: 1.0 },
+            t4: { hpBonusPerPlayerLevel: 14, maxBonusHp: 360, eliteHpBonusMult: 1.0 },
+        },
+    },
+
+    // Spawn specs: stable IDs for wave composition. Specs can include `{ tier: "tN" }`
+    // to apply `BALANCE.progression.enemyTiers` scaling at spawn time.
+    spawns: {
+        walker: { enemyType: "walker", variant: "walker" },
+        thrall: { enemyType: "walker", variant: "thrall" },
+        brute: { enemyType: "walker", variant: "brute" },
+        cursed: { enemyType: "walker", variant: "cursed" },
+
+        thrall_t1: { enemyType: "walker", variant: "thrall", tier: "t1" },
+        thrall_t2: { enemyType: "walker", variant: "thrall", tier: "t2" },
+        thrall_t3: { enemyType: "walker", variant: "thrall", tier: "t3" },
+        thrall_t4: { enemyType: "walker", variant: "thrall", tier: "t4" },
+
+        charger: { enemyType: "charger" },
+        spitter: { enemyType: "spitter" },
+        anchor: { enemyType: "anchor" },
     },
 
     perks: {
@@ -261,10 +288,10 @@ export const BALANCE = {
             maxHammers: 3
         },
         pistol: {
-            damageMult: 3.2
+            damageMult: 1.6
         },
         staff: {
-            damageMult: 3.2
+            damageMult: 1.6
         },
 
         // Projectile speeds
@@ -294,7 +321,7 @@ export const BALANCE = {
 
     waves: {
         // Global settings
-        hardEnemyCap: 400,
+        hardEnemyCap: 450,
         minSpawnRadius: 500, // Minimum distance from player
         maxSpawnRadius: 700, // Maximum distance from player
         viewportMargin: 50,  // Extra margin outside camera view to ensure off-screen
@@ -309,56 +336,199 @@ export const BALANCE = {
 
         // Per-wave configuration
         sequence: [
-            { // Wave 1
-                duration: 180,
-                baseAlive: 3, // Reduced from 10
-                bufferSeconds: 3,
-                maxAlive: 50,
-                weights: [{ type: 'walker', weight: 100, soulValue: 1 }],
+            { // Wave 1 (0:00 - 1:30)
+                duration: 90,
+                baseAlive: 25,
+                baseAliveStart: 0,
+                baseAliveRampSec: 80,
+                bufferSeconds: 1.5,
+                maxAlive: 60,
+                fillRate: { start: 0.7, peak: 2.0, end: 1.2, rampUpSec: 70, rampDownSec: 10 },
+                weights: [
+                    { type: 'thrall_t1', weight: 85, soulValue: 1 },
+                    { type: 'walker', weight: 15, soulValue: 1 },
+                ],
                 events: [
-                     { type: 'walker', count: 10, rate: 1, delay: 10 }
+                    { type: 'thrall_t1', count: 12, rate: 1.2, delay: 35 }
                 ]
             },
-            { // Wave 2
-                duration: 180,
-                baseAlive: 8, // Reduced from 15
+            { // Wave 2 (1:30 - 3:00)
+                duration: 90,
+                baseAlive: 75,
+                baseAliveRampSec: 14,
+                bufferSeconds: 4,
+                maxAlive: 120,
+                fillRate: { start: 5, peak: 12, end: 7, rampUpSec: 18, rampDownSec: 14 },
+                weights: [
+                    { type: 'thrall_t1', weight: 55, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 20, soulValue: 1 },
+                    { type: 'walker', weight: 20, soulValue: 1 },
+                    { type: 'charger', weight: 5, soulValue: 2 },
+                ],
+                events: [
+                    { type: 'charger', count: 10, rate: 1.5, delay: 25 }
+                ]
+            },
+            { // Wave 3 (3:00 - 4:30) lull
+                duration: 90,
+                baseAlive: 30,
+                baseAliveRampSec: 10,
                 bufferSeconds: 4,
                 maxAlive: 80,
-                weights: [{ type: 'walker', weight: 60, soulValue: 1 }, { type: 'charger', weight: 40, soulValue: 2 }],
+                fillRate: { start: 3, peak: 6, end: 3, rampUpSec: 12, rampDownSec: 12 },
+                weights: [
+                    { type: 'walker', weight: 70, soulValue: 1 },
+                    { type: 'thrall_t1', weight: 20, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 5, soulValue: 1 },
+                    { type: 'spitter', weight: 5, soulValue: 2 },
+                ],
                 events: [
-                    { type: 'charger', count: 15, rate: 1, delay: 20 }
+                    { type: 'spitter', count: 6, rate: 0.8, delay: 18 }
                 ]
             },
-            { // Wave 3
-                duration: 180,
-                baseAlive: 12, // Reduced from 20
-                bufferSeconds: 5,
-                maxAlive: 100,
-                weights: [{ type: 'walker', weight: 50, soulValue: 1 }, { type: 'charger', weight: 30, soulValue: 2 }, { type: 'spitter', weight: 20, soulValue: 2 }],
+            { // Wave 4 (4:30 - 6:00) density spike
+                duration: 90,
+                baseAlive: 300,
+                baseAliveRampSec: 28,
+                bufferSeconds: 6,
+                maxAlive: 340,
+                fillRate: { start: 6, peak: 22, end: 8, rampUpSec: 25, rampDownSec: 15 },
+                weights: [
+                    { type: 'thrall_t1', weight: 70, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 20, soulValue: 1 },
+                    { type: 'thrall_t3', weight: 6, soulValue: 1 },
+                    { type: 'walker', weight: 2, soulValue: 1 },
+                    { type: 'spitter', weight: 1, soulValue: 2 },
+                    { type: 'charger', weight: 1, soulValue: 2 },
+                ],
                 events: [
-                    { type: 'spitter', count: 10, rate: 0.5, delay: 15 }
+                    { type: 'thrall_t1', count: 110, rate: 30, delay: 14 },
+                    { type: 'thrall_t2', count: 30, rate: 8, delay: 22 },
+                    { type: 'charger', count: 12, rate: 2.0, delay: 35 },
+                    { type: 'spitter', count: 10, rate: 1.5, delay: 55 },
                 ]
             },
-            { // Wave 4
-                duration: 180,
-                baseAlive: 16, // Reduced from 25
+            { // Wave 5 (6:00 - 7:30) lull
+                duration: 90,
+                baseAlive: 25,
+                baseAliveRampSec: 10,
+                bufferSeconds: 4,
+                maxAlive: 90,
+                fillRate: { start: 3, peak: 7, end: 4, rampUpSec: 14, rampDownSec: 12 },
+                weights: [
+                    { type: 'walker', weight: 75, soulValue: 1 },
+                    { type: 'thrall_t1', weight: 10, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 5, soulValue: 1 },
+                    { type: 'spitter', weight: 8, soulValue: 2 },
+                    { type: 'charger', weight: 2, soulValue: 2 },
+                ],
+                events: [
+                    { type: 'walker', count: 24, rate: 4, delay: 10 }
+                ]
+            },
+            { // Wave 6 (7:30 - 9:00)
+                duration: 90,
+                baseAlive: 50,
+                baseAliveRampSec: 12,
                 bufferSeconds: 5,
                 maxAlive: 120,
-                weights: [{ type: 'walker', weight: 40, soulValue: 1 }, { type: 'charger', weight: 30, soulValue: 2 }, { type: 'spitter', weight: 20, soulValue: 2 }, { type: 'anchor', weight: 10, soulValue: 5 }],
+                fillRate: { start: 4, peak: 10, end: 6, rampUpSec: 16, rampDownSec: 14 },
+                weights: [
+                    { type: 'thrall_t1', weight: 30, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 25, soulValue: 1 },
+                    { type: 'walker', weight: 30, soulValue: 1 },
+                    { type: 'brute', weight: 10, soulValue: 2 },
+                    { type: 'spitter', weight: 3, soulValue: 2 },
+                    { type: 'charger', weight: 2, soulValue: 2 },
+                ],
                 events: [
-                    { type: 'anchor', count: 5, rate: 0.2, delay: 10 }
+                    { type: 'brute', count: 8, rate: 0.8, delay: 40 }
                 ]
             },
-            { // Wave 5
-                duration: 180,
-                baseAlive: 20, // Reduced from 30
+            { // Wave 7 (9:00 - 10:30)
+                duration: 90,
+                baseAlive: 75,
+                baseAliveRampSec: 12,
                 bufferSeconds: 6,
                 maxAlive: 150,
-                weights: [{ type: 'walker', weight: 30, soulValue: 1 }, { type: 'charger', weight: 30, soulValue: 2 }, { type: 'spitter', weight: 20, soulValue: 2 }, { type: 'anchor', weight: 20, soulValue: 5 }],
+                fillRate: { start: 5, peak: 13, end: 8, rampUpSec: 18, rampDownSec: 15 },
+                weights: [
+                    { type: 'thrall_t1', weight: 22, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 24, soulValue: 1 },
+                    { type: 'thrall_t3', weight: 6, soulValue: 1 },
+                    { type: 'walker', weight: 28, soulValue: 1 },
+                    { type: 'brute', weight: 12, soulValue: 2 },
+                    { type: 'spitter', weight: 6, soulValue: 2 },
+                    { type: 'charger', weight: 2, soulValue: 2 },
+                ],
                 events: [
-                    { type: 'charger', count: 50, rate: 2, delay: 5 } // Swarm
+                    { type: 'spitter', count: 10, rate: 1.0, delay: 30 }
                 ]
-            }
+            },
+            { // Wave 8 (10:30 - 12:00)
+                duration: 90,
+                baseAlive: 100,
+                baseAliveRampSec: 14,
+                bufferSeconds: 6,
+                maxAlive: 180,
+                fillRate: { start: 6, peak: 15, end: 9, rampUpSec: 18, rampDownSec: 15 },
+                weights: [
+                    { type: 'thrall_t1', weight: 12, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 20, soulValue: 1 },
+                    { type: 'thrall_t3', weight: 10, soulValue: 1 },
+                    { type: 'thrall_t4', weight: 3, soulValue: 1 },
+                    { type: 'walker', weight: 22, soulValue: 1 },
+                    { type: 'brute', weight: 18, soulValue: 2 },
+                    { type: 'cursed', weight: 8, soulValue: 2 },
+                    { type: 'spitter', weight: 5, soulValue: 2 },
+                    { type: 'charger', weight: 2, soulValue: 2 },
+                ],
+                events: [
+                    { type: 'cursed', count: 14, rate: 1.2, delay: 20 }
+                ]
+            },
+            { // Wave 9 (12:00 - 13:30) lull
+                duration: 90,
+                baseAlive: 25,
+                baseAliveRampSec: 10,
+                bufferSeconds: 5,
+                maxAlive: 120,
+                fillRate: { start: 3, peak: 8, end: 5, rampUpSec: 14, rampDownSec: 12 },
+                weights: [
+                    { type: 'walker', weight: 55, soulValue: 1 },
+                    { type: 'brute', weight: 25, soulValue: 2 },
+                    { type: 'spitter', weight: 12, soulValue: 2 },
+                    { type: 'anchor', weight: 8, soulValue: 5 },
+                ],
+                events: [
+                    { type: 'anchor', count: 3, rate: 0.4, delay: 28 }
+                ]
+            },
+            { // Wave 10 (13:30 - 15:00) density spike
+                duration: 90,
+                baseAlive: 300,
+                baseAliveRampSec: 28,
+                bufferSeconds: 7,
+                maxAlive: 360,
+                fillRate: { start: 8, peak: 24, end: 10, rampUpSec: 25, rampDownSec: 15 },
+                weights: [
+                    { type: 'thrall_t1', weight: 35, soulValue: 1 },
+                    { type: 'thrall_t2', weight: 30, soulValue: 1 },
+                    { type: 'thrall_t3', weight: 20, soulValue: 1 },
+                    { type: 'thrall_t4', weight: 8, soulValue: 1 },
+                    { type: 'brute', weight: 3, soulValue: 2 },
+                    { type: 'cursed', weight: 2, soulValue: 2 },
+                    { type: 'spitter', weight: 1, soulValue: 2 },
+                    { type: 'charger', weight: 1, soulValue: 2 },
+                ],
+                events: [
+                    { type: 'thrall_t1', count: 80, rate: 30, delay: 12 },
+                    { type: 'thrall_t3', count: 28, rate: 8, delay: 25 },
+                    { type: 'thrall_t4', count: 12, rate: 2.0, delay: 40 },
+                    { type: 'cursed', count: 18, rate: 1.2, delay: 35 },
+                    { type: 'charger', count: 14, rate: 2.2, delay: 60 },
+                ]
+            },
         ]
     },
 
@@ -371,9 +541,18 @@ export const BALANCE = {
 
     enemies: {
         walker: { baseHp: 200, hpPerLevel: 5, speed: 750 },
+        walkerVariants: {
+            // Walkers use damped acceleration; `speed` is accel and `friction` controls turn tightness + terminal velocity.
+            // Goal: player can barely outrun in a straight line, but circle-strafing is less safe.
+            thrall: { baseHp: 60, hpPerLevel: 3, speed: 1650, friction: 0.85, radius: 10, color: "#d25a78", knockbackTakenMult: 1.0 },
+            walker: { baseHp: 200, hpPerLevel: 5, speed: 1625, friction: 0.85, radius: 12, color: "#c44e4e", knockbackTakenMult: 1.0 },
+            brute: { baseHp: 420, hpPerLevel: 10, speed: 1600, friction: 0.85, radius: 14, color: "#783c3c", knockbackTakenMult: 0.35 },
+            cursed: { baseHp: 260, hpPerLevel: 8, speed: 1625, friction: 0.85, radius: 12, color: "#9650d2", knockbackTakenMult: 0.75 },
+        },
         charger: { baseHp: 50, hpPerLevel: 5, speed: 2000, dashSpeed: 800 },
         spitter: { baseHp: 150, hpPerLevel: 5, speed: 500, retreatDistance: 300 },
         anchor:  { baseHp: 500, hpPerLevel: 10, speed: 40, auraRadius: 150 },
+        friction: 0.92,
         baseHp: 10,
         baseSpeed: 100,
         baseRadius: 12,
@@ -406,7 +585,37 @@ export const BALANCE = {
 
     pickups: {
         loot: { pickupRadius: 30 },
-        soul: { pickupRadius: 30, extendedPickupRadius: 150, attractionSpeed: 5, baseSoulValue: 1, magnetism: 5 }
+        soul: {
+            pickupRadius: 30,
+            extendedPickupRadius: 150,
+            attractionSpeed: 5,
+            baseSoulValue: 1,
+            magnetism: 5,
+
+            tiers: {
+                requiredCount: 20,
+                maxTier: 5,
+                // Merge control (performance + feel).
+                enabled: true,
+                radius: 240,
+                intervalSec: 0.35,
+                maxMergesPerTick: 4,
+                onlyWhenOrbsAtLeast: 20,
+                mergeAnimSec: 0.25,
+                // Value-threshold merge (Option C): any nearby orbs can consolidate.
+                minOrbsToMerge: 6,
+                maxAbsorbPerMerge: 28,
+            },
+
+            // Visual: keep size constant, tint by tier.
+            tierColors: {
+                1: "#d7c48a",
+                2: "#f2a25a",
+                3: "#e0671a",
+                4: "#d23a2c",
+                5: "#a865e8",
+            },
+        }
     },
 
     skills: {
