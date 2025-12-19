@@ -116,9 +116,14 @@ const DamageSystem = {
       if (target.hp <= 0) target.dead = true;
     }
 
+    // Track the killing spec so downstream systems can gate on "killed by X".
+    const nowDead = !!target.dead || (typeof target.hp === "number" && target.hp <= 0);
+    if (!wasDead && nowDead) {
+      target.lastHitSpecId = spec?.id || null;
+    }
+
     // Staff: Soul Circuit (occult upgrade) — killing marked/hexed foes grants "Current".
     // Kept here to avoid scattering kill math across projectiles/status sources.
-    const nowDead = !!target.dead || (typeof target.hp === "number" && target.hp <= 0);
     if (!wasDead && nowDead && attacker?.isPlayer) {
       const weaponCls = attacker?.gear?.weapon?.cls;
       if (weaponCls === "staff" && (attacker.stats?.staffSoulCircuitEnable || 0) > 0) {

@@ -950,7 +950,9 @@ export default class PlayerObj {
         }
 
         const titheStacks = this.getPhialStacks(Phials.titheEngine.id);
-        if (titheStacks > 0) {
+        // Tithe Engine: prevent self-fueling from tithe explosion kill chains.
+        const killedByTithe = enemy?.lastHitSpecId === "phial:titheExplosion";
+        if (titheStacks > 0 && !killedByTithe) {
             ParticleSystem.emit(enemy.x, enemy.y, 'gold', 1, 100, 2, 2.0, this);
             this.titheKillsCounter++;
             const requiredKills = clamp(Phials.titheEngine.baseKillsRequired - Phials.titheEngine.killsReductionPerStack * (titheStacks - 1), Phials.titheEngine.minKillsRequired, Phials.titheEngine.baseKillsRequired);

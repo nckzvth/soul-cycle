@@ -99,7 +99,8 @@ const CombatSystem = {
     },
 
     fireZap(player, state) {
-        const baseMaxChains = 1 + (player.stats.chainCount || 0);
+        const base = BALANCE.combat.staffBaseChains ?? 1;
+        const baseMaxChains = base + (player.stats.chainCount || 0);
         let maxChains = baseMaxChains;
         let range = BALANCE.combat.zapChainRange * (player.stats.chainRangeMult || (1 + (player.stats.chainJump || 0)));
 

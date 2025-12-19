@@ -55,8 +55,8 @@ export const Phials = {
         baseKillsRequired: 6,
         killsReductionPerStack: 1,
         minKillsRequired: 3,
-        baseExplosionDamage: 20,
-        explosionDamagePerStack: 6,
+        baseExplosionDamage: 5,
+        explosionDamagePerStack: 5,
         baseExplosionRadius: 80,
         radiusPerStack: 10
     }

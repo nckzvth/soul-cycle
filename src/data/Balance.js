@@ -340,6 +340,7 @@ export const BALANCE = {
 
         // Zap settings
         zapChainRange: 250,
+        staffBaseChains: 1,
     },
 
     waves: {

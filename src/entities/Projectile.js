@@ -28,7 +28,7 @@ export class TitheExplosion {
         this.state.enemies.forEach(e => {
             if (!e.dead && !this.hitList.includes(e)) {
                 if (dist2(this.x, this.y, e.x, e.y) < (this.currentRadius + e.r) ** 2) {
-                    DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem });
+                    DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
                     this.hitList.push(e);
                 }
             }
