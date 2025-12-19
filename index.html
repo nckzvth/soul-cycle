@@ -39,6 +39,8 @@
             #hud-run { margin-bottom: 0; }
             #hud-run { max-width: min(320px, 92vw); background: rgba(20,24,35,0.62); }
             #hud-run.collapsed { background: rgba(20,24,35,0.40); transform: translateY(6px); }
+            #hud-run { width: min(320px, 92vw); min-width: 0; }
+            .hud-run-list { grid-template-columns: 1fr; }
             #hud-run-title-hint { display: none; }
         }
 
@@ -213,8 +215,8 @@
         /* Right-side run info (quest list vibe) */
         #hud-run {
             padding: 10px 12px;
-            min-width: min(360px, 92vw);
-            max-width: 420px;
+            width: min(420px, 34vw);
+            min-width: 220px;
             display:flex;
             flex-direction: column;
             gap: 8px;
@@ -222,8 +224,10 @@
             margin-bottom: clamp(110px, 22vh, 320px);
             transition: transform 140ms ease, opacity 140ms ease, background 140ms ease;
         }
+        #hud-run.collapsed { width: 160px; }
         #hud-run.collapsed { opacity: 0.78; }
         #hud-run.collapsed .hud-run-list { display: none; }
+        #hud-run.collapsed #hud-dungeon-progress { display: none !important; }
         #hud-run-header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
         #btn-hud-run-toggle {
             padding: 4px 8px;
@@ -233,7 +237,7 @@
             opacity: 0.9;
         }
         .hud-run-title { font-size: 11px; font-weight: 900; letter-spacing: 1px; color: rgba(255,255,255,0.85); text-transform: uppercase; }
-        .hud-run-list { display:flex; flex-direction: column; gap: 6px; }
+        .hud-run-list { display:grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
         .hud-run-item { display:flex; justify-content: space-between; gap: 10px; font-size: 12px; color: rgba(255,255,255,0.92); }
         .hud-run-item small { color: rgba(255,255,255,0.55); font-size: 11px; }
         .hud-run-item b { color: var(--gold); }
@@ -491,18 +495,6 @@
                     </div>
                 </div>
                 <div class="hud-left-meta hud-panel" style="padding:10px 12px">
-                    <div id="hud-dungeon-progress">
-                        <div class="hud-progress-title">
-                            <div class="hud-caption">Dungeon Progress</div>
-                            <div class="hud-progress-text" id="hud-dungeon-progress-text">0/0</div>
-                        </div>
-                        <div class="hud-progress-bar" style="margin-top:6px">
-                            <div class="fill" id="hud-dungeon-progress-fill"></div>
-                            <div class="tick" id="hud-dungeon-progress-t1" style="left:0%"></div>
-                            <div class="tick" id="hud-dungeon-progress-t2" style="left:0%"></div>
-                            <div class="tick boss" id="hud-dungeon-progress-boss" style="left:100%"></div>
-                        </div>
-                    </div>
                     <div class="hud-row">
                         <div class="hud-caption">Dash</div>
                         <div id="dash-charges"></div>
@@ -531,6 +523,18 @@
                     <div id="hud-run-header">
                         <div class="hud-run-title" id="hud-run-title">Run <span id="hud-run-title-hint" style="opacity:0.55;font-weight:800;letter-spacing:0">• tap to expand</span></div>
                         <button class="btn" id="btn-hud-run-toggle">Details</button>
+                    </div>
+                    <div id="hud-dungeon-progress" style="margin-top:8px">
+                        <div class="hud-progress-title">
+                            <div class="hud-caption">Dungeon Progress</div>
+                            <div class="hud-progress-text" id="hud-dungeon-progress-text">0/0</div>
+                        </div>
+                        <div class="hud-progress-bar" style="margin-top:6px">
+                            <div class="fill" id="hud-dungeon-progress-fill"></div>
+                            <div class="tick" id="hud-dungeon-progress-t1" style="left:0%"></div>
+                            <div class="tick" id="hud-dungeon-progress-t2" style="left:0%"></div>
+                            <div class="tick boss" id="hud-dungeon-progress-boss" style="left:100%"></div>
+                        </div>
                     </div>
                     <div class="hud-run-list" id="hud-run-list">
                         <div class="hud-run-item"><small>Souls</small><b id="uiSouls">0</b></div>

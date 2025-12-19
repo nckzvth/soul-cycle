@@ -333,8 +333,8 @@ class DungeonState extends State {
     }
 
     spawnMobs(dt) {
-        // Don't spawn after the rift is complete.
-        if (!this.boss || this.boss.dead) return;
+        // Spawn only in the entry room (progress farming area).
+        if (this.room !== "entry") return;
 
         const baseAlive = 22;
         const maxAlive = 120;
