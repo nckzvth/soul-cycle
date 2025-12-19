@@ -18,6 +18,7 @@ import SoulOrbMergeSystem from "../systems/SoulOrbMergeSystem.js";
 class DungeonState extends State {
     constructor(game) {
         super(game);
+        this.isRun = true;
         this.boss = null;
         this.enemies = [];
         this.shots = []; 
@@ -39,6 +40,10 @@ class DungeonState extends State {
         this._sepCellSize = 70;
         
         this.combatSystem = CombatSystem; // Expose CombatSystem to entities
+    }
+
+    getRestartState(game) {
+        return new DungeonState(game);
     }
 
     enter() {
@@ -64,6 +69,7 @@ class DungeonState extends State {
         this._sepGrid = null;
         this._sepGridFrame = -1;
         UI.updateLevelUpPrompt();
+        this.game.beginRunTracking?.();
     }
 
     exit() {

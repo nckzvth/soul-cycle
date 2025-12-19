@@ -3,6 +3,8 @@
 class State {
     constructor(game) {
         this.game = game;
+        this.uiFlags = { canOpenInv: false, canSwapGear: false, canOpenAppraise: false };
+        this.isRun = false;
     }
 
     enter() {

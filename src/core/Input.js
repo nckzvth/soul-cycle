@@ -8,10 +8,22 @@ export const mouse = { x: 0, y: 0, down: false };
 export function initInput() {
     window.onkeydown = e => {
         keys[e.code] = true;
-        if (e.code === "KeyI") UI.toggle("inv");
-        if (e.code === "KeyC") {
+
+        if (e.code === "Escape" && !e.repeat) {
+            if (document.getElementById("screen_death")?.classList.contains("active")) return;
+            const closed = UI.closeTop();
+            if (!closed) UI.toggle("pause");
+            e.preventDefault();
+            return;
+        }
+
+        if (e.code === "KeyC" && !e.repeat) {
+            if (UI.isOpen("levelup")) {
+                UI.close("levelup");
+                return;
+            }
             if (Game.p && (Game.p.levelPicks.attribute > 0 || Game.p.levelPicks.weapon > 0 || Game.p.levelPicks.phial > 0)) {
-                UI.toggle('levelup');
+                UI.open("levelup");
             }
         }
     };

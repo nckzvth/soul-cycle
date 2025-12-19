@@ -9,6 +9,33 @@ import ProgressionSystem from "./ProgressionSystem.js";
 
 const UI = {
     dirty: true,
+    _openStack: [],
+    _appraiseSession: null,
+    buildAttrUI(containerId, suffix) {
+        const c = document.getElementById(containerId);
+        if (!c) return;
+        c.innerHTML = `
+        <div class="stat-row" style="border-color:var(--red)"><div><b style="color:var(--red)">MIGHT</b><span id="perkMight-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Soul Blast • 50: Burn)</span><br><small>Dmg/Knockback</small></div><div style="display:flex;gap:4px"><b id="valMight-${suffix}">0</b></div></div>
+        <div class="stat-row" style="border-color:var(--green)"><div><b style="color:var(--green)">ALACRITY</b><span id="perkAlac-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Tempest • 50: Split)</span><br><small>Spd/Dash</small></div><div style="display:flex;gap:4px"><b id="valAlac-${suffix}">0</b></div></div>
+        <div class="stat-row" style="border-color:var(--blue)"><div><b style="color:var(--blue)">WILL</b><span id="perkWill-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Wisps • 50: Rod)</span><br><small>Area/Soul</small></div><div style="display:flex;gap:4px"><b id="valWill-${suffix}">0</b></div></div>
+        `;
+    },
+    renderAttrAndStats(suffix) {
+        const p = Game.p;
+        document.getElementById(`valMight-${suffix}`).innerText = p.totalAttr.might;
+        document.getElementById(`valAlac-${suffix}`).innerText = p.totalAttr.alacrity;
+        document.getElementById(`valWill-${suffix}`).innerText = p.totalAttr.will;
+
+        const m = p.perkLevel?.might || 0;
+        const a = p.perkLevel?.alacrity || 0;
+        const w = p.perkLevel?.will || 0;
+        document.getElementById(`perkMight-${suffix}`).className = m > 0 ? "perk-active" : "";
+        document.getElementById(`perkAlac-${suffix}`).className = a > 0 ? "perk-active" : "";
+        document.getElementById(`perkWill-${suffix}`).className = w > 0 ? "perk-active" : "";
+
+        let txt = ""; for (let k in p.stats) if (p.stats[k]) txt += `${k}: ${Math.round(p.stats[k] * 100) / 100}, `;
+        document.getElementById(`statText-${suffix}`).innerText = txt;
+    },
     playChoiceConfirm(btn, color) {
         if (!btn) return;
         const parseRgba = (s) => {
@@ -32,23 +59,112 @@ const UI = {
         window.setTimeout(() => btn.classList.remove('btn-choice-confirm'), 320);
     },
     init() {
-        // Build Attr UI
-        const c = document.getElementById("attr-container");
-        c.innerHTML = `
-        <div class="stat-row" style="border-color:var(--red)"><div><b style="color:var(--red)">MIGHT</b><span id="perkMight" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Soul Blast • 50: Burn)</span><br><small>Dmg/Knockback</small></div><div style="display:flex;gap:4px"><b id="valMight">0</b></div></div>
-        <div class="stat-row" style="border-color:var(--green)"><div><b style="color:var(--green)">ALACRITY</b><span id="perkAlac" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Tempest • 50: Split)</span><br><small>Spd/Dash</small></div><div style="display:flex;gap:4px"><b id="valAlac">0</b></div></div>
-        <div class="stat-row" style="border-color:var(--blue)"><div><b style="color:var(--blue)">WILL</b><span id="perkWill" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Wisps • 50: Rod)</span><br><small>Area/Soul</small></div><div style="display:flex;gap:4px"><b id="valWill">0</b></div></div>
-        `;
-
-        document.getElementById("btn-inv").onclick = () => this.toggle('inv');
+        this.buildAttrUI("attr-container-inv", "inv");
+        document.getElementById("btn-inv").onclick = () => this.toggle('pause');
         document.getElementById("btn-close-inv").onclick = () => this.toggle('inv');
+        document.getElementById("btn-close-appraise").onclick = () => this.toggle('appraise');
+        document.getElementById("btn-identify-all").onclick = () => this.identifyAll();
+        document.getElementById("btn-close-pause").onclick = () => this.toggle('pause');
         document.getElementById("btn-save").onclick = () => Game.save();
+
+        const pauseModal = document.getElementById("modal_pause");
+        if (pauseModal) {
+            // No-op: pause actions are wired on render to avoid delegation edge cases.
+        }
         
         document.getElementById('levelup-prompt').onmousedown = (e) => {
             e.preventDefault();
             this.toggle('levelup');
         };
         document.getElementById('btn-close-levelup').onclick = () => this.toggle('levelup');
+    },
+    getStateFlags() {
+        return Game?.stateManager?.currentState?.uiFlags || { canOpenInv: false, canSwapGear: false };
+    },
+    isOpen(id) {
+        const el = document.getElementById("modal_" + id);
+        return !!el && el.classList.contains("show");
+    },
+    syncPauseState() {
+        const anyModalOpen = !!document.querySelector(".modal.show");
+        const death = document.getElementById("screen_death")?.classList.contains("active");
+        Game.paused = anyModalOpen || !!death;
+    },
+    open(id) {
+        const el = document.getElementById("modal_" + id);
+        if (!el) return;
+
+        // Don't allow the pause menu before a run/session exists.
+        if (id === "pause" && !Game.p) return;
+
+        if (id === "inv") {
+            const flags = this.getStateFlags();
+            if (!flags.canOpenInv) {
+                this.toast("Visit the Outfitter to change your loadout");
+                return;
+            }
+        }
+
+        if (id === "appraise") {
+            const flags = this.getStateFlags();
+            if (!flags.canOpenAppraise) {
+                this.toast("Visit the Appraiser to identify items");
+                return;
+            }
+            const p = Game.p;
+            this._appraiseSession = { items: p?.inv?.filter(it => it && it.identified === false) || [] };
+        }
+
+        if (id === "levelup") {
+            const p = Game.p;
+            const hasPicks = !!p && (p.levelPicks.attribute > 0 || p.levelPicks.weapon > 0 || p.levelPicks.phial > 0);
+            if (!hasPicks) return;
+        }
+
+        el.classList.add("show");
+        this._openStack = this._openStack.filter(openId => openId !== id);
+        this._openStack.push(id);
+
+        if (id === "inv") this.renderInv();
+        if (id === "appraise") this.renderAppraise();
+        if (id === "pause") this.renderPause();
+        if (id === "levelup") this.renderLevelUp();
+
+        this.syncPauseState();
+        this.updateLevelUpPrompt();
+    },
+    close(id) {
+        const el = document.getElementById("modal_" + id);
+        if (!el) return;
+        el.classList.remove("show");
+        this._openStack = this._openStack.filter(openId => openId !== id);
+        if (id === "appraise") this._appraiseSession = null;
+        this.syncPauseState();
+        this.updateLevelUpPrompt();
+    },
+    closeAll() {
+        document.querySelectorAll(".modal.show").forEach(el => el.classList.remove("show"));
+        this._openStack = [];
+        this._appraiseSession = null;
+        this.syncPauseState();
+        this.updateLevelUpPrompt();
+    },
+    closeTop() {
+        const top = this._openStack[this._openStack.length - 1];
+        if (top) {
+            this.close(top);
+            return true;
+        }
+
+        const open = Array.from(document.querySelectorAll(".modal.show")).at(-1);
+        if (!open) return false;
+        const id = open.id?.startsWith("modal_") ? open.id.slice("modal_".length) : null;
+        if (id) this.close(id);
+        else {
+            open.classList.remove("show");
+            this.syncPauseState();
+        }
+        return true;
     },
     render() {
         let p = Game.p;
@@ -96,56 +212,46 @@ const UI = {
         this.updateLevelUpPrompt();
     },
     toggle(id) {
-        let el = document.getElementById("modal_" + id);
-        let on = el.classList.toggle("show");
-        Game.paused = on;
-        if (on) { 
-            if (id === "inv") this.renderInv(); 
-            if (id === 'levelup') this.renderLevelUp();
-        }
-        this.updateLevelUpPrompt();
+        if (this.isOpen(id)) this.close(id);
+        else this.open(id);
     },
     renderInv() {
         let p = Game.p;
-        document.getElementById("valMight").innerText = p.totalAttr.might;
-        document.getElementById("valAlac").innerText = p.totalAttr.alacrity;
-        document.getElementById("valWill").innerText = p.totalAttr.will;
+        const canSwapGear = () => !!this.getStateFlags().canSwapGear;
 
-        const m = p.perkLevel?.might || 0;
-        const a = p.perkLevel?.alacrity || 0;
-        const w = p.perkLevel?.will || 0;
-        document.getElementById("perkMight").className = m > 0 ? "perk-active" : "";
-        document.getElementById("perkAlac").className = a > 0 ? "perk-active" : "";
-        document.getElementById("perkWill").className = w > 0 ? "perk-active" : "";
-
-        let txt = ""; for (let k in p.stats) if (p.stats[k]) txt += `${k}: ${Math.round(p.stats[k] * 100) / 100}, `;
-        document.getElementById("statText").innerText = txt;
+        this.renderAttrAndStats("inv");
 
         let elEq = document.getElementById("equipList"); elEq.innerHTML = "";
         SLOTS.forEach(s => {
             let it = p.gear[s];
             let d = document.createElement("div"); d.className = "equip-slot";
             d.innerHTML = `<span style="color:#888;font-size:10px">${s.toUpperCase()}</span><span class="${it ? 'r-' + it.rarity : 'slot-empty'}">${it ? it.name : 'Empty'}</span>`;
-            if (it) d.onclick = () => { p.inv.push(it); p.gear[s] = null; p.recalc(); this.renderInv(); };
+            if (it) d.onclick = () => {
+                if (!canSwapGear()) return;
+                p.inv.push(it); p.gear[s] = null; p.recalc(); this.renderInv();
+            };
             elEq.appendChild(d);
         });
 
         let elInv = document.getElementById("invList"); elInv.innerHTML = "";
         p.inv.sort((a, b) => (SLOTS.indexOf(a.type) - SLOTS.indexOf(b.type)));
-        if (p.inv.length === 0) elInv.innerHTML = "<div style='color:#555;padding:10px;text-align:center'>Inventory Empty</div>";
+        if (p.inv.length === 0) elInv.innerHTML = "<div style='color:#555;padding:10px;text-align:center'>Stash Empty</div>";
 
         p.inv.forEach((it, i) => {
             let d = document.createElement("div"); d.className = `item-card r-${it.rarity}`;
-            let stStr = ""; for (let k in it.stats) stStr += `${k}:${it.stats[k]} `;
+            let stStr = "";
+            if (it.identified === false) stStr = "Unidentified";
+            else for (let k in it.stats) stStr += `${k}:${it.stats[k]} `;
             d.innerHTML = `<div class="item-info"><span class="item-name">${it.name}</span><span class="item-meta">${stStr}</span></div>`;
             d.onclick = () => {
+                if (!canSwapGear()) return;
                 if (p.gear[it.type]) p.inv.push(p.gear[it.type]);
                 p.gear[it.type] = it; p.inv.splice(i, 1); p.recalc(); this.renderInv();
             };
             elInv.appendChild(d);
         });
         
-        const debugPhials = document.getElementById('debug-phials');
+        const debugPhials = document.getElementById('debug-phials-inv');
         if (Game.debug) {
             debugPhials.innerHTML = '<span class="sec-title">Debug: Add Phials</span>';
             for (const phialId in Phials) {
@@ -157,6 +263,205 @@ const UI = {
                     p.addPhial(phial.id);
                 };
                 debugPhials.appendChild(btn);
+            }
+        }
+    },
+    identifyItem(item) {
+        if (!item || item.identified !== false) return;
+        item.identified = true;
+        if (item.realName) item.name = item.realName;
+        if (item.realStats) item.stats = item.realStats;
+        delete item.realName;
+        delete item.realStats;
+    },
+    identifyAll() {
+        const list = this._appraiseSession?.items?.filter(it => it && it.identified === false) || [];
+        if (list.length === 0) return;
+        list.forEach(it => this.identifyItem(it));
+        this.toast("Items identified");
+        this.renderAppraise();
+        if (this.isOpen("inv")) this.renderInv();
+    },
+    renderAppraise() {
+        const p = Game.p;
+        const el = document.getElementById("appraiseList");
+        if (!el) return;
+        el.innerHTML = "";
+
+        const sessionItems = this._appraiseSession?.items || [];
+        if (sessionItems.length === 0) {
+            el.innerHTML = "<div style='color:#555;padding:10px;text-align:center'>No items to appraise</div>";
+            return;
+        }
+
+        sessionItems.forEach((it) => {
+            const row = document.createElement("div");
+            row.className = `item-card r-${it.rarity}`;
+            row.style.cursor = "default";
+            const isUnidentified = it.identified === false;
+            let meta = "Unidentified";
+            if (!isUnidentified) {
+                let stStr = "";
+                for (let k in (it.stats || {})) stStr += `${k}:${it.stats[k]} `;
+                meta = stStr || "Identified";
+            }
+            row.innerHTML = `
+                <div class="item-info">
+                    <span class="item-name">${it.name}</span>
+                    <span class="item-meta">${meta}</span>
+                </div>
+            `;
+            const btn = document.createElement("button");
+            btn.className = "btn";
+            btn.innerText = isUnidentified ? "Identify" : "Identified";
+            btn.disabled = !isUnidentified;
+            btn.onclick = () => {
+                if (!isUnidentified) return;
+                this.identifyItem(it);
+                this.toast("Identified");
+                this.renderAppraise();
+                if (this.isOpen("inv")) this.renderInv();
+            };
+            row.appendChild(btn);
+            el.appendChild(row);
+        });
+    },
+    renderPause() {
+        const p = Game.p;
+        if (!p) return;
+        const state = Game?.stateManager?.currentState;
+        const inRun = !!state?.isRun;
+
+        const elOptions = document.getElementById("pauseOptions");
+        const elBuild = document.getElementById("pauseBuild");
+        if (!elOptions || !elBuild) return;
+
+        const perkLine = (attrKey, colorVar, label, tier, tier1, tier2) => {
+            const base = `<span style="color:var(${colorVar});font-weight:800">${label}</span>: ${p.totalAttr[attrKey] || 0}`;
+            const perks = [];
+            if ((tier || 0) >= 1) perks.push(tier1);
+            if ((tier || 0) >= 2) perks.push(tier2);
+            if (perks.length === 0) return base;
+            return `${base} <span style="color:var(${colorVar});opacity:0.9">(${perks.join(", ")} unlocked)</span>`;
+        };
+
+        const weaponCls = p?.gear?.weapon?.cls || null;
+        const upgrades = [];
+        for (const [id, stacks] of (p.skills || new Map()).entries()) {
+            if (!stacks) continue;
+            const skill = SKILLS.find(s => s.id === id);
+            if (!skill) continue;
+            if (weaponCls && skill.cls !== weaponCls) continue;
+            upgrades.push(stacks > 1 ? `${skill.name} x${stacks}` : skill.name);
+        }
+
+        const phialNames = [];
+        for (const [id, stacks] of (p.phials || new Map()).entries()) {
+            const phial = Object.values(Phials).find(ph => ph.id === id);
+            const name = phial?.name || id;
+            phialNames.push(`${name} (${stacks})`);
+        }
+
+        const runLoot = Array.isArray(p.runLoot) ? p.runLoot : [];
+        const statsPairs = Object.entries(p.stats || {}).filter(([, v]) => !!v);
+        const statsText = statsPairs.length
+            ? statsPairs.map(([k, v]) => `${k}: ${Math.round(v * 100) / 100}`).join(", ")
+            : "None";
+
+        const equipped = p?.gear || {};
+        const loadoutHtml = SLOTS.map((slot) => {
+            const it = equipped[slot];
+            if (slot === "weapon") {
+                const up = upgrades.length ? `Upgrades: ${upgrades.join(", ")}` : "Upgrades: None";
+                return `
+                    <div class="equip-slot" style="cursor:default;flex-direction:column;align-items:stretch;gap:6px">
+                        <div style="display:flex;justify-content:space-between;gap:10px">
+                            <span style="color:#888;font-size:10px">${slot.toUpperCase()}</span>
+                            <span class="${it ? "r-" + it.rarity : "slot-empty"}" style="text-align:right">${it ? it.name : "Empty"}</span>
+                        </div>
+                        <div style="color:#888;font-size:11px">${up}</div>
+                    </div>
+                `;
+            }
+            return `
+                <div class="equip-slot" style="cursor:default">
+                    <span style="color:#888;font-size:10px">${slot.toUpperCase()}</span>
+                    <span class="${it ? "r-" + it.rarity : "slot-empty"}">${it ? it.name : "Empty"}</span>
+                </div>
+            `;
+        }).join("");
+
+        elOptions.innerHTML = `
+            <span class="sec-title">Options</span>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <button class="btn primary" id="btn-pause-resume">Resume</button>
+                ${inRun ? `<button class="btn danger" id="btn-pause-restart">Restart Run</button>` : ""}
+                ${inRun ? `<button class="btn danger" id="btn-pause-town">Return to Town</button>` : ""}
+                <button class="btn danger" id="btn-pause-quit">Quit Game</button>
+            </div>
+            <div style="margin-top:14px;color:#777;font-size:11px">Press Esc to close this menu.</div>
+        `;
+
+        const attrTier = p.perkLevel || {};
+        elBuild.innerHTML = `
+            <span class="sec-title">Build</span>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <div>${perkLine("might", "--red", "Might", attrTier.might, "Soul Blast", "Burn")}</div>
+                <div>${perkLine("alacrity", "--green", "Alacrity", attrTier.alacrity, "Tempest", "Split")}</div>
+                <div>${perkLine("will", "--blue", "Will", attrTier.will, "Wisps", "Rod")}</div>
+            </div>
+            <div style="margin-top:12px">
+                <span class="sec-title">Loadout</span>
+                <div style="display:flex;flex-direction:column;gap:6px">${loadoutHtml}</div>
+            </div>
+            <div style="margin-top:12px">
+                <span class="sec-title">Stats</span>
+                <div style="color:#888;font-size:12px">${statsText}</div>
+            </div>
+            <div style="margin-top:12px">
+                <span class="sec-title">Phials</span>
+                <div style="color:#888;font-size:12px">${phialNames.length ? phialNames.join(", ") : "None"}</div>
+            </div>
+            <div style="margin-top:12px">
+                <span class="sec-title">Loot Collected</span>
+                <div class="inv-list" id="pauseLootList" style="gap:6px"></div>
+            </div>
+        `;
+
+        // Wire pause actions directly to the freshly rendered buttons.
+        const G = window.Game || Game;
+        const resumeBtn = document.getElementById("btn-pause-resume");
+        if (resumeBtn) resumeBtn.onclick = () => this.close("pause");
+        const townBtn = document.getElementById("btn-pause-town");
+        if (townBtn) townBtn.onclick = () => {
+            if (!window.confirm("Return to Town and forfeit run progress?")) return;
+            G.abortRunToTown();
+        };
+        const restartBtn = document.getElementById("btn-pause-restart");
+        if (restartBtn) restartBtn.onclick = () => {
+            if (!window.confirm("Restart the run and forfeit current run progress?")) return;
+            G.restartRunInPlace();
+        };
+        const quitBtn = document.getElementById("btn-pause-quit");
+        if (quitBtn) quitBtn.onclick = () => {
+            if (!window.confirm("Quit the game?")) return;
+            G.quitToTitle();
+        };
+
+        const lootEl = document.getElementById("pauseLootList");
+        if (lootEl) {
+            if (runLoot.length === 0) {
+                lootEl.innerHTML = "<div style='color:#555;padding:10px;text-align:center'>None this run</div>";
+            } else {
+                lootEl.innerHTML = "";
+                runLoot.forEach(it => {
+                    const card = document.createElement("div");
+                    card.className = `item-card r-${it.rarity}`;
+                    card.style.cursor = "default";
+                    const meta = it.identified === false ? "Unidentified" : Object.entries(it.stats || {}).map(([k, v]) => `${k}:${v}`).join(" ");
+                    card.innerHTML = `<div class="item-info"><span class="item-name">${it.name}</span><span class="item-meta">${meta || ""}</span></div>`;
+                    lootEl.appendChild(card);
+                });
             }
         }
     },

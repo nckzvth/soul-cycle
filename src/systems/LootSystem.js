@@ -52,7 +52,19 @@ const LootSystem = {
 
             let stats = {};
             for (let k in tpl.stats) stats[k] = Math.ceil(tpl.stats[k] * m);
-            return { id: Math.random().toString(36), type: type, name: tpl.base, rarity, stats, cls: tpl.cls, source };
+            const placeholder = `Unidentified ${String(type).charAt(0).toUpperCase()}${String(type).slice(1)}`;
+            return {
+                id: Math.random().toString(36),
+                type: type,
+                name: placeholder,
+                realName: tpl.base,
+                rarity,
+                stats: {},
+                realStats: stats,
+                cls: tpl.cls,
+                source,
+                identified: false,
+            };
         } catch (e) { return { id: "err", type: "trinket", name: "Scrap", rarity: "common", stats: {} }; }
     }
 };

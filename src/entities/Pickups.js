@@ -2,6 +2,7 @@ import { dist2 } from "../core/Utils.js";
 import UI from "../systems/UI.js";
 import { BALANCE } from "../data/Balance.js";
 import ProgressionSystem from "../systems/ProgressionSystem.js";
+import Game from "../core/Game.js";
 
 export class LootDrop {
     constructor(x, y, item) {
@@ -18,7 +19,15 @@ export class LootDrop {
             if (r > BALANCE.pickups.loot.pickupRadius) { this.x += (p.x - this.x) * BALANCE.pickups.soul.attractionSpeed * dt; this.y += (p.y - this.y) * BALANCE.pickups.soul.attractionSpeed * dt; }
             if (d2 < BALANCE.pickups.loot.pickupRadius ** 2) {
                 p.inv.push(this.item);
-                UI.toast(`Got ${this.item.name}`);
+                const cap = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
+                const rarity = cap(this.item?.rarity || "common");
+                const type = cap(this.item?.type || "item");
+                UI.toast(`${rarity} ${type} found!`);
+                const state = Game?.stateManager?.currentState;
+                if (state?.isRun && Array.isArray(p.runLoot)) {
+                    p.runLoot.push(this.item);
+                    this.item.runId = p.runId || 0;
+                }
                 return false;
             }
         }

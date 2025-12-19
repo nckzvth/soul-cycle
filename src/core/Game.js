@@ -26,12 +26,69 @@ const Game = {
         window.addEventListener('keydown', (e) => {
             if (e.code === 'KeyP') {
                 this.debug = !this.debug;
-                const debugEl = document.getElementById('debug-phials');
+                const debugEl = document.getElementById('debug-phials-inv');
                 if (debugEl) {
                     debugEl.style.display = this.debug ? 'block' : 'none';
                 }
             }
         });
+    },
+    beginRunTracking() {
+        const p = this.p;
+        if (!p) return;
+        p.runId = (p.runId || 0) + 1;
+        p.runLoot = [];
+        p.runStart = { souls: p.souls, xp: p.xp };
+    },
+    forfeitRunRewards() {
+        const p = this.p;
+        if (!p?.runStart) return;
+        p.souls = p.runStart.souls;
+        p.xp = p.runStart.xp;
+        p.recalc();
+        UI.dirty = true;
+    },
+    resetRunProgression() {
+        const p = this.p;
+        if (!p) return;
+
+        p.clearPhials();
+        p.clearSkills();
+
+        p.lvl = 1;
+        p.xp = 0;
+        p.attr = { might: 0, alacrity: 0, will: 0, pts: 0 };
+        p.totalAttr = { might: 0, alacrity: 0, will: 0 };
+        p.perks = { might: false, alacrity: false, will: false };
+        p.timers = { might: 0, alacrity: 0, will: 0 };
+        p.levelPicks = { attribute: 0, weapon: 0, phial: 0 };
+        p.weaponRerollsUsed = 0;
+        p.phialRerollsUsed = 0;
+        p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+        p.activeOrbitalWisps = 0;
+        p.hp = p.hpMax;
+        p.recalc();
+        UI.dirty = true;
+        UI.updateLevelUpPrompt();
+    },
+    abortRunToTown() {
+        this.forfeitRunRewards();
+        UI.closeAll();
+        this.stateManager.switchState(new TownState(this));
+        this.paused = false;
+    },
+    restartRunInPlace() {
+        const st = this.stateManager?.currentState;
+        if (!st?.isRun) return;
+        this.forfeitRunRewards();
+        this.resetRunProgression();
+        UI.closeAll();
+        const next = st.getRestartState?.(this);
+        if (next) this.stateManager.switchState(next);
+        this.paused = false;
+    },
+    quitToTitle() {
+        location.reload();
     },
 
     startGame(wepType) {
@@ -56,6 +113,7 @@ const Game = {
 
     restart() {
         document.getElementById('screen_death').classList.remove('active');
+        UI.closeAll();
         this.stateManager.switchState(new TownState(this));
         this.paused = false;
     },
@@ -106,7 +164,7 @@ const Game = {
             else if (rVal < 0.60) { rarity = "uncommon"; m = 1.2; }
             let stats = {};
             for (let k in tpl.stats) stats[k] = Math.ceil(tpl.stats[k] * m);
-            return { id: Math.random().toString(36), type, name: tpl.base, rarity, stats, cls: tpl.cls };
+            return { id: Math.random().toString(36), type, name: tpl.base, rarity, stats, cls: tpl.cls, identified: true };
         } catch (e) { return { id: "err", type: "trinket", name: "Scrap", rarity: "common", stats: {} }; }
     }
 };

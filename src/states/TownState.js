@@ -9,6 +9,7 @@ import ParticleSystem from '../systems/Particles.js';
 class TownState extends State {
     constructor(game) {
         super(game);
+        this.uiFlags = { canOpenInv: false, canSwapGear: false, canOpenAppraise: false };
         this.gate = new Interactable(350, 500, 100, 50, () => {
             this.game.stateManager.switchState(new FieldState(this.game));
         });
@@ -16,9 +17,16 @@ class TownState extends State {
         this.dungeonPortal = new Interactable(600, 300, 50, 50, () => {
             this.game.stateManager.switchState(new DungeonState(this.game));
         });
+        this.outfitter = new Interactable(200, 360, 80, 55, () => {
+            UI.toggle('inv');
+        });
+        this.appraiser = new Interactable(520, 360, 95, 55, () => {
+            UI.toggle('appraise');
+        });
         // Empty array for safety if perks trigger
         this.shots = []; 
         this.showKillCounter = false;
+        this._fHeld = false;
     }
 
     enter() {
@@ -53,8 +61,15 @@ class TownState extends State {
         p.update(dt, this, false);
         ParticleSystem.update(dt);
 
+        const canUseOutfitter = this.outfitter.checkInteraction(p);
+        this.uiFlags.canOpenInv = canUseOutfitter;
+        this.uiFlags.canSwapGear = canUseOutfitter;
+        const canUseAppraiser = this.appraiser.checkInteraction(p);
+        this.uiFlags.canOpenAppraise = canUseAppraiser;
+
         // Interaction
-        if (keys['KeyF']) {
+        const fDown = !!keys['KeyF'];
+        if (fDown && !this._fHeld) {
             if (this.gate.checkInteraction(p)) {
                 this.gate.onInteract();
             }
@@ -62,7 +77,14 @@ class TownState extends State {
             if (this.dungeonPortal.checkInteraction(p)) {
                 this.dungeonPortal.onInteract();
             }
+            if (this.outfitter.checkInteraction(p)) {
+                this.outfitter.onInteract();
+            }
+            if (this.appraiser.checkInteraction(p)) {
+                this.appraiser.onInteract();
+            }
         }
+        this._fHeld = fDown;
         
         // Cleanup visuals
         this.shots = this.shots.filter(s => s.update(dt, this));
@@ -93,6 +115,22 @@ class TownState extends State {
         ctx.font = '16px sans-serif';
         ctx.fillText('Dungeon', portalPos.x - 5, portalPos.y + 30);
 
+        // Draw Outfitter
+        const outfitterPos = s(this.outfitter.x, this.outfitter.y);
+        ctx.fillStyle = '#245d45';
+        ctx.fillRect(outfitterPos.x, outfitterPos.y, this.outfitter.width, this.outfitter.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('Outfitter', outfitterPos.x + 8, outfitterPos.y + 32);
+
+        // Draw Appraiser
+        const appraiserPos = s(this.appraiser.x, this.appraiser.y);
+        ctx.fillStyle = '#3a3f73';
+        ctx.fillRect(appraiserPos.x, appraiserPos.y, this.appraiser.width, this.appraiser.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('Appraiser', appraiserPos.x + 10, appraiserPos.y + 32);
+
         p.draw(ctx, s);
         ParticleSystem.render(ctx, s);
 
@@ -105,6 +143,14 @@ class TownState extends State {
         if (this.gate.checkInteraction(p)) {
             ctx.font = '24px sans-serif';
             ctx.fillText("[F] to Enter Field", w / 2, h - 50);
+        }
+        if (this.outfitter.checkInteraction(p)) {
+            ctx.font = '24px sans-serif';
+            ctx.fillText("[F] Outfitter", w / 2, h - 80);
+        }
+        if (this.appraiser.checkInteraction(p)) {
+            ctx.font = '24px sans-serif';
+            ctx.fillText("[F] Appraiser", w / 2, h - 110);
         }
         // TODO: Remove this temporary portal for testing
         if (this.dungeonPortal.checkInteraction(p)) {

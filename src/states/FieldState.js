@@ -99,6 +99,7 @@ function drawWorldArrow(ctx, screenPos, angle, baseSize, color, alpha) {
 class FieldState extends State {
     constructor(game) {
         super(game);
+        this.isRun = true;
         this.game = game;
         this.p = game.p;
         this.combatSystem = CombatSystem;
@@ -164,11 +165,16 @@ class FieldState extends State {
         this.prevWaveBaseAlive = null;
     }
 
+    getRestartState(game) {
+        return new FieldState(game);
+    }
+
     enter() {
         console.log("Entering Field State");
         this.reset();
         this.startNextWave();
         this.p.activeOrbitalWisps = 0;
+        this.game.beginRunTracking?.();
         UI.updateLevelUpPrompt();
     }
 
