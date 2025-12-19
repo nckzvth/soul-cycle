@@ -34,6 +34,35 @@ class Boss {
 
         StatusSystem.update(this, dt, dungeonState);
 
+        // Movement (dungeon boss should reposition; field boss currently stays as an arena gate).
+        if (this.variant === "dungeon" && p) {
+            const cfg = BALANCE.boss || {};
+            const moveSpeed = cfg.moveSpeed ?? 55;
+            const keepAway = cfg.keepAwayRadius ?? 140;
+            const dx = p.x - this.x;
+            const dy = p.y - this.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 > keepAway * keepAway) {
+                const d = Math.sqrt(d2) || 1;
+                this.x += (dx / d) * moveSpeed * dt;
+                this.y += (dy / d) * moveSpeed * dt;
+            } else if (d2 > 0.0001) {
+                // Light orbit when close.
+                const d = Math.sqrt(d2) || 1;
+                const ox = -dy / d;
+                const oy = dx / d;
+                this.x += ox * (moveSpeed * 0.45) * dt;
+                this.y += oy * (moveSpeed * 0.45) * dt;
+            }
+
+            // Clamp to dungeon bounds if provided.
+            const b = dungeonState?.bounds;
+            if (b && typeof b.x === "number" && typeof b.y === "number" && typeof b.w === "number" && typeof b.h === "number") {
+                this.x = Math.max(b.x + this.r, Math.min(b.x + b.w - this.r, this.x));
+                this.y = Math.max(b.y + this.r, Math.min(b.y + b.h - this.r, this.y));
+            }
+        }
+
         this.attackTimer -= dt;
         if (this.attackTimer <= 0) {
             this.attack(p, dungeonState);

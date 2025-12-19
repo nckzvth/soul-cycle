@@ -67,6 +67,28 @@ const UI = {
         document.getElementById("btn-close-pause").onclick = () => this.toggle('pause');
         document.getElementById("btn-save").onclick = () => Game.save();
 
+        // Small-window HUD: allow collapsing the run panel so it doesn't obscure gameplay.
+        const runPanel = document.getElementById("hud-run");
+        const runTitle = document.getElementById("hud-run-title");
+        const runToggle = document.getElementById("btn-hud-run-toggle");
+        if (runPanel && runToggle) {
+            const key = "hudRunCollapsed";
+            const saved = window.localStorage?.getItem?.(key);
+            const shouldDefaultCollapse = (saved == null) && window.innerWidth <= 900;
+            const isCollapsed = (saved === "1") || shouldDefaultCollapse;
+            runPanel.classList.toggle("collapsed", isCollapsed);
+            runToggle.innerText = isCollapsed ? "Details" : "Hide";
+
+            const setCollapsed = (next) => {
+                runPanel.classList.toggle("collapsed", !!next);
+                runToggle.innerText = next ? "Details" : "Hide";
+                window.localStorage?.setItem?.(key, next ? "1" : "0");
+            };
+            const toggle = () => setCollapsed(!runPanel.classList.contains("collapsed"));
+            runToggle.onclick = (e) => { e.preventDefault(); toggle(); };
+            if (runTitle) runTitle.onclick = (e) => { e.preventDefault(); toggle(); };
+        }
+
         const pauseModal = document.getElementById("modal_pause");
         if (pauseModal) {
             // No-op: pause actions are wired on render to avoid delegation edge cases.
@@ -172,11 +194,19 @@ const UI = {
 
         document.getElementById("uiLvl").innerText = p.lvl;
         document.getElementById("uiSouls").innerText = p.souls;
+        const shardEl = document.getElementById("uiShards");
+        if (shardEl) shardEl.innerText = p.phialShards ?? 0;
         const xpRequired = ProgressionSystem.getXpRequired(p.lvl);
         const xpProgress = (p.xp / xpRequired) * 100;
         document.getElementById("xp-bar-fill").style.width = `${xpProgress}%`;
-        document.getElementById("txtHp").innerText = `${Math.ceil(p.hp)}/${p.hpMax}`;
-        document.getElementById("hpBar").style.width = (p.hp / p.hpMax * 100) + "%";
+
+        const hpText = document.getElementById("txtHp");
+        if (hpText) hpText.innerText = `${Math.ceil(p.hp)}/${p.hpMax}`;
+        const hpFill = document.getElementById("hud-hp-orb-fill");
+        if (hpFill) {
+            const hpPct = p.hpMax > 0 ? Math.max(0, Math.min(1, p.hp / p.hpMax)) : 0;
+            hpFill.style.setProperty("--fill", `${Math.round(hpPct * 100)}%`);
+        }
         
         const dashContainer = document.getElementById("dash-charges");
         if (dashContainer) {
@@ -209,6 +239,134 @@ const UI = {
             const kc = p.killStats?.currentSession ?? 0;
             killCounter.innerText = kc;
         }
+
+        // Phials bar (PoE flask-ish)
+        const phialsEl = document.getElementById("hud-phials");
+        if (phialsEl) {
+            phialsEl.innerHTML = "";
+            const entries = Array.from((p.phials || new Map()).entries());
+            if (entries.length === 0) {
+                phialsEl.innerHTML = `<span style="color:rgba(255,255,255,0.45);font-size:11px">None</span>`;
+            } else {
+                for (const [id, stacks] of entries) {
+                    const popTime = p.recentPhialGains?.get?.(id) || 0;
+                    const pop = Math.max(0, Math.min(1, popTime));
+                    const scale = 1 + pop * 0.35;
+                    const ph = Object.values(Phials).find(x => x.id === id) || Phials?.[id];
+                    const icon = ph?.icon || "🧪";
+                    const chip = document.createElement("div");
+                    chip.className = "phial-chip";
+                    chip.title = ph?.name || id;
+                    if (pop > 0.02) {
+                        chip.style.transform = `scale(${scale})`;
+                        chip.style.filter = `brightness(${1 + pop * 0.25})`;
+                        chip.style.boxShadow = `inset 0 0 0 1px rgba(0,0,0,0.4), 0 0 ${10 + pop * 14}px rgba(215,196,138,${0.22 + pop * 0.28})`;
+                    }
+                    chip.innerHTML = `<span class="icon">${icon}</span>${stacks > 1 ? `<span class="stack">${stacks}</span>` : ""}`;
+                    phialsEl.appendChild(chip);
+                }
+            }
+        }
+
+        // Right-side run panel (wave/dungeon info)
+        const st = Game?.stateManager?.currentState;
+        const line1 = document.getElementById("hud-run-line1");
+        const line2 = document.getElementById("hud-run-line2");
+        const line3 = document.getElementById("hud-run-line3");
+        if (line1 && line2 && line3) {
+            const setLine = (el, left, right) => {
+                el.innerHTML = `<small>${left}</small><span>${right}</span>`;
+            };
+
+            if (st?.isRun && typeof st.waveIndex === "number") {
+                const waveTotal = BALANCE?.waves?.sequence?.length || 0;
+                const waveLabel = waveTotal ? `${st.waveIndex} / ${waveTotal}` : `${st.waveIndex}`;
+                const fieldTotal = ProgressionSystem.getFieldDurationSec();
+                const fieldLeft = typeof st.fieldElapsed === "number" ? Math.max(0, fieldTotal - st.fieldElapsed) : null;
+                const waveLeft = Math.max(0, Math.ceil(st.waveTimer || 0));
+
+                if (st.fieldBoss && !st.fieldBoss.dead) setLine(line1, "Status", `<b>FIELD BOSS</b>`);
+                else if (st.fieldCleared && st.dungeonDecisionTimer > 0) setLine(line1, "Status", `<b>Enter Dungeon?</b>`);
+                else if (!BALANCE?.waves?.sequence?.[st.waveIndex - 1]) setLine(line1, "Status", `<span>Field cleared</span>`);
+                else setLine(line1, "Wave", `<b>${waveLabel}</b>`);
+
+                const suffix = typeof fieldLeft === "number" ? ` • Field ${Math.ceil(fieldLeft)}s` : "";
+                setLine(line2, "Timers", `<span>${waveLeft}s${suffix}</span>`);
+                if (st.bounty && !st.fieldBoss) {
+                    setLine(line3, "Bounty", `<span><b>${st.bounty.remaining}</b> left • ${Math.ceil(st.bounty.t || 0)}s</span>`);
+                } else {
+                    setLine(line3, "Objective", `<span>—</span>`);
+                }
+            } else if (st?.isRun && typeof st.timer === "number" && typeof st.riftScore === "number") {
+                const thresholds = st.progressThresholds || (BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420]);
+                const bossThreshold = thresholds[thresholds.length - 1] || 420;
+                setLine(line1, "Dungeon", `<b>Dungeon</b>`);
+                setLine(line2, "Time", `<span>${Math.max(0, Math.ceil(st.timer || 0))}s • Kills <b>${st.riftScore}</b></span>`);
+                setLine(line3, "Unlocks", `<span>${thresholds.slice(0, -1).join(" / ")} • Boss ${bossThreshold}</span>`);
+            } else {
+                setLine(line1, "Status", `<span>—</span>`);
+                setLine(line2, "Timer", `<span>—</span>`);
+                setLine(line3, "Objective", `<span>—</span>`);
+            }
+        }
+
+        // Dungeon Progress bar (separate from Soul Gauge orb)
+        const dungeonProgressWrap = document.getElementById("hud-dungeon-progress");
+        const dungeonProgressText = document.getElementById("hud-dungeon-progress-text");
+        const dungeonProgressFill = document.getElementById("hud-dungeon-progress-fill");
+        const dungeonProgressT1 = document.getElementById("hud-dungeon-progress-t1");
+        const dungeonProgressT2 = document.getElementById("hud-dungeon-progress-t2");
+        const dungeonProgressBoss = document.getElementById("hud-dungeon-progress-boss");
+        const inDungeon = !!st && st.isRun && typeof st.timer === "number" && typeof st.riftScore === "number" && !("waveIndex" in st);
+        if (dungeonProgressWrap && dungeonProgressText && dungeonProgressFill && dungeonProgressT1 && dungeonProgressT2 && dungeonProgressBoss) {
+            if (inDungeon) {
+                dungeonProgressWrap.style.display = "block";
+                const thresholds = st.progressThresholds || (BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420]);
+                const t1 = thresholds[0] ?? 0;
+                const t2 = thresholds[1] ?? 0;
+                const boss = thresholds[thresholds.length - 1] ?? 420;
+                const score = Math.max(0, Math.floor(st.riftScore || 0));
+                const denom = Math.max(1, Math.floor(boss));
+                const pct = Math.max(0, Math.min(1, score / denom));
+                dungeonProgressFill.style.width = `${Math.round(pct * 100)}%`;
+                dungeonProgressText.innerText = `${score}/${denom}`;
+                dungeonProgressT1.style.left = `${Math.max(0, Math.min(100, (t1 / denom) * 100))}%`;
+                dungeonProgressT2.style.left = `${Math.max(0, Math.min(100, (t2 / denom) * 100))}%`;
+                dungeonProgressBoss.style.left = `100%`;
+                // Turn boss marker "complete" when boss is dead.
+                const bossDead = !!st.boss?.dead;
+                dungeonProgressBoss.style.background = bossDead ? "rgba(120,255,180,0.95)" : "rgba(255,120,120,0.95)";
+                dungeonProgressBoss.style.boxShadow = bossDead ? "0 0 10px rgba(120,255,180,0.35)" : "0 0 10px rgba(255,120,120,0.35)";
+            } else {
+                dungeonProgressWrap.style.display = "none";
+            }
+        }
+
+        // Soul Gauge orb: consistent across Field/Dungeon (drives phials like Soul Salvo)
+        const soulFill = document.getElementById("hud-soul-orb-fill");
+        const soulText = document.getElementById("hud-soul-orb-text");
+        const soulOrb = document.getElementById("hud-soul-orb");
+        const soulLabel = document.getElementById("hud-soul-orb-label");
+        if (soulFill || soulText) {
+            const hasGauge = !!st && typeof st.soulGauge === "number" && typeof st.soulGaugeThreshold === "number" && st.soulGaugeThreshold > 0;
+            if (hasGauge) {
+                const pct = Math.max(0, Math.min(1, st.soulGauge / st.soulGaugeThreshold));
+                if (soulFill) soulFill.style.setProperty("--fill", `${Math.round(pct * 100)}%`);
+                if (soulLabel) soulLabel.innerText = "Soul Gauge";
+                if (soulText) soulText.innerText = `${Math.round(pct * 100)}%`;
+
+                if (soulOrb) {
+                    const flash = typeof st?.gaugeFlash === "number" ? st.gaugeFlash : 0;
+                    soulOrb.classList.toggle("flash", flash > 0);
+                }
+            } else {
+                if (soulFill) soulFill.style.setProperty("--fill", "0%");
+                if (soulText) soulText.innerText = "—";
+                if (soulLabel) soulLabel.innerText = "Soul Gauge";
+                if (soulOrb) soulOrb.classList.remove("flash");
+            }
+        }
+
         this.updateLevelUpPrompt();
     },
     toggle(id) {

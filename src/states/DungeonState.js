@@ -28,10 +28,17 @@ class DungeonState extends State {
         this.chains = [];
         // Room bounds
         this.bounds = { x: 0, y: 0, w: 800, h: 600 };
+        this.room = "entry"; // "entry" | "boss"
+        this.bossDoor = null;
         this.showKillCounter = true;
         this.timer = 0;
+        this.timerMax = 0;
         this.elapsed = 0;
-        this.riftScore = 0;
+        this.riftScore = 0; // legacy name; used as dungeon progress score
+        this.soulGauge = 0;
+        this.soulGaugeThreshold = 0;
+        this.gaugeFlash = 0;
+        this.progressThresholds = null;
         this.spawnCredit = 0;
         this.hardEnemyCap = 220;
         this._frameId = 0;
@@ -54,22 +61,51 @@ class DungeonState extends State {
         p.recalc();
         p.activeOrbitalWisps = 0;
 
-        this.boss = new Boss(400, 200);
-        this.enemies = [this.boss];
+        this.room = "entry";
+        this.boss = null;
+        this.enemies = [];
         this.shots = [];
         this.drops = [];
         this.souls = [];
         this.townPortal = null;
         this.showKillCounter = true;
-        this.timer = ProgressionSystem.getDungeonDurationSec();
+        this.timerMax = ProgressionSystem.getDungeonDurationSec();
+        this.timer = this.timerMax;
         this.elapsed = 0;
         this.riftScore = 0;
+        this.soulGauge = 0;
+        this.gaugeFlash = 0;
+        this.progressThresholds = BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420];
+        // Soul Gauge is a separate mechanic from "Dungeon Progress"; keep consistent with Field.
+        this.soulGaugeThreshold = BALANCE.waves.baseSoulGaugeThreshold;
+        this.bossDoor = null;
         this.spawnCredit = 0;
         this._frameId = 0;
         this._sepGrid = null;
         this._sepGridFrame = -1;
         UI.updateLevelUpPrompt();
         this.game.beginRunTracking?.();
+    }
+
+    enterBossRoom() {
+        const p = this.game.p;
+        this.room = "boss";
+        this.enemies = [];
+        this.shots = [];
+        this.drops = [];
+        this.souls = [];
+        this.chains = [];
+        this.townPortal = null;
+
+        const w = this.bounds.w;
+        const h = this.bounds.h;
+        p.teleport(w / 2, h - 100);
+        p.recalc();
+        p.activeOrbitalWisps = 0;
+
+        this.boss = new Boss(w / 2, 120);
+        this.enemies = [this.boss];
+        UI.toast("BOSS ROOM");
     }
 
     exit() {
@@ -81,10 +117,11 @@ class DungeonState extends State {
         const p = this.game.p;
         this.elapsed += dt;
         this.timer -= dt;
+        this.gaugeFlash = Math.max(0, (this.gaugeFlash || 0) - dt * 2);
 
-        // Rift timer expiry: fail if boss not dead.
-        if (this.timer <= 0 && this.boss && !this.boss.dead && !this.townPortal) {
-            UI.toast("RIFT FAILED");
+        // Dungeon timer expiry: fail if you haven't completed.
+        if (this.timer <= 0 && !this.townPortal) {
+            UI.toast("DUNGEON FAILED");
             this.game.stateManager.switchState(new TownState(this.game));
             return;
         }
@@ -95,8 +132,26 @@ class DungeonState extends State {
         ParticleSystem.update(dt);
 
         // 2. WALLS (Clamp Position)
-        p.x = Math.max(this.bounds.x + 12, Math.min(this.bounds.w - 12, p.x));
-        p.y = Math.max(this.bounds.y + 12, Math.min(this.bounds.h - 12, p.y));
+        const c = this.game?.canvas;
+        if (c) {
+            this.bounds.w = c.width;
+            this.bounds.h = c.height;
+        }
+        p.x = Math.max(this.bounds.x + 12, Math.min(this.bounds.x + this.bounds.w - 12, p.x));
+        p.y = Math.max(this.bounds.y + 12, Math.min(this.bounds.y + this.bounds.h - 12, p.y));
+
+        // Boss door always exists in the entry room (you can rush boss for less loot).
+        if (this.room === "entry") {
+            if (!this.bossDoor) {
+                this.bossDoor = new Interactable(this.bounds.w / 2 - 60, 40, 120, 45, () => {
+                    this.enterBossRoom();
+                });
+            }
+            this.bossDoor.x = this.bounds.w / 2 - 60;
+            this.bossDoor.y = 40;
+            this.bossDoor.width = 120;
+            this.bossDoor.height = 45;
+        }
 
         // 3. BOSS/ENEMIES
         // Reset per-frame buff state; Anchors re-apply during enemy updates and it must persist into shot updates.
@@ -106,11 +161,19 @@ class DungeonState extends State {
             if (e.stats) e.stats.damageTakenMult = 1.0;
         });
 
-        // Spawn rift mobs (intensity comes from density; rewards come from thresholds).
-        this.spawnMobs(dt);
+        // Spawn dungeon mobs only in the entry room (progress farming area).
+        if (this.room === "entry") this.spawnMobs(dt);
 
         // Update all enemies (boss + mobs).
         this.enemies.forEach(e => e.update?.(dt, p, this));
+        // Keep entities inside bounds (includes boss movement).
+        const clampToBounds = (ent) => {
+            if (!ent) return;
+            const r = ent.r || 12;
+            ent.x = Math.max(this.bounds.x + r, Math.min(this.bounds.x + this.bounds.w - r, ent.x));
+            ent.y = Math.max(this.bounds.y + r, Math.min(this.bounds.y + this.bounds.h - r, ent.y));
+        };
+        this.enemies.forEach(clampToBounds);
         this.enemies = this.enemies.filter(e => {
             if (!e || e.dead) {
                 if (e) this.onEnemyDeath(e);
@@ -134,6 +197,10 @@ class DungeonState extends State {
         this.souls = SoulOrbMergeSystem.merge(this.souls, dt, this);
 
         // 5. INTERACTION
+        if (this.room === "entry" && this.bossDoor && keys['KeyF'] && this.bossDoor.checkInteraction(p)) {
+            this.bossDoor.onInteract();
+            return;
+        }
         if (this.townPortal && keys['KeyF'] && this.townPortal.checkInteraction(p)) {
             this.townPortal.onInteract();
         }
@@ -156,14 +223,22 @@ class DungeonState extends State {
                 this.game.stateManager.switchState(new TownState(this.game));
             });
             CombatSystem.onRoomOrWaveClear(this);
-            UI.toast(`RIFT CLEARED (T${tier})`);
+            UI.toast(`DUNGEON CLEARED (T${tier})`);
             return;
         }
 
         // Regular rift mobs: grant XP and score.
         this.souls.push(new Soul(this, enemy.x, enemy.y));
         const v = enemy.soulValue || 1;
+        const prev = this.riftScore;
         this.riftScore += v;
+        // Soul Gauge (for phials like Soul Salvo): fills in dungeon too.
+        this.soulGauge += v;
+        if (this.soulGauge >= this.soulGaugeThreshold) {
+            this.soulGauge = 0;
+            p.onGaugeFill?.(this);
+            this.gaugeFlash = 1.0;
+        }
 
         // Limited sustain in rift (dialed separately later; reuse field dials for now).
         const healCfg = BALANCE?.progression?.healOrbs || {};
@@ -293,7 +368,8 @@ class DungeonState extends State {
         // Static Camera
         const s = (x, y) => ({ x, y });
 
-        ctx.fillStyle = '#4a2a5a'; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = this.room === "boss" ? '#3b1d3d' : '#4a2a5a';
+        ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = 'white'; ctx.strokeRect(0, 0, w, h);
 
         this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
@@ -315,6 +391,25 @@ class DungeonState extends State {
 
         ParticleSystem.render(ctx, s);
 
+        // Entry room: boss door.
+        if (this.room === "entry" && this.bossDoor) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.fillRect(this.bossDoor.x, this.bossDoor.y, this.bossDoor.width, this.bossDoor.height);
+            ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+            ctx.strokeRect(this.bossDoor.x, this.bossDoor.y, this.bossDoor.width, this.bossDoor.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Boss Door', this.bossDoor.x + this.bossDoor.width / 2, this.bossDoor.y + 28);
+            if (this.bossDoor.checkInteraction(p)) {
+                ctx.font = '18px sans-serif';
+                ctx.fillText('[F] Enter Boss Room', w / 2, 86);
+            }
+            ctx.restore();
+            ctx.textAlign = 'start';
+        }
+
         // Portal
         if (this.townPortal) {
             let portalPos = s(this.townPortal.x, this.townPortal.y);
@@ -334,11 +429,7 @@ class DungeonState extends State {
             ctx.strokeStyle = 'white'; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
         }
 
-        // Rift UI
-        ctx.fillStyle = 'white'; ctx.font = '18px sans-serif'; ctx.textAlign = 'left';
-        ctx.fillText(`Time: ${Math.max(0, Math.ceil(this.timer))}s`, 16, 30);
-        ctx.fillText(`Score: ${this.riftScore}`, 16, 52);
-        ctx.textAlign = 'start';
+        // Rift UI is rendered in the DOM HUD (see `src/systems/UI.js`).
     }
 }
 

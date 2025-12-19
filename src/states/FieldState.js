@@ -20,36 +20,6 @@ import Boss from '../entities/Boss.js';
 import SpawnSystem from '../systems/SpawnSystem.js';
 import SoulOrbMergeSystem from '../systems/SoulOrbMergeSystem.js';
 
-const PHIAL_ICONS = {
-    ashenHalo: "🔆",
-    soulSalvo: "➕",
-    witchglassAegis: "🛡️",
-    blindingStep: "✨",
-    titheEngine: "🩸"
-};
-
-function drawPill(ctx, x, y, width, height, radius, text) {
-    ctx.fillStyle = 'rgba(20,24,35,0.9)';
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = 'white';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + width / 2, y + height / 2);
-}
-
 function smooth01(dt, smoothTime) {
     const st = Math.max(0.0001, smoothTime);
     return 1 - Math.exp(-dt / st);
@@ -899,32 +869,6 @@ class FieldState extends State {
             ctx.strokeStyle = 'white'; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
         }
 
-        // UI
-        ctx.fillStyle = 'white'; ctx.font = '24px sans-serif'; ctx.textAlign = 'center';
-        const waveConfig = BALANCE.waves.sequence[this.waveIndex - 1];
-        const fieldTotal = ProgressionSystem.getFieldDurationSec();
-        const fieldLeft = Math.max(0, fieldTotal - this.fieldElapsed);
-        if (waveConfig) {
-            ctx.fillText(`Wave: ${this.waveIndex} / ${BALANCE.waves.sequence.length}`, w / 2, 30);
-            ctx.fillText(`Time: ${Math.ceil(this.waveTimer)}`, w / 2, 60);
-            ctx.fillText(`Field: ${Math.ceil(fieldLeft)}s`, w / 2, 90);
-        } else {
-            if (this.fieldBoss) ctx.fillText(`FIELD BOSS`, w / 2, 30);
-            else if (this.fieldCleared && this.dungeonDecisionTimer > 0) ctx.fillText(`Enter Dungeon? ${Math.ceil(this.dungeonDecisionTimer)}s`, w / 2, 30);
-            else ctx.fillText(`Field cleared`, w / 2, 30);
-        }
-        ctx.textAlign = 'start';
-
-        // Bounty HUD (no compass arrow): a timed kill goal that hunts you.
-        if (this.bounty && !this.fieldBoss) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.font = '16px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(`BOUNTY: ${this.bounty.remaining} left • ${Math.ceil(this.bounty.t)}s`, w / 2, 120);
-            ctx.restore();
-        }
-
         // World-space indicators (player-anchored ring, smoothed in update).
         const renderIndicator = (ind, color, baseSize) => {
             if (!ind || ind.alpha <= 0.02) return;
@@ -935,48 +879,6 @@ class FieldState extends State {
 
         renderIndicator(this.indicators?.objective, "rgba(215, 196, 138, 0.95)", 13);
         renderIndicator(this.indicators?.bounty, "rgba(255, 140, 60, 0.95)", 12);
-
-        const gaugeX = w / 2 - 100;
-        const gaugeY = h - 30;
-        ctx.fillStyle = 'purple'; ctx.fillRect(gaugeX, gaugeY, 200, 20);
-        ctx.fillStyle = 'magenta'; ctx.fillRect(gaugeX, gaugeY, (this.soulGauge / this.soulGaugeThreshold) * 200, 20);
-        if (this.gaugeFlash > 0) {
-            ctx.fillStyle = `rgba(255, 255, 255, ${this.gaugeFlash})`;
-            ctx.fillRect(gaugeX, gaugeY, 200, 20);
-        }
-
-        const shardText = `SHARDS: ${p.phialShards}`;
-        const textMetrics = ctx.measureText(shardText);
-        drawPill(ctx, gaugeX - textMetrics.width - 30, gaugeY, textMetrics.width + 20, 20, 10, shardText);
-        
-        const phialCount = p.phials.size;
-        if (phialCount > 0) {
-            const spacing = 30;
-            const totalWidth = (phialCount - 1) * spacing;
-            let iconX = (w / 2) - (totalWidth / 2);
-            
-            for (const [id, stacks] of p.phials) {
-                const popTime = p.recentPhialGains.get(id) || 0;
-                const scale = 1 + popTime * 0.5;
-                const alpha = 0.5 + (1 - popTime) * 0.5;
-
-                ctx.save();
-                ctx.globalAlpha = alpha;
-                ctx.font = `${24 * scale}px sans-serif`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(PHIAL_ICONS[id], iconX, gaugeY - 25);
-                
-                if (stacks > 1) {
-                    ctx.font = '12px sans-serif';
-                    ctx.fillStyle = 'white';
-                    ctx.fillText(stacks, iconX + 10, gaugeY - 15);
-                }
-                
-                ctx.restore();
-                iconX += spacing;
-            }
-        }
     }
 
     onEnemyDeath(enemy) {

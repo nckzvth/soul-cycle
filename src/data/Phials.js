@@ -1,6 +1,7 @@
 export const Phials = {
     ashenHalo: {
         id: "ashenHalo",
+        icon: "🔆",
         name: "Ashen Halo",
         category: "aura",
         description: "Radiate an occult fire field that lightly scorches nearby enemies.",
@@ -11,6 +12,7 @@ export const Phials = {
     },
     soulSalvo: {
         id: "soulSalvo",
+        icon: "➕",
         name: "Soul Salvo",
         category: "gauge",
         description: "On Soul Gauge fill, gain charges that add extra spectral projectiles to your next attacks.",
@@ -19,6 +21,7 @@ export const Phials = {
     },
     witchglassAegis: {
         id: "witchglassAegis",
+        icon: "🛡️",
         name: "Witchglass Aegis",
         category: "defensive",
         description: "Taking damage triggers a brief ward and a short-range soul pulse.",
@@ -34,6 +37,7 @@ export const Phials = {
     },
     blindingStep: {
         id: "blindingStep",
+        icon: "✨",
         name: "Blinding Step",
         category: "movement",
         description: "Dashing through enemies blinds them and eventually burns them over time.",
@@ -49,6 +53,7 @@ export const Phials = {
     },
     titheEngine: {
         id: "titheEngine",
+        icon: "🩸",
         name: "Tithe Engine",
         category: "killRhythm",
         description: "Every few kills grants a charge. The next hit creates a soul explosion.",
