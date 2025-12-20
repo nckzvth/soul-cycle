@@ -119,12 +119,17 @@ const Game = {
     },
 
     loop(now) {
-        let dt = (now - this.lastTime) / 1000;
-        this.lastTime = now;
-        if (dt > 0.1) dt = 0.1;
-        if (!this.paused) this.update(dt);
-        this.render();
-        requestAnimationFrame(this.loop.bind(this));
+        try {
+            let dt = (now - this.lastTime) / 1000;
+            this.lastTime = now;
+            if (dt > 0.1) dt = 0.1;
+            if (!this.paused) this.update(dt);
+            this.render();
+        } catch (e) {
+            console.error("Game loop error:", e);
+        } finally {
+            requestAnimationFrame(this.loop.bind(this));
+        }
     },
 
     update(dt) {
@@ -136,7 +141,12 @@ const Game = {
     render() {
         if (!this.canvas) return;
         this.stateManager.render(this.ctx);
-        UI.render(); // always update HUD
+        // HUD should never be able to crash the game loop.
+        try {
+            UI.render(); // always update HUD
+        } catch (e) {
+            console.error("UI.render failed:", e);
+        }
 
         if (this.p && this.p.salvoCharges > 0) {
             this.ctx.fillStyle = `rgba(160, 235, 255, ${this.p.salvoGlow * 0.2})`;

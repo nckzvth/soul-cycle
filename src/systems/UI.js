@@ -188,9 +188,105 @@ const UI = {
         }
         return true;
     },
+    _objectiveUI: { displayKey: null, transitioning: false, nextKey: null, transitionUntil: 0 },
+    _setObjectiveLine(el, { show = true, checked = false, completed = false, html = "—" } = {}) {
+        if (!el) return;
+        el.style.display = show ? "" : "none";
+        el.classList.toggle("checked", !!checked);
+        el.classList.toggle("completed", !!completed);
+        const textEl = el.querySelector(".text");
+        if (textEl) textEl.innerHTML = html;
+        else el.innerHTML = html;
+    },
+    renderObjectives() {
+        const st = Game?.stateManager?.currentState;
+        const obj1 = document.getElementById("hud-obj-1");
+        const obj2 = document.getElementById("hud-obj-2");
+        const obj3 = document.getElementById("hud-obj-3");
+        if (!obj1 || !obj2 || !obj3) return;
+
+        // Determine current objective key + copy.
+        let key = "none";
+        let line1 = "—";
+        let line2 = null;
+        let line3 = null;
+
+        const isField = !!st?.isRun && typeof st?.waveIndex === "number";
+        const isDungeon = !!st?.isRun && typeof st?.timer === "number" && typeof st?.riftScore === "number" && !("waveIndex" in st);
+
+        if (isField) {
+            const waveTotal = BALANCE?.waves?.sequence?.length || 0;
+            const waveLabel = waveTotal ? `${st.waveIndex} / ${waveTotal}` : `${st.waveIndex}`;
+            const seq = (BALANCE && BALANCE.waves && BALANCE.waves.sequence) ? BALANCE.waves.sequence : null;
+            const idx = Math.max(0, (st.waveIndex || 1) - 1);
+            const waveCfg = (seq && seq[idx]) ? seq[idx] : null;
+            if (st.fieldBoss && !st.fieldBoss.dead) {
+                key = "field:boss";
+                line1 = `Defeat the <b>Field Boss</b>.`;
+            } else if (st.fieldCleared && st.dungeonDecisionTimer > 0) {
+                key = "field:dungeonPrompt";
+                line1 = `Enter the <b>Dungeon</b> before time expires.`;
+                line3 = `<small>${Math.ceil(st.dungeonDecisionTimer)}s remaining</small>`;
+            } else if (waveCfg) {
+                key = `field:wave:${st.waveIndex}`;
+                line1 = `Survive <b>Wave ${waveLabel}</b>.`;
+            } else {
+                key = "field:cleared";
+                line1 = `Field cleared.`;
+            }
+
+            if (st.bounty && !st.fieldBoss) {
+                line2 = `<small>Bounty: <b>${st.bounty.remaining}</b> left • ${Math.ceil(st.bounty.t || 0)}s</small>`;
+            }
+
+            const fieldTotal = ProgressionSystem.getFieldDurationSec();
+            const fieldLeft = typeof st.fieldElapsed === "number" ? Math.max(0, fieldTotal - st.fieldElapsed) : null;
+            if (typeof fieldLeft === "number" && !line3) line3 = `<small>Field: ${Math.ceil(fieldLeft)}s left</small>`;
+        } else if (isDungeon) {
+            key = `dungeon:${st.room || "entry"}`;
+            const thresholds = st.progressThresholds || (BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420]);
+            const boss = thresholds[thresholds.length - 1] || 420;
+            line1 = `Reach the <b>Boss Door</b>, then defeat the boss.`;
+            line3 = `<small>Progress: <b>${Math.floor(st.riftScore || 0)}</b> / ${boss}</small>`;
+        }
+
+        // Transition: when key changes, show a checked+fade state briefly, then swap to the new objective.
+        const now = performance.now();
+        if (this._objectiveUI.displayKey == null) this._objectiveUI.displayKey = key;
+
+        if (key !== this._objectiveUI.displayKey && !this._objectiveUI.transitioning) {
+            this._objectiveUI.transitioning = true;
+            this._objectiveUI.nextKey = key;
+            this._objectiveUI.transitionUntil = now + 700;
+        }
+
+        if (this._objectiveUI.transitioning && now >= this._objectiveUI.transitionUntil) {
+            this._objectiveUI.transitioning = false;
+            this._objectiveUI.displayKey = this._objectiveUI.nextKey;
+            this._objectiveUI.nextKey = null;
+        }
+
+        const isCompleting = this._objectiveUI.transitioning;
+        // If we're completing, show the old objective checked + faded.
+        if (isCompleting) {
+            this._setObjectiveLine(obj1, { show: true, checked: true, completed: true, html: (obj1.querySelector(".text")?.innerHTML || line1) });
+            // Hide bonus clutter unless it has real content.
+            this._setObjectiveLine(obj2, { show: false });
+            this._setObjectiveLine(obj3, { show: false });
+            return;
+        }
+
+        // Normal render
+        this._setObjectiveLine(obj1, { show: true, checked: false, completed: false, html: line1 });
+        this._setObjectiveLine(obj2, { show: !!line2, checked: false, completed: false, html: line2 || "" });
+        this._setObjectiveLine(obj3, { show: !!line3, checked: false, completed: false, html: line3 || "" });
+    },
     render() {
         let p = Game.p;
         if (!p) return; // in case called before startGame()
+        // Keep pause state consistent even if a modal is closed externally.
+        this.syncPauseState();
+        const st = Game?.stateManager?.currentState;
 
         document.getElementById("uiLvl").innerText = p.lvl;
         document.getElementById("uiSouls").innerText = p.souls;
@@ -252,7 +348,7 @@ const UI = {
                     const popTime = p.recentPhialGains?.get?.(id) || 0;
                     const pop = Math.max(0, Math.min(1, popTime));
                     const scale = 1 + pop * 0.35;
-                    const ph = Object.values(Phials).find(x => x.id === id) || Phials?.[id];
+                    const ph = Object.values(Phials).find(x => x.id === id) || (Phials && Phials[id]);
                     const icon = ph?.icon || "🧪";
                     const chip = document.createElement("div");
                     chip.className = "phial-chip";
@@ -268,77 +364,81 @@ const UI = {
             }
         }
 
-        // Right-side run panel (wave/dungeon info)
-        const st = Game?.stateManager?.currentState;
-        const line1 = document.getElementById("hud-run-line1");
-        const line2 = document.getElementById("hud-run-line2");
-        const line3 = document.getElementById("hud-run-line3");
-        if (line1 && line2 && line3) {
-            const setLine = (el, left, right) => {
-                el.innerHTML = `<small>${left}</small><span>${right}</span>`;
-            };
+        this.renderObjectives();
 
-            if (st?.isRun && typeof st.waveIndex === "number") {
-                const waveTotal = BALANCE?.waves?.sequence?.length || 0;
-                const waveLabel = waveTotal ? `${st.waveIndex} / ${waveTotal}` : `${st.waveIndex}`;
-                const fieldTotal = ProgressionSystem.getFieldDurationSec();
-                const fieldLeft = typeof st.fieldElapsed === "number" ? Math.max(0, fieldTotal - st.fieldElapsed) : null;
-                const waveLeft = Math.max(0, Math.ceil(st.waveTimer || 0));
+        // Unified tracker bar (gold timer + purple dungeon progress)
+        const trackerWrap = document.getElementById("hud-tracker");
+        const trackerTitle = document.getElementById("hud-tracker-title");
+        const trackerText = document.getElementById("hud-tracker-text");
+        const trackerTimer = document.getElementById("hud-tracker-fill-timer");
+        const trackerProgress = document.getElementById("hud-tracker-fill-progress");
+        const trackerT1 = document.getElementById("hud-tracker-t1");
+        const trackerT2 = document.getElementById("hud-tracker-t2");
+        const trackerBoss = document.getElementById("hud-tracker-boss");
+        const trackerCenter = document.getElementById("hud-tracker-center");
 
-                if (st.fieldBoss && !st.fieldBoss.dead) setLine(line1, "Status", `<b>FIELD BOSS</b>`);
-                else if (st.fieldCleared && st.dungeonDecisionTimer > 0) setLine(line1, "Status", `<b>Enter Dungeon?</b>`);
-                else if (!BALANCE?.waves?.sequence?.[st.waveIndex - 1]) setLine(line1, "Status", `<span>Field cleared</span>`);
-                else setLine(line1, "Wave", `<b>${waveLabel}</b>`);
-
-                const suffix = typeof fieldLeft === "number" ? ` • Field ${Math.ceil(fieldLeft)}s` : "";
-                setLine(line2, "Timers", `<span>${waveLeft}s${suffix}</span>`);
-                if (st.bounty && !st.fieldBoss) {
-                    setLine(line3, "Bounty", `<span><b>${st.bounty.remaining}</b> left • ${Math.ceil(st.bounty.t || 0)}s</span>`);
-                } else {
-                    setLine(line3, "Objective", `<span>—</span>`);
-                }
-            } else if (st?.isRun && typeof st.timer === "number" && typeof st.riftScore === "number") {
-                const thresholds = st.progressThresholds || (BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420]);
-                const bossThreshold = thresholds[thresholds.length - 1] || 420;
-                setLine(line1, "Dungeon", `<b>Dungeon</b>`);
-                setLine(line2, "Time", `<span>${Math.max(0, Math.ceil(st.timer || 0))}s • Kills <b>${st.riftScore}</b></span>`);
-                setLine(line3, "Unlocks", `<span>${thresholds.slice(0, -1).join(" / ")} • Boss ${bossThreshold}</span>`);
-            } else {
-                setLine(line1, "Status", `<span>—</span>`);
-                setLine(line2, "Timer", `<span>—</span>`);
-                setLine(line3, "Objective", `<span>—</span>`);
-            }
-        }
-
-        // Dungeon Progress bar (separate from Soul Gauge orb)
-        const dungeonProgressWrap = document.getElementById("hud-dungeon-progress");
-        const dungeonProgressText = document.getElementById("hud-dungeon-progress-text");
-        const dungeonProgressFill = document.getElementById("hud-dungeon-progress-fill");
-        const dungeonProgressT1 = document.getElementById("hud-dungeon-progress-t1");
-        const dungeonProgressT2 = document.getElementById("hud-dungeon-progress-t2");
-        const dungeonProgressBoss = document.getElementById("hud-dungeon-progress-boss");
+        const inField = !!st && st.isRun && typeof st.waveIndex === "number";
         const inDungeon = !!st && st.isRun && typeof st.timer === "number" && typeof st.riftScore === "number" && !("waveIndex" in st);
-        if (dungeonProgressWrap && dungeonProgressText && dungeonProgressFill && dungeonProgressT1 && dungeonProgressT2 && dungeonProgressBoss) {
-            if (inDungeon) {
-                dungeonProgressWrap.style.display = "block";
-                const thresholds = st.progressThresholds || (BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420]);
-                const t1 = thresholds[0] ?? 0;
-                const t2 = thresholds[1] ?? 0;
-                const boss = thresholds[thresholds.length - 1] ?? 420;
-                const score = Math.max(0, Math.floor(st.riftScore || 0));
-                const denom = Math.max(1, Math.floor(boss));
-                const pct = Math.max(0, Math.min(1, score / denom));
-                dungeonProgressFill.style.width = `${Math.round(pct * 100)}%`;
-                dungeonProgressText.innerText = `${score}/${denom}`;
-                dungeonProgressT1.style.left = `${Math.max(0, Math.min(100, (t1 / denom) * 100))}%`;
-                dungeonProgressT2.style.left = `${Math.max(0, Math.min(100, (t2 / denom) * 100))}%`;
-                dungeonProgressBoss.style.left = `100%`;
-                // Turn boss marker "complete" when boss is dead.
-                const bossDead = !!st.boss?.dead;
-                dungeonProgressBoss.style.background = bossDead ? "rgba(120,255,180,0.95)" : "rgba(255,120,120,0.95)";
-                dungeonProgressBoss.style.boxShadow = bossDead ? "0 0 10px rgba(120,255,180,0.35)" : "0 0 10px rgba(255,120,120,0.35)";
+        const showTracker = inField || inDungeon;
+
+        if (trackerWrap && trackerTitle && trackerText && trackerTimer && trackerProgress && trackerT1 && trackerT2 && trackerBoss && trackerCenter) {
+            if (!showTracker) {
+                trackerWrap.style.display = "none";
             } else {
-                dungeonProgressWrap.style.display = "none";
+                trackerWrap.style.display = "block";
+
+                // Gold timer: always represents remaining time.
+                let timeLeft = null;
+                let timeMax = null;
+                if (inDungeon) {
+                    timeLeft = Math.max(0, Number(st.timer || 0));
+                    timeMax = Math.max(1, Number(st.timerMax || 1));
+                } else if (inField) {
+                    const seq = (BALANCE && BALANCE.waves && BALANCE.waves.sequence) ? BALANCE.waves.sequence : null;
+                    const idx = Math.max(0, (st.waveIndex || 1) - 1);
+                    const waveCfg = (seq && seq[idx]) ? seq[idx] : null;
+                    const dur = waveCfg && typeof waveCfg.duration === "number" ? waveCfg.duration : Number(waveCfg?.duration || 0);
+                    timeLeft = Math.max(0, Number(st.waveTimer || 0));
+                    timeMax = dur > 0 ? dur : Math.max(1, timeLeft || 1);
+                }
+                // Gold fill should grow as time passes (elapsed), not shrink (remaining).
+                const timerPct = timeMax > 0 ? Math.max(0, Math.min(1, (timeMax - timeLeft) / timeMax)) : 0;
+                trackerTimer.style.width = `${Math.round(timerPct * 100)}%`;
+
+                if (inDungeon) {
+                    const thresholds = st.progressThresholds || (BALANCE.progression?.dungeon?.scoreThresholds || [120, 260, 420]);
+                    const t1 = thresholds[0] ?? 0;
+                    const t2 = thresholds[1] ?? 0;
+                    const boss = thresholds[thresholds.length - 1] ?? 420;
+                    const score = Math.max(0, Math.floor(st.riftScore || 0));
+                    const denom = Math.max(1, Math.floor(boss));
+                    const progressPct = Math.max(0, Math.min(1, score / denom));
+                    trackerProgress.style.width = `${Math.round(progressPct * 100)}%`;
+
+                    trackerT1.style.display = "";
+                    trackerT2.style.display = "";
+                    trackerBoss.style.display = "";
+                    trackerT1.style.left = `${Math.max(0, Math.min(100, (t1 / denom) * 100))}%`;
+                    trackerT2.style.left = `${Math.max(0, Math.min(100, (t2 / denom) * 100))}%`;
+                    trackerBoss.style.left = `100%`;
+
+                    trackerTitle.innerText = "Dungeon";
+                    trackerText.innerText = `${score}/${denom} • ${Math.ceil(timeLeft)}s`;
+                    trackerCenter.innerText = "Progress vs Time";
+                } else {
+                    // Field: only timer (gold). No purple fill, no dungeon ticks.
+                    trackerProgress.style.width = "0%";
+                    trackerT1.style.display = "none";
+                    trackerT2.style.display = "none";
+                    trackerBoss.style.display = "none";
+
+                    const waveTotal = BALANCE?.waves?.sequence?.length || 0;
+                    const waveLabel = waveTotal ? `${st.waveIndex} / ${waveTotal}` : `${st.waveIndex}`;
+                    trackerTitle.innerText = "Field";
+                    trackerText.innerText = `${Math.ceil(timeLeft)}s`;
+                    // Optional: show wave number inside the bar.
+                    trackerCenter.innerText = `Wave ${waveLabel}`;
+                }
             }
         }
 

@@ -40,7 +40,8 @@
             #hud-run { max-width: min(320px, 92vw); background: rgba(20,24,35,0.62); }
             #hud-run.collapsed { background: rgba(20,24,35,0.40); transform: translateY(6px); }
             #hud-run { width: min(320px, 92vw); min-width: 0; }
-            .hud-run-list { grid-template-columns: 1fr; }
+            .hud-run-list { gap: 8px; }
+            .hud-obj-line { font-size: 11px; }
             #hud-run-title-hint { display: none; }
         }
 
@@ -122,37 +123,61 @@
         .hud-row { display:flex; gap: 10px; align-items: center; }
         .hud-caption { font-size:10px; font-weight:800; letter-spacing:1px; color:#cfd3e6; opacity:0.85; text-transform: uppercase; }
 
-        /* Dungeon progress bar (separate from Soul Gauge) */
-        #hud-dungeon-progress { display:none; width: 100%; }
+        /* Run/Dungeon tracker (race bar: gold timer + purple progress) */
+        #hud-tracker { display:none; width: 100%; }
         .hud-progress-title { display:flex; justify-content:space-between; align-items:baseline; gap: 10px; }
         .hud-progress-title .hud-caption { margin: 0; }
         .hud-progress-title .hud-progress-text { font-size: 11px; font-weight: 900; color: rgba(255,255,255,0.85); }
         .hud-progress-bar {
             position: relative;
-            height: 10px;
+            height: 14px;
             width: 100%;
             border-radius: 999px;
             overflow: hidden;
             background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.12);
         }
-        .hud-progress-bar .fill {
+        .hud-progress-bar .fill-timer {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, rgba(215,196,138,0.8), rgba(215,196,138,1.0));
+            background: linear-gradient(90deg, rgba(215,196,138,0.55), rgba(215,196,138,0.95));
+            transition: width 120ms linear;
+        }
+        .hud-progress-bar .fill-progress {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 0%;
+            background: linear-gradient(90deg, rgba(168,120,255,0.65), rgba(168,120,255,0.95));
             transition: width 120ms linear;
         }
         .hud-progress-bar .tick {
             position: absolute;
-            top: -3px;
+            top: -4px;
             width: 2px;
-            height: 16px;
+            height: 22px;
             background: rgba(215,196,138,0.95);
             box-shadow: 0 0 8px rgba(215,196,138,0.35);
         }
         .hud-progress-bar .tick.boss {
             background: rgba(255,120,120,0.95);
             box-shadow: 0 0 10px rgba(255,120,120,0.35);
+        }
+        .hud-progress-center {
+            position: absolute;
+            inset: 0;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.78);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+            pointer-events: none;
+            user-select: none;
         }
 
         /* XP bar now runs along the bottom */
@@ -227,7 +252,7 @@
         #hud-run.collapsed { width: 160px; }
         #hud-run.collapsed { opacity: 0.78; }
         #hud-run.collapsed .hud-run-list { display: none; }
-        #hud-run.collapsed #hud-dungeon-progress { display: none !important; }
+        #hud-run.collapsed #hud-tracker { display: block; }
         #hud-run-header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
         #btn-hud-run-toggle {
             padding: 4px 8px;
@@ -237,10 +262,64 @@
             opacity: 0.9;
         }
         .hud-run-title { font-size: 11px; font-weight: 900; letter-spacing: 1px; color: rgba(255,255,255,0.85); text-transform: uppercase; }
-        .hud-run-list { display:grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
-        .hud-run-item { display:flex; justify-content: space-between; gap: 10px; font-size: 12px; color: rgba(255,255,255,0.92); }
-        .hud-run-item small { color: rgba(255,255,255,0.55); font-size: 11px; }
-        .hud-run-item b { color: var(--gold); }
+        .hud-run-list { display:flex; flex-direction: column; gap: 10px; }
+        .hud-run-stats { display:flex; flex-wrap: wrap; gap: 6px; }
+        .hud-chip {
+            display:flex;
+            gap: 6px;
+            align-items: baseline;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            font-size: 11px;
+            color: rgba(255,255,255,0.78);
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+        .hud-chip b { color: var(--gold); }
+        .hud-obj { display:flex; flex-direction: column; gap: 6px; }
+        .hud-obj-line {
+            display:flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.92);
+            line-height: 1.2;
+            transition: opacity 260ms ease, filter 260ms ease;
+        }
+        .hud-obj-line .box {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.25);
+            margin-top: 2px;
+            flex: 0 0 auto;
+            position: relative;
+        }
+        .hud-obj-line.checked .box {
+            background: rgba(215,196,138,0.18);
+            border-color: rgba(215,196,138,0.75);
+        }
+        .hud-obj-line.checked .box::after {
+            content: "✓";
+            position: absolute;
+            inset: -2px 0 0 0;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size: 10px;
+            font-weight: 900;
+            color: rgba(215,196,138,0.95);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+        }
+        .hud-obj-line.completed {
+            opacity: 0.25;
+            filter: blur(0.2px);
+        }
+        .hud-obj-line small { color: rgba(255,255,255,0.62); font-size: 11px; }
 
         /* Old HUD (topbar/corner/bars) is removed in favor of the new bottom HUD. */
         .btn { background:rgba(255,255,255,0.05); border:1px solid #333; color:#eee; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:11px; text-transform: uppercase; font-weight: 700; }
@@ -524,25 +603,31 @@
                         <div class="hud-run-title" id="hud-run-title">Run <span id="hud-run-title-hint" style="opacity:0.55;font-weight:800;letter-spacing:0">• tap to expand</span></div>
                         <button class="btn" id="btn-hud-run-toggle">Details</button>
                     </div>
-                    <div id="hud-dungeon-progress" style="margin-top:8px">
+                    <div id="hud-tracker" style="margin-top:8px">
                         <div class="hud-progress-title">
-                            <div class="hud-caption">Dungeon Progress</div>
-                            <div class="hud-progress-text" id="hud-dungeon-progress-text">0/0</div>
+                            <div class="hud-caption" id="hud-tracker-title">Objective</div>
+                            <div class="hud-progress-text" id="hud-tracker-text">—</div>
                         </div>
                         <div class="hud-progress-bar" style="margin-top:6px">
-                            <div class="fill" id="hud-dungeon-progress-fill"></div>
-                            <div class="tick" id="hud-dungeon-progress-t1" style="left:0%"></div>
-                            <div class="tick" id="hud-dungeon-progress-t2" style="left:0%"></div>
-                            <div class="tick boss" id="hud-dungeon-progress-boss" style="left:100%"></div>
+                            <div class="fill-timer" id="hud-tracker-fill-timer"></div>
+                            <div class="fill-progress" id="hud-tracker-fill-progress"></div>
+                            <div class="tick" id="hud-tracker-t1" style="left:0%;display:none"></div>
+                            <div class="tick" id="hud-tracker-t2" style="left:0%;display:none"></div>
+                            <div class="tick boss" id="hud-tracker-boss" style="left:100%;display:none"></div>
+                            <div class="hud-progress-center" id="hud-tracker-center"></div>
                         </div>
                     </div>
                     <div class="hud-run-list" id="hud-run-list">
-                        <div class="hud-run-item"><small>Souls</small><b id="uiSouls">0</b></div>
-                        <div class="hud-run-item"><small>Shards</small><b id="uiShards">0</b></div>
-                        <div class="hud-run-item"><small>Kills</small><b id="uiKills">0</b></div>
-                        <div class="hud-run-item" id="hud-run-line1"><small>Status</small><span>—</span></div>
-                        <div class="hud-run-item" id="hud-run-line2"><small>Timer</small><span>—</span></div>
-                        <div class="hud-run-item" id="hud-run-line3"><small>Objective</small><span>—</span></div>
+                        <div class="hud-run-stats">
+                            <div class="hud-chip">Souls <b id="uiSouls">0</b></div>
+                            <div class="hud-chip">Shards <b id="uiShards">0</b></div>
+                            <div class="hud-chip">Kills <b id="uiKills">0</b></div>
+                        </div>
+                        <div class="hud-obj">
+                            <div class="hud-obj-line" id="hud-obj-1"><span class="box"></span><span class="text">—</span></div>
+                            <div class="hud-obj-line" id="hud-obj-2"><span class="box"></span><span class="text"><small>—</small></span></div>
+                            <div class="hud-obj-line" id="hud-obj-3"><span class="box"></span><span class="text"><small>—</small></span></div>
+                        </div>
                     </div>
                 </div>
                 <div class="orb hud-panel" id="hud-soul-orb" style="--orb-color: rgba(168,120,255,0.95);">
