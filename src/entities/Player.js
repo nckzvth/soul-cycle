@@ -12,6 +12,7 @@ import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import StatusSystem from "../systems/StatusSystem.js";
 import ProgressionSystem from "../systems/ProgressionSystem.js";
+import { PALETTE } from "../data/Palette.js";
 
 export default class PlayerObj {
     constructor() {
@@ -906,7 +907,7 @@ export default class PlayerObj {
             }
         }
 
-        ctx.fillStyle = "#6aae9d"; 
+        ctx.fillStyle = PALETTE.teal;
         ctx.beginPath(); 
         ctx.arc(pc.x, pc.y, 12, 0, 6.28); 
         ctx.fill();
@@ -918,7 +919,7 @@ export default class PlayerObj {
                 const angle = i * angleStep + Game.time * 2;
                 const x = pc.x + Math.cos(angle) * 20;
                 const y = pc.y + Math.sin(angle) * 20;
-                ctx.fillStyle = 'rgba(160, 235, 255, 0.8)';
+                ctx.fillStyle = 'rgba(108, 199, 194, 0.8)';
                 ctx.beginPath();
                 ctx.arc(x, y, 3, 0, Math.PI * 2);
                 ctx.fill();
@@ -931,7 +932,7 @@ export default class PlayerObj {
             const angle = Game.time * 4;
             const x = pc.x + Math.cos(angle) * 30;
             const y = pc.y + Math.sin(angle) * 30;
-            ctx.fillStyle = `rgba(215, 196, 138, ${alpha})`;
+            ctx.fillStyle = `rgba(192, 106, 58, ${alpha})`;
             ctx.font = '16px sans-serif';
             ctx.fillText('🩸', x, y);
         }

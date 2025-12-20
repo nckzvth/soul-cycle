@@ -14,6 +14,7 @@ import { SoulOrb as Soul } from "../entities/Pickups.js";
 import { BALANCE } from "../data/Balance.js";
 import SpawnSystem from "../systems/SpawnSystem.js";
 import SoulOrbMergeSystem from "../systems/SoulOrbMergeSystem.js";
+import { PALETTE } from "../data/Palette.js";
 
 class DungeonState extends State {
     constructor(game) {
@@ -368,9 +369,10 @@ class DungeonState extends State {
         // Static Camera
         const s = (x, y) => ({ x, y });
 
-        ctx.fillStyle = this.room === "boss" ? '#3b1d3d' : '#4a2a5a';
+        // Boss room background should contrast the boss body (violet).
+        ctx.fillStyle = this.room === "boss" ? PALETTE.abyss : PALETTE.slate;
         ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = 'white'; ctx.strokeRect(0, 0, w, h);
+        ctx.strokeStyle = PALETTE.parchment; ctx.strokeRect(0, 0, w, h);
 
         this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
         this.shots.forEach(shot => shot.draw(ctx, s));
@@ -382,7 +384,7 @@ class DungeonState extends State {
         this.chains.forEach(c => {
             let p1 = s(c.pts[0].x, c.pts[0].y);
             let p2 = s(c.pts[1].x, c.pts[1].y);
-            ctx.strokeStyle = c.color ?? (c.isSalvo ? "#a0ebff" : "#a0ebff");
+            ctx.strokeStyle = c.color ?? PALETTE.cyan;
             ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
             ctx.globalAlpha = c.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
         });
@@ -396,9 +398,9 @@ class DungeonState extends State {
             ctx.save();
             ctx.fillStyle = 'rgba(0,0,0,0.35)';
             ctx.fillRect(this.bossDoor.x, this.bossDoor.y, this.bossDoor.width, this.bossDoor.height);
-            ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+            ctx.strokeStyle = 'rgba(239,230,216,0.65)';
             ctx.strokeRect(this.bossDoor.x, this.bossDoor.y, this.bossDoor.width, this.bossDoor.height);
-            ctx.fillStyle = 'white';
+            ctx.fillStyle = PALETTE.parchment;
             ctx.font = '16px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('Boss Door', this.bossDoor.x + this.bossDoor.width / 2, this.bossDoor.y + 28);
@@ -413,10 +415,10 @@ class DungeonState extends State {
         // Portal
         if (this.townPortal) {
             let portalPos = s(this.townPortal.x, this.townPortal.y);
-            ctx.fillStyle = 'lightblue';
+            ctx.fillStyle = PALETTE.cyan;
             ctx.fillRect(portalPos.x, portalPos.y, this.townPortal.width, this.townPortal.height);
             if (this.townPortal.checkInteraction(p)) {
-                ctx.fillStyle = 'white'; ctx.font = '24px sans-serif';
+                ctx.fillStyle = PALETTE.parchment; ctx.font = '24px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText("[F] to return to Town", w / 2, h - 50);
                 ctx.textAlign = 'start';
@@ -425,8 +427,8 @@ class DungeonState extends State {
 
         // Boss UI
         if (this.boss && !this.boss.dead) {
-            ctx.fillStyle = 'red'; ctx.fillRect(w / 2 - 250, 20, 500 * (this.boss.hp / this.boss.hpMax), 20);
-            ctx.strokeStyle = 'white'; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
+            ctx.fillStyle = PALETTE.blood; ctx.fillRect(w / 2 - 250, 20, 500 * (this.boss.hp / this.boss.hpMax), 20);
+            ctx.strokeStyle = PALETTE.parchment; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
         }
 
         // Rift UI is rendered in the DOM HUD (see `src/systems/UI.js`).

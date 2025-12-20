@@ -3,6 +3,7 @@ import UI from "../systems/UI.js";
 import { BALANCE } from "../data/Balance.js";
 import ProgressionSystem from "../systems/ProgressionSystem.js";
 import Game from "../core/Game.js";
+import { PALETTE, SEMANTIC_COLORS } from "../data/Palette.js";
 
 export class LootDrop {
     constructor(x, y, item) {
@@ -35,7 +36,7 @@ export class LootDrop {
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        let c = { common: "#888", uncommon: "#6aae9d", rare: "#6b8cc4", epic: "#c46b6b", legendary: "#d7c48a" }[this.item.rarity] || "#fff";
+        let c = SEMANTIC_COLORS.rarity?.[this.item.rarity] || PALETTE.parchment;
         ctx.save();
         ctx.translate(p.x, p.y);
         let g = ctx.createLinearGradient(0, -40, 0, 0);
@@ -161,7 +162,7 @@ export class SoulOrb {
         let p = s(this.x, this.y);
         let float = Math.sin(this.life * 3) * 5;
         const colors = BALANCE?.pickups?.soul?.tierColors || {};
-        const color = colors?.[this.tier] || "#d7c48a";
+        const color = colors?.[this.tier] || SEMANTIC_COLORS.uiAccent;
         ctx.save();
         ctx.translate(p.x, p.y + float);
         ctx.globalAlpha = (this.merge || (this._mergeRemaining || 0) > 0) ? 0.9 : 1.0;
@@ -201,9 +202,9 @@ export class PhialShard {
         ctx.save();
         ctx.translate(p.x, p.y + float);
         let g = ctx.createLinearGradient(0, -60, 0, 0);
-        g.addColorStop(0, "transparent"); g.addColorStop(1, "#a865e8");
+        g.addColorStop(0, "transparent"); g.addColorStop(1, PALETTE.violet);
         ctx.fillStyle = g; ctx.fillRect(-3, -60, 6, 60);
-        ctx.fillStyle = "#8a2be2"; // A darker purplish color for the shard
+        ctx.fillStyle = PALETTE.violet;
         ctx.beginPath();
         ctx.moveTo(0, -8);
         ctx.lineTo(5, 0);

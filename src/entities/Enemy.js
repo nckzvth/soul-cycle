@@ -7,6 +7,7 @@ import ParticleSystem from "../systems/Particles.js";
 import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import StatusSystem from "../systems/StatusSystem.js";
+import { PALETTE } from "../data/Palette.js";
 
 /**
  * @class Enemy
@@ -59,7 +60,7 @@ export class Enemy {
         if (this.blinded > 0) {
             this.blinded -= dt;
             if (Math.random() < 0.1) {
-                ParticleSystem.emit(this.x, this.y, 'white', 1, 30, 2, 0.5);
+                ParticleSystem.emit(this.x, this.y, PALETTE.parchment, 1, 30, 2, 0.5);
             }
         }
 
@@ -166,7 +167,7 @@ export class Enemy {
 
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 ? "#fff" : this.color);
+        ctx.fillStyle = this.isElite ? PALETTE.chartreuse : (this.flash > 0 ? PALETTE.parchment : this.color);
         if (this.blinded > 0) {
             ctx.globalAlpha = 0.5;
         }
@@ -207,7 +208,7 @@ export class Walker extends Enemy {
         this.speed = cfg.speed;
         if (typeof cfg.friction === "number" && Number.isFinite(cfg.friction)) this.friction = cfg.friction;
         this.r = cfg.radius ?? this.r;
-        this.color = cfg.color ?? "#c44e4e";
+        this.color = cfg.color ?? PALETTE.blood;
         this.stats.knockbackTakenMult = cfg.knockbackTakenMult ?? 1.0;
         this.eliteSkillCd = 5;
         this.rooting = 0;
@@ -244,18 +245,18 @@ export class Walker extends Enemy {
 
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        let baseColor = this.isElite ? [255, 215, 0] : [196, 78, 78];
-        if (!this.isElite && this.variant === "thrall") baseColor = [210, 90, 120];
-        if (!this.isElite && this.variant === "brute") baseColor = [120, 60, 60];
-        if (!this.isElite && this.variant === "cursed") baseColor = [150, 80, 210];
+        let baseColor = this.isElite ? [139, 196, 90] : [106, 36, 48]; // chartreuse / blood
+        if (!this.isElite && this.variant === "thrall") baseColor = [74, 106, 78]; // moss
+        if (!this.isElite && this.variant === "brute") baseColor = [74, 47, 42]; // rotwood
+        if (!this.isElite && this.variant === "cursed") baseColor = [75, 43, 87]; // violet
         if (this.rooting > 0) {
             const t = 1 - (this.rooting / BALANCE.projectiles.rootWave.life);
-            const r = Math.floor(baseColor[0] * (1 - t) + 255 * t);
-            const g = Math.floor(baseColor[1] * (1 - t));
-            const b = Math.floor(baseColor[2] * (1 - t));
+            const r = Math.floor(baseColor[0] * (1 - t) + 239 * t);
+            const g = Math.floor(baseColor[1] * (1 - t) + 230 * t);
+            const b = Math.floor(baseColor[2] * (1 - t) + 216 * t);
             ctx.fillStyle = `rgb(${r},${g},${b})`;
         } else {
-            ctx.fillStyle = this.flash > 0 ? "#fff" : `rgb(${baseColor[0]},${baseColor[1]},${baseColor[2]})`;
+            ctx.fillStyle = this.flash > 0 ? PALETTE.parchment : `rgb(${baseColor[0]},${baseColor[1]},${baseColor[2]})`;
         }
         if (this.blinded > 0) {
             ctx.globalAlpha = 0.5;
@@ -279,7 +280,7 @@ export class Charger extends Enemy {
         this.hpMax = this.hp;
 
         this.speed = cfg.speed;
-        this.color = "#a0f";
+        this.color = PALETTE.moss;
         this.state = 0;
         this.timer = 0;
     }
@@ -411,7 +412,7 @@ export class Charger extends Enemy {
 
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = this.isElite ? 'gold' : (this.flash > 0 || this.state === 1 ? "#fff" : this.color);
+        ctx.fillStyle = this.isElite ? PALETTE.chartreuse : (this.flash > 0 || this.state === 1 ? PALETTE.parchment : this.color);
         ctx.beginPath();
         ctx.moveTo(p.x + 10, p.y);
         ctx.lineTo(p.x - 8, p.y + 8);
@@ -432,7 +433,7 @@ export class Spitter extends Enemy {
         this.hpMax = this.hp;
 
         this.speed = cfg.speed;
-        this.color = "orange";
+        this.color = PALETTE.ember;
         this.r = 10;
         this.shootCd = 2;
     }
@@ -507,7 +508,7 @@ export class Anchor extends Enemy {
 
         this.speed = cfg.speed;
         this.r = 15;
-        this.color = "#4a4a6a";
+        this.color = PALETTE.iron;
         this.auraRad = cfg.auraRadius;
         this.eliteTimer = 0;
     }
@@ -547,7 +548,7 @@ export class Anchor extends Enemy {
     draw(ctx, s) {
         super.draw(ctx, s);
         let p = s(this.x, this.y);
-        ctx.strokeStyle = "rgba(107, 140, 196, 0.5)";
+        ctx.strokeStyle = "rgba(108, 199, 194, 0.5)";
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.auraRad, 0, 6.28);

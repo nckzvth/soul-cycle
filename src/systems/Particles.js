@@ -1,7 +1,33 @@
 import { dist2 } from "../core/Utils.js";
 import Game from "../core/Game.js";
+import { PALETTE } from "../data/Palette.js";
 
 const particles = [];
+
+const resolveColor = (color) => {
+    if (!color) return PALETTE.parchment;
+    if (typeof color !== "string") return String(color);
+    const c = color.trim();
+    if (!c) return PALETTE.parchment;
+    if (c === "transparent") return "transparent";
+    if (c.startsWith("#") || c.startsWith("rgb(") || c.startsWith("rgba(") || c.startsWith("hsl(") || c.startsWith("hsla(")) return c;
+
+    const named = {
+        white: PALETTE.parchment,
+        black: PALETTE.ink,
+        gray: PALETTE.dust,
+        grey: PALETTE.dust,
+        gold: PALETTE.ember,
+        red: PALETTE.blood,
+        purple: PALETTE.violet,
+        orange: PALETTE.ember,
+        lightblue: PALETTE.cyan,
+        cyan: PALETTE.cyan,
+        teal: PALETTE.teal,
+    }[c.toLowerCase()];
+
+    return named || c;
+};
 
 const ParticleSystem = {
     update(dt, player) {
@@ -55,9 +81,9 @@ const ParticleSystem = {
                 const pulse = Math.sin(Game.time * 20) * 0.2 + 0.8;
                 const width = 20 * pulse;
                 const grad = ctx.createLinearGradient(pos.x, pos.y - p.size, pos.x, pos.y);
-                grad.addColorStop(0, 'rgba(215, 196, 138, 0)');
-                grad.addColorStop(0.5, 'rgba(215, 196, 138, 0.7)');
-                grad.addColorStop(1, 'rgba(215, 196, 138, 0)');
+                grad.addColorStop(0, "rgba(192, 106, 58, 0)");
+                grad.addColorStop(0.5, "rgba(192, 106, 58, 0.7)");
+                grad.addColorStop(1, "rgba(192, 106, 58, 0)");
                 ctx.fillStyle = grad;
                 ctx.fillRect(pos.x - width / 2, pos.y - p.size, width, p.size);
             } else {
@@ -72,6 +98,7 @@ const ParticleSystem = {
     },
 
     emit(x, y, color, count, speed, size, life, target = null, options = {}) {
+        const resolvedColor = resolveColor(color);
         for (let i = 0; i < count; i++) {
             const angle = Math.random() * Math.PI * 2;
             const p = {
@@ -79,7 +106,7 @@ const ParticleSystem = {
                 y,
                 vx: Math.cos(angle) * speed * (Math.random() * 0.5 + 0.5),
                 vy: Math.sin(angle) * speed * (Math.random() * 0.5 + 0.5),
-                color,
+                color: resolvedColor,
                 size,
                 life,
                 startLife: life,
@@ -108,7 +135,7 @@ const ParticleSystem = {
             startLife: options.life || 1.0,
             alpha: 1,
             text,
-            color: options.color || 'white',
+            color: resolveColor(options.color || "white"),
             size: options.size || 24,
             isText: true,
             options

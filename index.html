@@ -4,10 +4,23 @@
     <meta charset="UTF-8">
     <title>SoulCycle - Modular</title>
     <style>
-        /* FIX: Added --green to the root definitions below */
-        :root{ --bg:#0e1016; --text:#e8ecf7; --muted:#889; --gold:#d7c48a; --red:#c46b6b; --blue:#6b8cc4; --green:#6bc48c; }
+        :root{
+            /* Occult Whimsy Gothic palette */
+            --ink:#0c0d12; --abyss:#141623; --slate:#25283a; --iron:#3b3f52; --dust:#6e7386; --bone:#d2c8bc; --parchment:#efe6d8;
+            --rotwood:#4a2f2a; --rust:#8a5a3c; --blood:#6a2430; --moss:#4a6a4e;
+            --teal:#2f5d63; --cyan:#6cc7c2; --violet:#4b2b57; --chartreuse:#8bc45a; --ember:#c06a3a;
 
-        body { margin:0; height:100vh; background:#080a10; color:var(--text); font-family:system-ui,sans-serif; overflow:hidden; user-select:none; }
+            /* Semantic aliases used throughout UI */
+            --bg:var(--ink);
+            --text:var(--parchment);
+            --muted:var(--dust);
+            --gold:var(--ember);
+            --red:var(--blood);
+            --green:var(--moss);
+            --blue:var(--cyan);
+        }
+
+        body { margin:0; height:100vh; background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; overflow:hidden; user-select:none; }
         canvas { display:block; width:100%; height:100%; cursor:crosshair; }
 
         /* HUD (Path of Exile-ish) */
@@ -116,12 +129,12 @@
             text-align: center;
         }
         .orb-label { font-size: 10px; letter-spacing: 1px; color: rgba(255,255,255,0.75); font-weight: 800; text-transform: uppercase; }
-        .orb-value { font-size: 12px; color:#fff; font-weight: 800; }
+        .orb-value { font-size: 12px; color:var(--parchment); font-weight: 800; }
 
         .hud-left-stack { display:flex; gap: 10px; align-items: end; }
         .hud-left-meta { display:flex; flex-direction: column; gap: 8px; align-items: flex-start; }
         .hud-row { display:flex; gap: 10px; align-items: center; }
-        .hud-caption { font-size:10px; font-weight:800; letter-spacing:1px; color:#cfd3e6; opacity:0.85; text-transform: uppercase; }
+        .hud-caption { font-size:10px; font-weight:800; letter-spacing:1px; color:var(--bone); opacity:0.85; text-transform: uppercase; }
 
         /* Run/Dungeon tracker (race bar: gold timer + purple progress) */
         #hud-tracker { display:none; width: 100%; }
@@ -140,7 +153,7 @@
         .hud-progress-bar .fill-timer {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, rgba(215,196,138,0.55), rgba(215,196,138,0.95));
+            background: linear-gradient(90deg, rgba(192,106,58,0.55), rgba(192,106,58,0.95));
             transition: width 120ms linear;
         }
         .hud-progress-bar .fill-progress {
@@ -157,8 +170,8 @@
             top: -4px;
             width: 2px;
             height: 22px;
-            background: rgba(215,196,138,0.95);
-            box-shadow: 0 0 8px rgba(215,196,138,0.35);
+            background: rgba(192,106,58,0.95);
+            box-shadow: 0 0 8px rgba(192,106,58,0.35);
         }
         .hud-progress-bar .tick.boss {
             background: rgba(255,120,120,0.95);
@@ -197,7 +210,7 @@
 
         /* Dash Charges */
         #dash-charges { display: flex; gap: 4px; margin-top: 0; }
-        .dash-charge-pip { width: 20px; height: 8px; background: rgba(107, 196, 140, 0.2); border: 1px solid #333; border-radius: 2px; transform: skewX(-20deg); position: relative; overflow: hidden; }
+        .dash-charge-pip { width: 20px; height: 8px; background: rgba(74,106,78,0.2); border: 1px solid var(--slate); border-radius: 2px; transform: skewX(-20deg); position: relative; overflow: hidden; }
         .dash-charge-pip .fill { position: absolute; top: 0; left: 0; bottom: 0; background: var(--green); width: 0%; transition: width 0.1s linear; }
         .dash-charge-pip.full .fill { width: 100%; }
         .dash-charge-pip.recharged { animation: flash-green 0.5s ease-out; }
@@ -227,9 +240,9 @@
             height: 18px;
             padding: 0 5px;
             border-radius: 999px;
-            background: rgba(0,0,0,0.85);
-            border: 1px solid rgba(255,255,255,0.15);
-            color: #fff;
+            background: rgba(12,13,18,0.85);
+            border: 1px solid rgba(239,230,216,0.15);
+            color: var(--parchment);
             font-size: 11px;
             font-weight: 900;
             display:flex;
@@ -300,8 +313,8 @@
             position: relative;
         }
         .hud-obj-line.checked .box {
-            background: rgba(215,196,138,0.18);
-            border-color: rgba(215,196,138,0.75);
+            background: rgba(192,106,58,0.18);
+            border-color: rgba(192,106,58,0.75);
         }
         .hud-obj-line.checked .box::after {
             content: "✓";
@@ -312,51 +325,51 @@
             justify-content:center;
             font-size: 10px;
             font-weight: 900;
-            color: rgba(215,196,138,0.95);
+            color: rgba(192,106,58,0.95);
             text-shadow: 0 1px 2px rgba(0,0,0,0.8);
         }
         .hud-obj-line.completed {
             opacity: 0.25;
             filter: blur(0.2px);
         }
-        .hud-obj-line small { color: rgba(255,255,255,0.62); font-size: 11px; }
+        .hud-obj-line small { color: rgba(239,230,216,0.62); font-size: 11px; }
 
         /* Old HUD (topbar/corner/bars) is removed in favor of the new bottom HUD. */
-        .btn { background:rgba(255,255,255,0.05); border:1px solid #333; color:#eee; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:11px; text-transform: uppercase; font-weight: 700; }
-        .btn:hover { background:#333; }
-        .btn.danger { border-color:rgba(200,50,50,0.3); color:#faa; }
-        .btn.primary { border-color: var(--gold); color: var(--gold); background: rgba(215,196,138,0.1); }
-        .modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:900px; height:600px; background:#11141d; border:1px solid #444; box-shadow:0 50px 100px #000; border-radius:12px; display:none; grid-template-rows:auto 1fr; z-index:100; pointer-events:auto; }
+        .btn { background:rgba(239,230,216,0.05); border:1px solid var(--slate); color:var(--bone); padding:8px 12px; border-radius:6px; cursor:pointer; font-size:11px; text-transform: uppercase; font-weight: 700; }
+        .btn:hover { background:var(--slate); }
+        .btn.danger { border-color:rgba(106,36,48,0.35); color:var(--parchment); }
+        .btn.primary { border-color: var(--gold); color: var(--gold); background: rgba(192,106,58,0.1); }
+        .modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:900px; height:600px; background:var(--abyss); border:1px solid var(--iron); box-shadow:0 50px 100px #000; border-radius:12px; display:none; grid-template-rows:auto 1fr; z-index:100; pointer-events:auto; }
         .modal.show { display:grid; }
-        .modal-head { padding:12px 16px; background:rgba(255,255,255,0.02); border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center; font-weight:600; }
+        .modal-head { padding:12px 16px; background:rgba(239,230,216,0.02); border-bottom:1px solid var(--slate); display:flex; justify-content:space-between; align-items:center; font-weight:600; }
         .modal-body { display:grid; grid-template-columns:280px 1fr 280px; overflow:hidden; }
-        .col { padding:16px; overflow-y:auto; border-right:1px solid #333; }
+        .col { padding:16px; overflow-y:auto; border-right:1px solid var(--slate); }
         .col:last-child { border:none; }
-        .sec-title { font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid #333; padding-bottom:4px; margin-bottom:10px; display:block; letter-spacing:1px; }
-        .stat-row { display:flex; justify-content:space-between; align-items:center; background:rgba(255, 255, 255, 0.03); padding:6px 8px; border-radius:4px; margin-bottom:6px; border-left:3px solid #555; }
-        .stat-btn { width:20px; height:20px; border:none; background:#333; color:#fff; border-radius:4px; cursor:pointer; }
+        .sec-title { font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--slate); padding-bottom:4px; margin-bottom:10px; display:block; letter-spacing:1px; }
+        .stat-row { display:flex; justify-content:space-between; align-items:center; background:rgba(239,230,216,0.03); padding:6px 8px; border-radius:4px; margin-bottom:6px; border-left:3px solid var(--iron); }
+        .stat-btn { width:20px; height:20px; border:none; background:var(--slate); color:var(--parchment); border-radius:4px; cursor:pointer; }
         .inv-list { display:flex; flex-direction:column; gap:6px; }
-        .item-card { display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid #333; padding:8px; border-radius:6px; cursor:pointer; transition:0.1s; }
+        .item-card { display:flex; justify-content:space-between; align-items:center; background:rgba(239,230,216,0.03); border:1px solid var(--slate); padding:8px; border-radius:6px; cursor:pointer; transition:0.1s; }
         .item-info { display:flex; flex-direction:column; gap:2px; }
-        .item-name { font-size:12px; font-weight:600; color:#eee; }
-        .item-meta { font-size:10px; color:#888; }
-        .r-common { border-left:3px solid #555; }
-        .r-uncommon { border-left:3px solid #6aae9d; }
-        .r-rare { border-left:3px solid #6b8cc4; }
-        .r-epic { border-left:3px solid #c46b6b; }
-        .r-legendary { border-left:3px solid #d7c48a; }
-        .equip-slot { display:flex; justify-content:space-between; padding:10px; background:rgba(255, 255, 255, 0.02); border:1px solid #333; border-radius:4px; margin-bottom:6px; cursor:pointer; font-size:12px; }
-        .node { padding:10px; background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; margin-bottom:8px; cursor:pointer; transition:0.1s; }
-        .node.unlocked { border-color:var(--gold); background:rgba(215,196,138,0.05); }
+        .item-name { font-size:12px; font-weight:600; color:var(--bone); }
+        .item-meta { font-size:10px; color:var(--muted); }
+        .r-common { border-left:3px solid var(--dust); }
+        .r-uncommon { border-left:3px solid var(--teal); }
+        .r-rare { border-left:3px solid var(--cyan); }
+        .r-epic { border-left:3px solid var(--violet); }
+        .r-legendary { border-left:3px solid var(--ember); }
+        .equip-slot { display:flex; justify-content:space-between; padding:10px; background:rgba(239,230,216,0.02); border:1px solid var(--slate); border-radius:4px; margin-bottom:6px; cursor:pointer; font-size:12px; }
+        .node { padding:10px; background:rgba(239,230,216,0.03); border:1px solid var(--slate); border-radius:6px; margin-bottom:8px; cursor:pointer; transition:0.1s; }
+        .node.unlocked { border-color:var(--gold); background:rgba(192,106,58,0.05); }
         .node-top { display:flex; justify-content:space-between; margin-bottom:4px; font-weight:600; font-size:13px; }
         .node-top span:last-child { text-align: right; }
-        .screen-overlay { position:fixed; inset:0; background:#080a10; z-index:500; display:none; flex-direction:column; align-items:center; justify-content:center; }
+        .screen-overlay { position:fixed; inset:0; background:var(--bg); z-index:500; display:none; flex-direction:column; align-items:center; justify-content:center; }
         .screen-overlay.active { display:flex; }
         .wep-select-container { display:flex; gap:20px; margin-top:40px; }
-        .wep-card { width:200px; height:280px; border:1px solid #444; border-radius:12px; background:rgba(255,255,255,0.03); padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; cursor:pointer; transition:0.2s; }
-        .wep-card:hover { transform:translateY(-5px); border-color:var(--gold); background:rgba(215,196,138,0.05); }
+        .wep-card { width:200px; height:280px; border:1px solid var(--iron); border-radius:12px; background:rgba(239,230,216,0.03); padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; cursor:pointer; transition:0.2s; }
+        .wep-card:hover { transform:translateY(-5px); border-color:var(--gold); background:rgba(192,106,58,0.05); }
         .wep-icon { font-size:40px; margin-bottom:10px; }
-        #toast { position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:#111; border:1px solid #444; padding:8px 16px; border-radius:20px; font-size:12px; pointer-events:none; opacity:0; transition:opacity 0.2s; z-index:1000; }
+        #toast { position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:var(--abyss); border:1px solid var(--iron); padding:8px 16px; border-radius:20px; font-size:12px; pointer-events:none; opacity:0; transition:opacity 0.2s; z-index:1000; color:var(--parchment); }
         #toast.show { opacity:1; }
         /* Legacy HUD bars removed (health now uses an orb). */
         #debug-phials-inv { display: none; }
@@ -368,10 +381,10 @@
             left: 50%;
             transform: translateX(-50%);
             padding: 12px 20px;
-            background: rgba(215, 196, 138, 0.9);
+            background: rgba(192, 106, 58, 0.9);
             border: 1px solid var(--gold);
             border-radius: 8px;
-            color: #111;
+            color: var(--ink);
             font-weight: 700;
             font-size: 14px;
             cursor: pointer;
@@ -407,8 +420,8 @@
         }
         #modal_pause .modal-body { grid-template-columns: 320px 1fr; }
         .levelup-row {
-            background: rgba(255,255,255,0.05);
-            border: 1px solid #333;
+            background: rgba(239,230,216,0.05);
+            border: 1px solid var(--slate);
             border-radius: 8px;
             padding: 16px;
             position: relative;
@@ -426,7 +439,7 @@
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            color: rgba(255,255,255,0.5);
+            color: rgba(239,230,216,0.5);
             text-transform: uppercase;
             letter-spacing: 2px;
             z-index: 5;
@@ -441,9 +454,9 @@
         .btn-attr, .btn-upgrade {
             padding: 20px;
             border-radius: 6px;
-            border: 2px solid #555;
-            background: #222;
-            color: #fff;
+            border: 2px solid var(--iron);
+            background: var(--slate);
+            color: var(--parchment);
             font-weight: bold;
             cursor: pointer;
             text-align: center;
@@ -455,12 +468,12 @@
         .btn-upgrade:hover {
             transform: translateY(-2px);
             filter: brightness(1.08);
-            box-shadow: 0 10px 18px rgba(0,0,0,0.35), 0 0 0 1px rgba(215,196,138,0.35);
+            box-shadow: 0 10px 18px rgba(0,0,0,0.35), 0 0 0 1px rgba(192,106,58,0.35);
         }
         .btn-attr:hover {
             transform: translateY(-2px);
             filter: brightness(1.08);
-            box-shadow: 0 10px 18px rgba(0,0,0,0.35), 0 0 0 1px var(--hover-outline, rgba(215,196,138,0.35));
+            box-shadow: 0 10px 18px rgba(0,0,0,0.35), 0 0 0 1px var(--hover-outline, rgba(192,106,58,0.35));
         }
         .btn-attr:active, .btn-upgrade:active {
             transform: translateY(0px) scale(0.99);
@@ -469,14 +482,14 @@
             border-color: var(--confirm-color, var(--gold)) !important;
             box-shadow:
                 0 0 0 1px rgba(255,255,255,0.08),
-                0 0 18px var(--confirm-glow, rgba(215,196,138,0.65));
+                0 0 18px var(--confirm-glow, rgba(192,106,58,0.65));
         }
         .btn-choice-confirm::after {
             content: "";
             position: absolute;
             inset: 0;
             background: radial-gradient(circle at 50% 50%,
-                var(--confirm-fill, rgba(215,196,138,0.35)) 0%,
+                var(--confirm-fill, rgba(192,106,58,0.35)) 0%,
                 transparent 65%);
             opacity: 0;
             animation: btn-confirm-pulse 260ms ease-out;
@@ -490,12 +503,12 @@
         .btn-upgrade small {
             display: block;
             font-size: 10px;
-            color: #888;
+            color: var(--muted);
             margin-top: 8px;
         }
-        #btn-might { border-color: var(--red); --hover-outline: rgba(196,107,107,0.45); }
-        #btn-alacrity { border-color: var(--green); --hover-outline: rgba(107,196,140,0.45); }
-        #btn-will { border-color: var(--blue); --hover-outline: rgba(107,140,196,0.45); }
+        #btn-might { border-color: var(--red); --hover-outline: rgba(106,36,48,0.45); }
+        #btn-alacrity { border-color: var(--green); --hover-outline: rgba(74,106,78,0.45); }
+        #btn-will { border-color: var(--blue); --hover-outline: rgba(108,199,194,0.45); }
 
         .sec-title-container {
             display: flex;
@@ -504,7 +517,7 @@
             margin-bottom: 10px;
         }
         .btn-reroll {
-            background: rgba(215, 196, 138, 0.1);
+            background: rgba(192, 106, 58, 0.1);
             border: 1px solid var(--gold);
             color: var(--gold);
             padding: 4px 10px;
@@ -514,14 +527,14 @@
             font-weight: 600;
         }
         .btn-reroll.disabled {
-            background: #222;
-            border-color: #444;
-            color: #777;
+            background: var(--slate);
+            border-color: var(--iron);
+            color: var(--dust);
             cursor: not-allowed;
             pointer-events: none;
         }
         .btn-reroll:not(.disabled):hover {
-            background: rgba(215, 196, 138, 0.2);
+            background: rgba(192, 106, 58, 0.2);
         }
     </style>
 </head>
@@ -529,31 +542,14 @@
 <canvas id="game"></canvas>
 
 <div id="screen_select" class="screen-overlay active">
-    <h1 style="font-size:24px; letter-spacing:2px; color:var(--muted)">CHOOSE YOUR VESSEL</h1>
-    <div class="wep-select-container">
-        <div class="wep-card" id="btn-start-hammer">
-            <div style="text-align:center"><div class="wep-icon">🔨</div><div style="font-weight:bold">HAMMER</div></div>
-            <div style="font-size:12px;color:#888;text-align:center">Heavy melee orbit.<br><br><i>"Gravity bends."</i></div>
-            <button class="btn primary">SELECT</button>
-        </div>
-        <div class="wep-card" id="btn-start-pistol">
-            <div style="text-align:center"><div class="wep-icon">🔫</div><div style="font-weight:bold">PISTOL</div></div>
-            <div style="font-size:12px;color:#888;text-align:center">Ranged ricochet.<br><br><i>"Never miss."</i></div>
-            <button class="btn primary">SELECT</button>
-        </div>
-        <div class="wep-card" id="btn-start-staff">
-            <div style="text-align:center"><div class="wep-icon">⚡</div><div style="font-weight:bold">STAFF</div></div>
-            <div style="font-size:12px;color:#888;text-align:center">Chain lightning.<br><br><i>"Unlimited power."</i></div>
-            <button class="btn primary">SELECT</button>
-        </div>
-    </div>
+    <button class="btn primary" id="btn-start" style="padding:14px 22px; font-size:13px; letter-spacing:2px;">START GAME</button>
 </div>
 
 <div id="screen_death" class="screen-overlay">
-    <div style="font-size:40px;color:#c44e4e;letter-spacing:4px;margin-bottom:20px">FALLEN</div>
-    <div style="font-size:14px;color:#888">SOULS: <b id="deathSouls" style="color:var(--gold)">0</b></div>
-    <div style="font-size:14px;color:#888">LEVEL: <b id="deathLvl" style="color:#fff">1</b></div>
-    <div style="font-size:14px;color:#888">KILLS: <b id="deathKills" style="color:#fff">0</b></div>
+    <div style="font-size:40px;color:var(--blood);letter-spacing:4px;margin-bottom:20px">FALLEN</div>
+    <div style="font-size:14px;color:var(--muted)">SOULS: <b id="deathSouls" style="color:var(--gold)">0</b></div>
+    <div style="font-size:14px;color:var(--muted)">LEVEL: <b id="deathLvl" style="color:var(--parchment)">1</b></div>
+    <div style="font-size:14px;color:var(--muted)">KILLS: <b id="deathKills" style="color:var(--parchment)">0</b></div>
     <br><button class="btn primary" id="btn-restart">RETURN TO TOWN</button>
 </div>
 
@@ -649,7 +645,7 @@
         <div class="col">
             <span class="sec-title">Attributes</span>
             <div id="attr-container-inv"></div>
-            <br><span class="sec-title">Details</span><div id="statText-inv" style="font-size:10px;line-height:1.5;color:#888"></div>
+            <br><span class="sec-title">Details</span><div id="statText-inv" style="font-size:10px;line-height:1.5;color:var(--muted)"></div>
             <div id="debug-phials-inv">
                 <span class="sec-title">Debug: Add Phials</span>
             </div>

@@ -5,6 +5,7 @@ import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import ParticleSystem from "../systems/Particles.js";
 import StatusSystem from "../systems/StatusSystem.js";
+import { PALETTE } from "../data/Palette.js";
 
 export class TitheExplosion {
     constructor(state, player, x, y, radius, stacks, spec, snapshot) {
@@ -44,7 +45,7 @@ export class TitheExplosion {
         ctx.save();
         
         // Outer ring
-        ctx.strokeStyle = `rgba(215, 196, 138, ${alpha})`;
+        ctx.strokeStyle = `rgba(192, 106, 58, ${alpha})`;
         ctx.lineWidth = 2 + this.stacks;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.currentRadius, 0, Math.PI * 2);
@@ -52,8 +53,8 @@ export class TitheExplosion {
 
         // Inner fill
         const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, this.currentRadius);
-        gradient.addColorStop(0, `rgba(196, 75, 75, ${alpha * 0.5})`);
-        gradient.addColorStop(1, `rgba(196, 75, 75, 0)`);
+        gradient.addColorStop(0, `rgba(106, 36, 48, ${alpha * 0.5})`);
+        gradient.addColorStop(1, `rgba(106, 36, 48, 0)`);
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.currentRadius, 0, Math.PI * 2);
@@ -84,7 +85,7 @@ export class DashTrail {
 
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.strokeStyle = "rgba(200, 230, 255, 0.8)";
+        ctx.strokeStyle = "rgba(108, 199, 194, 0.8)";
         ctx.lineWidth = width;
         ctx.beginPath();
         ctx.moveTo(start.x, start.y);
@@ -92,7 +93,7 @@ export class DashTrail {
         ctx.stroke();
 
         if (this.stacks > 2) {
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+            ctx.strokeStyle = "rgba(239, 230, 216, 0.5)";
             ctx.lineWidth = 1;
             ctx.stroke();
         }
@@ -287,7 +288,7 @@ export class HammerProjectile {
         ctx.arc(hc.x, hc.y, r * 1.5, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = this.isSalvo ? "#64b4ff" : "#e87b7b";
+        ctx.fillStyle = this.isSalvo ? PALETTE.cyan : PALETTE.ember;
         ctx.beginPath();
         ctx.arc(hc.x, hc.y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -383,13 +384,13 @@ export class Projectile {
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = this.isSalvo ? "#a0ebff" : "#fff";
+        ctx.fillStyle = this.isSalvo ? PALETTE.cyan : PALETTE.parchment;
         ctx.beginPath();
         ctx.arc(p.x, p.y, 4, 0, 6.28);
         ctx.fill();
         if (this.isSalvo) {
             ctx.globalAlpha = 0.5;
-            ctx.fillStyle = "#a0ebff";
+            ctx.fillStyle = PALETTE.cyan;
             ctx.beginPath();
             ctx.arc(p.x, p.y, 8, 0, 6.28);
             ctx.fill();
@@ -426,7 +427,7 @@ export class EnemyProjectile {
 
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = 'orange';
+        ctx.fillStyle = PALETTE.ember;
         ctx.beginPath();
         ctx.arc(p.x, p.y, 5, 0, 6.28);
         ctx.fill();
@@ -503,7 +504,7 @@ export class RootWave {
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.strokeStyle = `rgba(255,255,255,${this.life * 2})`;
+        ctx.strokeStyle = `rgba(239,230,216,${this.life * 2})`;
         ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.stroke();
     }
 }
@@ -526,7 +527,7 @@ export class StaticMine {
         });
         return this.life > 0;
     }
-    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = "#6baae0"; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
+    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = PALETTE.cyan; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
 }
 
 export class Wisp {
@@ -555,7 +556,7 @@ export class Wisp {
         }
         return this.life > 0;
     }
-    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = "#6b8cc4"; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 6.28); ctx.fill(); }
+    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = PALETTE.cyan; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 6.28); ctx.fill(); }
 }
 
 export class SoulTempest {

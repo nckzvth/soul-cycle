@@ -50,8 +50,8 @@ const UI = {
             btn.style.setProperty('--confirm-fill', `rgba(${rgba.r},${rgba.g},${rgba.b},0.35)`);
         } else {
             btn.style.setProperty('--confirm-color', color);
-            btn.style.setProperty('--confirm-glow', 'rgba(215,196,138,0.65)');
-            btn.style.setProperty('--confirm-fill', 'rgba(215,196,138,0.35)');
+            btn.style.setProperty('--confirm-glow', 'rgba(192,106,58,0.65)');
+            btn.style.setProperty('--confirm-fill', 'rgba(192,106,58,0.35)');
         }
         btn.classList.remove('btn-choice-confirm');
         void btn.offsetWidth;
@@ -356,7 +356,7 @@ const UI = {
                     if (pop > 0.02) {
                         chip.style.transform = `scale(${scale})`;
                         chip.style.filter = `brightness(${1 + pop * 0.25})`;
-                        chip.style.boxShadow = `inset 0 0 0 1px rgba(0,0,0,0.4), 0 0 ${10 + pop * 14}px rgba(215,196,138,${0.22 + pop * 0.28})`;
+                        chip.style.boxShadow = `inset 0 0 0 1px rgba(0,0,0,0.4), 0 0 ${10 + pop * 14}px rgba(192,106,58,${0.22 + pop * 0.28})`;
                     }
                     chip.innerHTML = `<span class="icon">${icon}</span>${stacks > 1 ? `<span class="stack">${stacks}</span>` : ""}`;
                     phialsEl.appendChild(chip);
@@ -483,7 +483,7 @@ const UI = {
         SLOTS.forEach(s => {
             let it = p.gear[s];
             let d = document.createElement("div"); d.className = "equip-slot";
-            d.innerHTML = `<span style="color:#888;font-size:10px">${s.toUpperCase()}</span><span class="${it ? 'r-' + it.rarity : 'slot-empty'}">${it ? it.name : 'Empty'}</span>`;
+            d.innerHTML = `<span style="color:var(--muted);font-size:10px">${s.toUpperCase()}</span><span class="${it ? 'r-' + it.rarity : 'slot-empty'}">${it ? it.name : 'Empty'}</span>`;
             if (it) d.onclick = () => {
                 if (!canSwapGear()) return;
                 p.inv.push(it); p.gear[s] = null; p.recalc(); this.renderInv();
@@ -493,7 +493,7 @@ const UI = {
 
         let elInv = document.getElementById("invList"); elInv.innerHTML = "";
         p.inv.sort((a, b) => (SLOTS.indexOf(a.type) - SLOTS.indexOf(b.type)));
-        if (p.inv.length === 0) elInv.innerHTML = "<div style='color:#555;padding:10px;text-align:center'>Stash Empty</div>";
+        if (p.inv.length === 0) elInv.innerHTML = "<div style='color:var(--muted);padding:10px;text-align:center'>Stash Empty</div>";
 
         p.inv.forEach((it, i) => {
             let d = document.createElement("div"); d.className = `item-card r-${it.rarity}`;
@@ -548,7 +548,7 @@ const UI = {
 
         const sessionItems = this._appraiseSession?.items || [];
         if (sessionItems.length === 0) {
-            el.innerHTML = "<div style='color:#555;padding:10px;text-align:center'>No items to appraise</div>";
+            el.innerHTML = "<div style='color:var(--muted);padding:10px;text-align:center'>No items to appraise</div>";
             return;
         }
 
@@ -634,16 +634,16 @@ const UI = {
                 return `
                     <div class="equip-slot" style="cursor:default;flex-direction:column;align-items:stretch;gap:6px">
                         <div style="display:flex;justify-content:space-between;gap:10px">
-                            <span style="color:#888;font-size:10px">${slot.toUpperCase()}</span>
+                            <span style="color:var(--muted);font-size:10px">${slot.toUpperCase()}</span>
                             <span class="${it ? "r-" + it.rarity : "slot-empty"}" style="text-align:right">${it ? it.name : "Empty"}</span>
                         </div>
-                        <div style="color:#888;font-size:11px">${up}</div>
+                        <div style="color:var(--muted);font-size:11px">${up}</div>
                     </div>
                 `;
             }
             return `
                 <div class="equip-slot" style="cursor:default">
-                    <span style="color:#888;font-size:10px">${slot.toUpperCase()}</span>
+                    <span style="color:var(--muted);font-size:10px">${slot.toUpperCase()}</span>
                     <span class="${it ? "r-" + it.rarity : "slot-empty"}">${it ? it.name : "Empty"}</span>
                 </div>
             `;
@@ -657,7 +657,7 @@ const UI = {
                 ${inRun ? `<button class="btn danger" id="btn-pause-town">Return to Town</button>` : ""}
                 <button class="btn danger" id="btn-pause-quit">Quit Game</button>
             </div>
-            <div style="margin-top:14px;color:#777;font-size:11px">Press Esc to close this menu.</div>
+            <div style="margin-top:14px;color:var(--muted);font-size:11px">Press Esc to close this menu.</div>
         `;
 
         const attrTier = p.perkLevel || {};
@@ -674,11 +674,11 @@ const UI = {
             </div>
             <div style="margin-top:12px">
                 <span class="sec-title">Stats</span>
-                <div style="color:#888;font-size:12px">${statsText}</div>
+                <div style="color:var(--muted);font-size:12px">${statsText}</div>
             </div>
             <div style="margin-top:12px">
                 <span class="sec-title">Phials</span>
-                <div style="color:#888;font-size:12px">${phialNames.length ? phialNames.join(", ") : "None"}</div>
+                <div style="color:var(--muted);font-size:12px">${phialNames.length ? phialNames.join(", ") : "None"}</div>
             </div>
             <div style="margin-top:12px">
                 <span class="sec-title">Loot Collected</span>
@@ -709,7 +709,7 @@ const UI = {
         const lootEl = document.getElementById("pauseLootList");
         if (lootEl) {
             if (runLoot.length === 0) {
-                lootEl.innerHTML = "<div style='color:#555;padding:10px;text-align:center'>None this run</div>";
+                lootEl.innerHTML = "<div style='color:var(--muted);padding:10px;text-align:center'>None this run</div>";
             } else {
                 lootEl.innerHTML = "";
                 runLoot.forEach(it => {
@@ -855,7 +855,7 @@ const UI = {
             }
             p.levelPicks.weapon--;
             p.recalc();
-            this.playChoiceConfirm(sourceBtn, 'rgba(215,196,138,0.75)');
+            this.playChoiceConfirm(sourceBtn, 'rgba(192,106,58,0.75)');
             window.setTimeout(() => this.rerenderWeaponRow(), 180);
         }
     },
@@ -909,7 +909,7 @@ const UI = {
             p.levelPicks.phial--;
             if (!p.levelUpOffers) p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
             p.levelUpOffers.phial = null;
-            this.playChoiceConfirm(sourceBtn, 'rgba(215,196,138,0.75)');
+            this.playChoiceConfirm(sourceBtn, 'rgba(192,106,58,0.75)');
             window.setTimeout(() => this.rerenderPhialRow(), 180);
             this.dirty = true;
         }

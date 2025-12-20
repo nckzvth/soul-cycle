@@ -568,10 +568,10 @@ export const BALANCE = {
         walkerVariants: {
             // Walkers use damped acceleration; `speed` is accel and `friction` controls turn tightness + terminal velocity.
             // Goal: player can barely outrun in a straight line, but circle-strafing is less safe.
-            thrall: { baseHp: 60, hpPerLevel: 3, speed: 1650, friction: 0.85, radius: 10, color: "#d25a78", knockbackTakenMult: 1.0 },
-            walker: { baseHp: 200, hpPerLevel: 5, speed: 1625, friction: 0.85, radius: 12, color: "#c44e4e", knockbackTakenMult: 1.0 },
-            brute: { baseHp: 420, hpPerLevel: 10, speed: 1600, friction: 0.85, radius: 14, color: "#783c3c", knockbackTakenMult: 0.35 },
-            cursed: { baseHp: 260, hpPerLevel: 8, speed: 1625, friction: 0.85, radius: 12, color: "#9650d2", knockbackTakenMult: 0.75 },
+            thrall: { baseHp: 60, hpPerLevel: 3, speed: 1650, friction: 0.85, radius: 10, color: "#4a6a4e", knockbackTakenMult: 1.0 }, // Grave moss
+            walker: { baseHp: 200, hpPerLevel: 5, speed: 1625, friction: 0.85, radius: 12, color: "#6a2430", knockbackTakenMult: 1.0 }, // Dried blood
+            brute: { baseHp: 420, hpPerLevel: 10, speed: 1600, friction: 0.85, radius: 14, color: "#4a2f2a", knockbackTakenMult: 0.35 }, // Rotwood brown
+            cursed: { baseHp: 260, hpPerLevel: 8, speed: 1625, friction: 0.85, radius: 12, color: "#4b2b57", knockbackTakenMult: 0.75 }, // Witch violet
         },
         charger: { baseHp: 50, hpPerLevel: 5, speed: 2000, dashSpeed: 800 },
         spitter: { baseHp: 150, hpPerLevel: 5, speed: 500, retreatDistance: 300 },
@@ -633,11 +633,11 @@ export const BALANCE = {
 
             // Visual: keep size constant, tint by tier.
             tierColors: {
-                1: "#d7c48a",
-                2: "#f2a25a",
-                3: "#e0671a",
-                4: "#d23a2c",
-                5: "#a865e8",
+                1: "#2f5d63", // Tarnished teal
+                2: "#6cc7c2", // Ghost cyan
+                3: "#d2c8bc", // Bone
+                4: "#c06a3a", // Ember orange
+                5: "#4b2b57", // Witch violet (rare)
             },
         }
     },

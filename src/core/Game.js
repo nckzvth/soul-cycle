@@ -7,6 +7,8 @@ import { keys, mouse } from "./Input.js";
 import { SLOTS } from "../data/Constants.js";
 import { ITEMS } from "../data/Items.js";
 import ParticleSystem from "../systems/Particles.js";
+import Assets from "./Assets.js";
+import { IMAGE_ASSETS } from "../data/Art.js";
 
 const Game = {
     p: null,
@@ -22,6 +24,7 @@ const Game = {
         this.canvas = document.getElementById("game");
         this.ctx = this.canvas.getContext("2d");
         UI.init(this);
+        Assets.registerAll(IMAGE_ASSETS);
 
         window.addEventListener('keydown', (e) => {
             if (e.code === 'KeyP') {
@@ -91,16 +94,19 @@ const Game = {
         location.reload();
     },
 
-    startGame(wepType) {
+    async startGame(wepType) {
         document.getElementById('screen_select').classList.remove('active');
+
+        // Preload core art used immediately in Town (non-fatal if it fails).
+        try {
+            await Assets.preload(["campfireSheet", "hammerIcon", "pistolIcon", "staffIcon"]);
+        } catch (e) {
+            console.warn("Asset preload failed:", e);
+        }
         
         this.p = new PlayerObj();
-        const w = this.loot("weapon");
-        const bases = { hammer: "Rusty Hammer", pistol: "Old Flintlock", staff: "Worn Staff" };
-        w.name = bases[wepType];
-        w.cls = wepType;
-        w.stats = { dmg: 6 };
-        this.p.gear.weapon = w;
+        // Default: no starting weapon selected yet (Town is non-combat).
+        this.p.gear.weapon = { id: "starter:none", type: "weapon", name: "Bare Hands", rarity: "common", stats: { dmg: 0 }, cls: "none", identified: true };
         this.p.recalc();
 
         this.stateManager = new GameStateManager(this);
@@ -116,6 +122,21 @@ const Game = {
         UI.closeAll();
         this.stateManager.switchState(new TownState(this));
         this.paused = false;
+    },
+
+    equipStartingWeapon(wepType) {
+        if (!this.p) return;
+        const t = String(wepType || "");
+        const bases = { hammer: "Rusty Hammer", pistol: "Old Flintlock", staff: "Worn Staff" };
+        if (!bases[t]) return;
+
+        const w = this.loot("weapon");
+        w.name = bases[t];
+        w.cls = t;
+        w.stats = { dmg: 6 };
+        this.p.gear.weapon = w;
+        this.p.recalc();
+        UI.dirty = true;
     },
 
     loop(now) {

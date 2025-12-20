@@ -6,9 +6,7 @@ initInput();
 Game.init();
 
 // Manual Wiring to break Circular Dependency
-document.getElementById("btn-start-hammer").onclick = () => Game.startGame("hammer");
-document.getElementById("btn-start-pistol").onclick = () => Game.startGame("pistol");
-document.getElementById("btn-start-staff").onclick = () => Game.startGame("staff");
+document.getElementById("btn-start").onclick = () => Game.startGame().catch(console.error);
 document.getElementById("btn-restart").onclick = () => Game.restart();
 
 // Expose for Debug
