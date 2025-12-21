@@ -99,7 +99,7 @@ const Game = {
 
         // Preload core art used immediately in Town (non-fatal if it fails).
         try {
-            await Assets.preload(["campfireSheet", "hammerIcon", "pistolIcon", "staffIcon"]);
+            await Assets.preload(["campfireSheet", "hammerIcon", "pistolIcon", "staffIcon", "fieldForestGroundDraft"]);
         } catch (e) {
             console.warn("Asset preload failed:", e);
         }

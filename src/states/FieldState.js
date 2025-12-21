@@ -20,6 +20,9 @@ import Boss from '../entities/Boss.js';
 import SpawnSystem from '../systems/SpawnSystem.js';
 import SoulOrbMergeSystem from '../systems/SoulOrbMergeSystem.js';
 import { PALETTE } from "../data/Palette.js";
+import Assets from "../core/Assets.js";
+import { TILED_BACKGROUNDS } from "../data/Art.js";
+import TiledBackground from "../render/TiledBackground.js";
 
 function smooth01(dt, smoothTime) {
     const st = Math.max(0.0001, smoothTime);
@@ -89,6 +92,7 @@ class FieldState extends State {
         this._sepGrid = null;
         this._sepGridFrame = -1;
         this._sepCellSize = 70;
+        this._ground = null;
 
         this.waveIndex = 0;
         this.waveTimer = 0;
@@ -799,13 +803,15 @@ class FieldState extends State {
 
         ctx.fillStyle = PALETTE.ink; ctx.fillRect(0, 0, w, h);
 
-        // Grid
-        ctx.strokeStyle = "rgba(239,230,216,0.03)"; ctx.lineWidth = 1;
-        let ox = p.x % 50, oy = p.y % 50;
-        ctx.beginPath();
-        for (let x = 0; x < w; x += 50) { ctx.moveTo(x - ox, 0); ctx.lineTo(x - ox, h); }
-        for (let y = 0; y < h; y += 50) { ctx.moveTo(0, y - oy); ctx.lineTo(w, y - oy); }
-        ctx.stroke();
+        // Tiled ground (fallback to grid if asset isn't available yet).
+        if (!this._ground) {
+            const cfg = TILED_BACKGROUNDS.fieldForest;
+            const img = Assets.getImage(cfg.imageKey);
+            if (img) this._ground = new TiledBackground(img, cfg);
+        }
+        if (this._ground) {
+            this._ground.draw(ctx, { cameraX: p.x, cameraY: p.y, canvasW: w, canvasH: h });
+        }
 
         Telegraph.render(ctx, s);
         this.drops.forEach(d => d.draw(ctx, s));

@@ -3,6 +3,16 @@ export const IMAGE_ASSETS = Object.freeze({
     hammerIcon: "notes/references/hammer_icon.png",
     pistolIcon: "notes/references/pistol_icon.png",
     staffIcon: "notes/references/staff_icon.png",
+    fieldForestGroundDraft: "notes/references/field_forest-ground-draft.png",
+});
+
+export const TILED_BACKGROUNDS = Object.freeze({
+    fieldForest: Object.freeze({
+        imageKey: "fieldForestGroundDraft",
+        scale: 2.0,
+        pixelArt: true,
+        alpha: 1.0,
+    }),
 });
 
 export const SPRITESHEETS = Object.freeze({
