@@ -1,4 +1,5 @@
 // src/entities/Interactable.js
+import { color as c } from "../data/ColorTuning.js";
 
 class Interactable {
     constructor(x, y, width, height, onInteract) {
@@ -20,7 +21,7 @@ class Interactable {
 
     draw(ctx) {
         // Placeholder draw function
-        ctx.fillStyle = 'rgba(255, 255, 0, 0.5)';
+        ctx.fillStyle = c("interactable.placeholderFill") || c("player.core", 0.25) || "p2";
         ctx.fillRect(this.x, this.y, this.width, this.height);
     }
 }

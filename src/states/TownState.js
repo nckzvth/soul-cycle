@@ -5,7 +5,7 @@ import Interactable from '../entities/Interactable.js';
 import { keys } from '../core/Input.js';
 import UI from '../systems/UI.js';
 import ParticleSystem from '../systems/Particles.js';
-import { PALETTE } from "../data/Palette.js";
+import { color as c } from "../data/ColorTuning.js";
 import Assets from "../core/Assets.js";
 import { SPRITESHEETS, ANIMATIONS } from "../data/Art.js";
 import SpriteSheet from "../render/SpriteSheet.js";
@@ -135,10 +135,9 @@ class TownState extends State {
 
         // Order matches arc angles: Hammer (left), Staff (top), Pistol (right).
         this.weaponIcons = [
-            // Match attribute colors: Might=red/blood, Alacrity=green/moss, Will=blue/cyan
-            mkIcon(imgHammer, "hammer", "rgba(106,36,48,0.18)", "rgba(106,36,48,0.30)"),
-            mkIcon(imgStaff, "staff", "rgba(108,199,194,0.16)", "rgba(108,199,194,0.28)"),
-            mkIcon(imgPistol, "pistol", "rgba(74,106,78,0.16)", "rgba(74,106,78,0.28)"),
+            mkIcon(imgHammer, "hammer", c("town.weaponIconAura.hammer") || c("fx.uiAccent", 0.18) || "ember", c("town.weaponIconAura.hammerStroke") || c("fx.uiAccent", 0.30) || "ember"),
+            mkIcon(imgStaff, "staff", c("town.weaponIconAura.staff") || c("player.support", 0.16) || "p3", c("town.weaponIconAura.staffStroke") || c("player.support", 0.28) || "p3"),
+            mkIcon(imgPistol, "pistol", c("town.weaponIconAura.pistol") || c("player.core", 0.16) || "p2", c("town.weaponIconAura.pistolStroke") || c("player.core", 0.28) || "p2"),
         ];
 
         const cx = CAMPFIRE_POS.x;
@@ -231,7 +230,7 @@ class TownState extends State {
         const h = ctx.canvas.height;
         const s = (x, y) => ({ x: x - p.x + w / 2, y: y - p.y + h / 2 });
 
-        ctx.fillStyle = PALETTE.slate;
+        ctx.fillStyle = c("town.background") || c("fx.slate") || "slate";
         ctx.fillRect(0, 0, w, h);
 
         // Campfire (top-center of town; scale relative to player size).
@@ -248,15 +247,15 @@ class TownState extends State {
                 const x = sp.x - fw / 2;
                 const y = sp.y - fh;
                 ctx.save();
-                ctx.strokeStyle = "rgba(108,199,194,0.85)";
+                ctx.strokeStyle = c("player.core", 0.85) || "p2";
                 ctx.lineWidth = 1;
                 ctx.strokeRect(x, y, fw, fh);
-                ctx.strokeStyle = "rgba(239,230,216,0.85)";
+                ctx.strokeStyle = c("fx.uiText", 0.85) || "parchment";
                 ctx.beginPath();
                 ctx.moveTo(sp.x - 6, sp.y); ctx.lineTo(sp.x + 6, sp.y);
                 ctx.moveTo(sp.x, sp.y - 6); ctx.lineTo(sp.x, sp.y + 6);
                 ctx.stroke();
-                ctx.fillStyle = "rgba(239,230,216,0.85)";
+                ctx.fillStyle = c("fx.uiText", 0.85) || "parchment";
                 ctx.font = "12px sans-serif";
                 ctx.fillText(`Campfire: (${Math.round(this.campfire.x)}, ${Math.round(this.campfire.y)})  [O] tune`, sp.x - 90, sp.y + 18);
                 ctx.restore();
@@ -280,33 +279,33 @@ class TownState extends State {
 
         // Draw Gate
         let gatePos = s(this.gate.x, this.gate.y);
-        ctx.fillStyle = PALETTE.dust;
+        ctx.fillStyle = c("town.gate.body") || c("fx.uiMuted") || "dust";
         ctx.fillRect(gatePos.x, gatePos.y, this.gate.width, this.gate.height);
-        ctx.fillStyle = PALETTE.parchment;
+        ctx.fillStyle = c("town.gate.label") || c("fx.uiText") || "parchment";
         ctx.font = '16px sans-serif';
         ctx.fillText('Gate', gatePos.x + 30, gatePos.y + 30);
 
         // TODO: Remove this temporary portal for testing
         let portalPos = s(this.dungeonPortal.x, this.dungeonPortal.y);
-        ctx.fillStyle = PALETTE.violet;
+        ctx.fillStyle = c("town.dungeonPortal.body") || "arcaneDeep";
         ctx.fillRect(portalPos.x, portalPos.y, this.dungeonPortal.width, this.dungeonPortal.height);
-        ctx.fillStyle = PALETTE.parchment;
+        ctx.fillStyle = c("town.dungeonPortal.label") || c("fx.uiText") || "parchment";
         ctx.font = '16px sans-serif';
         ctx.fillText('Dungeon', portalPos.x - 5, portalPos.y + 30);
 
         // Draw Outfitter
         const outfitterPos = s(this.outfitter.x, this.outfitter.y);
-        ctx.fillStyle = PALETTE.moss;
+        ctx.fillStyle = c("town.outfitter.body") || "p3";
         ctx.fillRect(outfitterPos.x, outfitterPos.y, this.outfitter.width, this.outfitter.height);
-        ctx.fillStyle = PALETTE.parchment;
+        ctx.fillStyle = c("town.outfitter.label") || c("fx.uiText") || "parchment";
         ctx.font = '16px sans-serif';
         ctx.fillText('Outfitter', outfitterPos.x + 8, outfitterPos.y + 32);
 
         // Draw Appraiser
         const appraiserPos = s(this.appraiser.x, this.appraiser.y);
-        ctx.fillStyle = PALETTE.violet;
+        ctx.fillStyle = c("town.appraiser.body") || "p4";
         ctx.fillRect(appraiserPos.x, appraiserPos.y, this.appraiser.width, this.appraiser.height);
-        ctx.fillStyle = PALETTE.parchment;
+        ctx.fillStyle = c("town.appraiser.label") || c("fx.uiText") || "parchment";
         ctx.font = '16px sans-serif';
         ctx.fillText('Appraiser', appraiserPos.x + 10, appraiserPos.y + 32);
 
@@ -314,7 +313,7 @@ class TownState extends State {
         ParticleSystem.render(ctx, s);
 
         // Overlay
-        ctx.fillStyle = PALETTE.parchment;
+        ctx.fillStyle = c("fx.uiText") || "parchment";
         ctx.font = '48px serif';
         ctx.textAlign = 'center';
         ctx.fillText('Town', w / 2, 50);

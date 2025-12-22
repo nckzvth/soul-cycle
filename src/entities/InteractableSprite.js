@@ -1,5 +1,5 @@
 import { dist2 } from "../core/Utils.js";
-import { PALETTE } from "../data/Palette.js";
+import { color as c } from "../data/ColorTuning.js";
 
 export default class InteractableSprite {
     constructor({
@@ -16,8 +16,8 @@ export default class InteractableSprite {
         bobAmplitude = 4,
         bobSpeed = 2.2,
         liftOnHover = 10,
-        auraColor = "rgba(192,106,58,0.22)",
-        auraStroke = "rgba(192,106,58,0.35)",
+        auraColor = null,
+        auraStroke = null,
         auraRadius = 18,
     } = {}) {
         this.x = x || 0;
@@ -35,8 +35,9 @@ export default class InteractableSprite {
         this.bobSpeed = bobSpeed;
         this.liftOnHover = liftOnHover;
 
-        this.auraColor = auraColor;
-        this.auraStroke = auraStroke;
+        // Interaction highlight: player-owned cue (P2), with muted alphas.
+        this.auraColor = auraColor || c("interactable.auraFill") || c("player.core", 0.22) || "p2";
+        this.auraStroke = auraStroke || c("interactable.auraStroke") || c("player.core", 0.35) || "p2";
         this.auraRadius = auraRadius;
 
         this._t = 0;
@@ -109,7 +110,7 @@ export default class InteractableSprite {
             ctx.save();
             const g = ctx.createRadialGradient(gp.x, gp.y, 0, gp.x, gp.y, r * 2.2);
             g.addColorStop(0, this.auraColor);
-            g.addColorStop(1, "rgba(0,0,0,0)");
+            g.addColorStop(1, "transparent");
             ctx.fillStyle = g;
             ctx.beginPath();
             ctx.arc(gp.x, gp.y, r * 2.2, 0, Math.PI * 2);
@@ -145,16 +146,16 @@ export default class InteractableSprite {
             const w = Math.ceil(metrics.width + padX * 2);
             const h = 18 + padY;
 
-            ctx.fillStyle = "rgba(12,13,18,0.72)";
-            ctx.strokeStyle = "rgba(239,230,216,0.12)";
+            ctx.fillStyle = c("interactable.promptPanel") || c("fx.ink", 0.72) || "ink";
+            ctx.strokeStyle = c("interactable.promptBorder") || c("fx.uiText", 0.12) || "parchment";
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.roundRect(x - w / 2, y - h + 4, w, h, 8);
             ctx.fill();
             ctx.stroke();
 
-            ctx.fillStyle = PALETTE.parchment;
-            ctx.shadowColor = "rgba(0,0,0,0.65)";
+            ctx.fillStyle = c("interactable.promptText") || c("fx.uiText") || "parchment";
+            ctx.shadowColor = c("interactable.promptShadow") || c("fx.ink", 0.65) || "ink";
             ctx.shadowBlur = 4;
             ctx.fillText(text, x, y);
             ctx.restore();

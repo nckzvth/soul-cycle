@@ -3,7 +3,7 @@ import UI from "../systems/UI.js";
 import { BALANCE } from "../data/Balance.js";
 import ProgressionSystem from "../systems/ProgressionSystem.js";
 import Game from "../core/Game.js";
-import { PALETTE, SEMANTIC_COLORS } from "../data/Palette.js";
+import { color as c } from "../data/ColorTuning.js";
 
 export class LootDrop {
     constructor(x, y, item) {
@@ -36,13 +36,14 @@ export class LootDrop {
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        let c = SEMANTIC_COLORS.rarity?.[this.item.rarity] || PALETTE.parchment;
+        const rarity = String(this.item?.rarity || "common");
+        const col = c(`ui.rarity.${rarity}`) || c("fx.uiText") || "parchment";
         ctx.save();
         ctx.translate(p.x, p.y);
         let g = ctx.createLinearGradient(0, -40, 0, 0);
-        g.addColorStop(0, "transparent"); g.addColorStop(1, c);
+        g.addColorStop(0, "transparent"); g.addColorStop(1, col);
         ctx.fillStyle = g; ctx.fillRect(-2, -40, 4, 40);
-        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 6.28); ctx.fill();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 6.28); ctx.fill();
         ctx.restore();
     }
 }
@@ -161,8 +162,7 @@ export class SoulOrb {
     draw(ctx, s) {
         let p = s(this.x, this.y);
         let float = Math.sin(this.life * 3) * 5;
-        const colors = BALANCE?.pickups?.soul?.tierColors || {};
-        const color = colors?.[this.tier] || SEMANTIC_COLORS.uiAccent;
+        const color = c(`pickups.soul.tier.${this.tier}`) || c("fx.uiAccent") || "ember";
         ctx.save();
         ctx.translate(p.x, p.y + float);
         ctx.globalAlpha = (this.merge || (this._mergeRemaining || 0) > 0) ? 0.9 : 1.0;
@@ -202,9 +202,9 @@ export class PhialShard {
         ctx.save();
         ctx.translate(p.x, p.y + float);
         let g = ctx.createLinearGradient(0, -60, 0, 0);
-        g.addColorStop(0, "transparent"); g.addColorStop(1, PALETTE.violet);
+        g.addColorStop(0, "transparent"); g.addColorStop(1, c("pickups.phialShard.glow") || "p4");
         ctx.fillStyle = g; ctx.fillRect(-3, -60, 6, 60);
-        ctx.fillStyle = PALETTE.violet;
+        ctx.fillStyle = c("pickups.phialShard.glow") || "p4";
         ctx.beginPath();
         ctx.moveTo(0, -8);
         ctx.lineTo(5, 0);
@@ -250,12 +250,17 @@ export class HealthOrb {
         const t = this.life;
         const pulse = Math.sin(t * 6) * 0.2 + 0.8;
         ctx.save();
+        // Neutral pickup: dust/bone with ink rim for readability.
         ctx.globalAlpha = 0.95;
-        ctx.fillStyle = `rgba(107, 196, 140, ${0.6 * pulse})`;
+        ctx.fillStyle = c("fx.ink", 0.6 * pulse) || "ink";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = c("fx.uiMuted", 0.6 * pulse) || "dust";
         ctx.beginPath();
         ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "rgba(230, 255, 240, 0.95)";
+        ctx.fillStyle = c("fx.bone", 0.95) || "bone";
         ctx.beginPath();
         ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
         ctx.fill();
@@ -297,12 +302,18 @@ export class SoulMagnet {
         const pulse = Math.sin(t * 5) * 0.25 + 0.75;
         ctx.save();
         ctx.globalAlpha = 0.95;
-        ctx.strokeStyle = `rgba(215, 196, 138, ${0.8 * pulse})`;
+        // XP/progress/support pickup: P3 ring, P2 core, with ink rim.
+        ctx.strokeStyle = c("fx.ink", 0.8 * pulse) || "ink";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = c("player.support", 0.8 * pulse) || "p3";
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.fillStyle = `rgba(160, 235, 255, ${0.6 * pulse})`;
+        ctx.fillStyle = c("player.core", 0.6 * pulse) || "p2";
         ctx.beginPath();
         ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
         ctx.fill();

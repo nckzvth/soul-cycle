@@ -216,14 +216,14 @@ const CombatSystem = {
                 const next = staffState?.circuitNext || "relay";
                 if (next === "relay") {
                     maxChains += 1;
-                    ParticleSystem.emit(target.x, target.y, staffVfx.relayColor ?? "rgba(160, 235, 255, 0.9)", staffVfx.relayBurstCount ?? 10, 130, 2.8, 0.3);
+                    ParticleSystem.emit(target.x, target.y, staffVfx.relayColor || { token: "p2", alpha: 0.9 }, staffVfx.relayBurstCount ?? 10, 130, 2.8, 0.3);
                     if (staffState) staffState.circuitNext = "overcharge";
                 } else {
                     DamageSystem.dealDamage(player, target, { ...overchargeSpec, coeff: overchargeSpec.coeff * 0.6 * overchargeCoeffMult }, {
                         state,
                         particles: ParticleSystem,
                     });
-                    ParticleSystem.emit(target.x, target.y, staffVfx.overchargeColor ?? "rgba(240, 240, 140, 0.9)", staffVfx.overchargeBurstCount ?? 10, 130, 2.8, 0.3);
+                    ParticleSystem.emit(target.x, target.y, staffVfx.overchargeColor || { token: "p1", alpha: 0.9 }, staffVfx.overchargeBurstCount ?? 10, 130, 2.8, 0.3);
                     if (staffState) staffState.circuitNext = "relay";
                 }
             }
@@ -235,8 +235,8 @@ const CombatSystem = {
             }
 
             // Apply/stack Binding Hex on hit (independent of Mark).
-            if (hexEnabled) {
-                StatusSystem.applyStatus(target, "staff:hex", {
+                if (hexEnabled) {
+                    StatusSystem.applyStatus(target, "staff:hex", {
                     source: player,
                     stacks: 1,
                     duration: hexDuration,
@@ -245,13 +245,13 @@ const CombatSystem = {
                     snapshotPolicy: "snapshot",
                     stackMode: "add",
                     maxStacks: hexMaxStacks,
-                    vfx: {
-                        interval: staffVfx.hexInterval ?? 0.35,
-                        color: staffVfx.hexColor ?? "rgba(190, 120, 255, 0.9)",
-                        count: staffVfx.hexCount ?? 1,
-                        countPerStack: staffVfx.hexCountPerStack ?? 0.5,
-                        size: staffVfx.hexSize ?? 2.5,
-                        life: staffVfx.hexLife ?? 0.22,
+                        vfx: {
+                            interval: staffVfx.hexInterval ?? 0.35,
+                            color: staffVfx.hexColor || { token: "arcaneDeep", alpha: 0.9 },
+                            count: staffVfx.hexCount ?? 1,
+                            countPerStack: staffVfx.hexCountPerStack ?? 0.5,
+                            size: staffVfx.hexSize ?? 2.5,
+                            life: staffVfx.hexLife ?? 0.22,
                         applyBurstCount: staffVfx.hexApplyBurstCount ?? 4,
                         applyBurstSpeed: staffVfx.hexApplyBurstSpeed ?? 110,
                     },
@@ -259,8 +259,8 @@ const CombatSystem = {
             }
 
             // Apply/stack Conduction Mark on hit.
-            if (markEnabled) {
-                StatusSystem.applyStatus(target, "staff:mark", {
+                if (markEnabled) {
+                    StatusSystem.applyStatus(target, "staff:mark", {
                     source: player,
                     stacks: 1,
                     duration: markDuration,
@@ -269,13 +269,13 @@ const CombatSystem = {
                     snapshotPolicy: "snapshot",
                     stackMode: "add",
                     maxStacks: markMaxStacks,
-                    vfx: {
-                        interval: staffVfx.markInterval ?? 0.3,
-                        color: staffVfx.markColor ?? "rgba(160, 235, 255, 0.95)",
-                        count: staffVfx.markCount ?? 1,
-                        countPerStack: staffVfx.markCountPerStack ?? 1,
-                        size: staffVfx.markSize ?? 2.5,
-                        life: staffVfx.markLife ?? 0.22,
+                        vfx: {
+                            interval: staffVfx.markInterval ?? 0.3,
+                            color: staffVfx.markColor || { token: "p2", alpha: 0.95 },
+                            count: staffVfx.markCount ?? 1,
+                            countPerStack: staffVfx.markCountPerStack ?? 1,
+                            size: staffVfx.markSize ?? 2.5,
+                            life: staffVfx.markLife ?? 0.22,
                         applyBurstCount: staffVfx.markApplyBurstCount ?? 4,
                         applyBurstSpeed: staffVfx.markApplyBurstSpeed ?? 130,
                     },
@@ -297,7 +297,7 @@ const CombatSystem = {
                     // Consume marks.
                     if (target.statuses) target.statuses.delete("staff:mark");
                     const radius = 70;
-                    ParticleSystem.emit(target.x, target.y, staffVfx.overloadColor ?? "rgba(160, 235, 255, 0.9)", staffVfx.overloadBurstCount ?? 14, 140, 3.0, 0.35);
+                    ParticleSystem.emit(target.x, target.y, staffVfx.overloadColor || { token: "p2", alpha: 0.9 }, staffVfx.overloadBurstCount ?? 14, 140, 3.0, 0.35);
                     state.enemies.forEach(e2 => {
                         if (e2.dead) return;
                         if (dist2(target.x, target.y, e2.x, e2.y) < radius * radius) {
@@ -321,7 +321,7 @@ const CombatSystem = {
                                     maxStacks: 1,
                                     vfx: {
                                         interval: staffVfx.linkInterval ?? 0.25,
-                                        color: staffVfx.linkColor ?? "rgba(120, 255, 220, 0.9)",
+                                        color: staffVfx.linkColor || { token: "p2", alpha: 0.9 },
                                         count: staffVfx.linkCount ?? 1,
                                         size: staffVfx.linkSize ?? 2.4,
                                         life: staffVfx.linkLife ?? 0.2,

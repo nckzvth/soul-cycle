@@ -159,9 +159,9 @@ const DamageSystem = {
           const burstSnapshot = this.snapshotOutgoing(attacker, burstSpec);
           const radius = cfg.pyreBurstRadius ?? 100;
 
-          if (meta.particles) {
-            meta.particles.emit(target.x, target.y, vfx.pyreColor ?? "rgba(255, 80, 0, 0.9)", vfx.pyreBurstCount ?? 22, vfx.pyreBurstSpeed ?? 220, 3.2, 0.45);
-          }
+	          if (meta.particles) {
+	            meta.particles.emit(target.x, target.y, vfx.pyreColor || { token: "emberDeep", alpha: 0.9 }, vfx.pyreBurstCount ?? 22, vfx.pyreBurstSpeed ?? 220, 3.2, 0.45);
+	          }
 
           state.enemies.forEach(e2 => {
             if (!e2 || e2.dead) return;
@@ -178,30 +178,30 @@ const DamageSystem = {
     // Floating combat text (preserve existing behavior from CombatSystem.applyDamage()).
     const particles = meta.particles;
     if (particles && meta.showText !== false) {
-      if (meta.isDoT && meta.dotTextMode === "perTick") {
-        particles.emitText(target.x, target.y - (target.r || 0), amount, {
-          color: "orange",
-          size: 16,
-          life: 0.6,
-        });
+	      if (meta.isDoT && meta.dotTextMode === "perTick") {
+	        particles.emitText(target.x, target.y - (target.r || 0), amount, {
+	          color: "ember",
+	          size: 16,
+	          life: 0.6,
+	        });
       } else if (meta.isDoT && typeof target.damageAccumulator === "number") {
         target.damageAccumulator += amount;
         if (target.damageAccumulator > 5) {
-          particles.emitText(target.x, target.y - (target.r || 0), target.damageAccumulator, {
-            color: "orange",
-            size: 16,
-            life: 0.6,
-          });
+	          particles.emitText(target.x, target.y - (target.r || 0), target.damageAccumulator, {
+	            color: "ember",
+	            size: 16,
+	            life: 0.6,
+	          });
           target.damageAccumulator = 0;
         }
       } else {
-        particles.emitText(target.x, target.y - (target.r || 0), amount, {
-          color: "white",
-          size: 20,
-          life: 0.8,
-        });
-      }
-    }
+	        particles.emitText(target.x, target.y - (target.r || 0), amount, {
+	          color: "parchment",
+	          size: 20,
+	          life: 0.8,
+	        });
+	      }
+	    }
 
     // Knockback (preserve existing behavior from CombatSystem).
     if (attacker?.stats && target.vx !== undefined && target.vy !== undefined) {

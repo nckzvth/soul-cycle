@@ -5,7 +5,7 @@ import { BALANCE } from '../data/Balance.js';
 import DamageSystem from '../systems/DamageSystem.js';
 import DamageSpecs from '../data/DamageSpecs.js';
 import StatusSystem from '../systems/StatusSystem.js';
-import { PALETTE } from "../data/Palette.js";
+import { color as c } from "../data/ColorTuning.js";
 
 class Boss {
     constructor(x, y, options = {}) {
@@ -118,7 +118,7 @@ class Boss {
                 },
                 draw: function(ctx, s) {
                     let p = s(this.x, this.y);
-                    ctx.fillStyle = PALETTE.blood;
+                    ctx.fillStyle = c("fx.bloodMid") || "bloodMid";
                     ctx.beginPath();
                     ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
                     ctx.fill();
@@ -130,7 +130,7 @@ class Boss {
     draw(ctx, s) {
         let p = s(this.x, this.y);
         ctx.globalAlpha = this.flash > 0 ? 0.5 : 1;
-        ctx.fillStyle = this.flash > 0 ? PALETTE.parchment : PALETTE.violet;
+        ctx.fillStyle = this.flash > 0 ? (c("fx.flash") || "parchment") : (c("enemy.body.elite") || "e1");
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.r, 0, Math.PI * 2);
         ctx.fill();
@@ -142,14 +142,14 @@ class Boss {
         const barX = p.x - barWidth / 2;
         const barY = p.y - this.r - 20;
         
-        ctx.fillStyle = 'rgba(12,13,18,0.5)';
+        ctx.fillStyle = c("fx.abyss", 0.5) || "abyss";
         ctx.fillRect(barX, barY, barWidth, barHeight);
         
         const hpRatio = this.hp / this.hpMax;
-        ctx.fillStyle = PALETTE.blood;
+        ctx.fillStyle = c("enemy.body.elite") || "e1";
         ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
         
-        ctx.strokeStyle = PALETTE.parchment;
+        ctx.strokeStyle = c("fx.uiText") || "parchment";
         ctx.strokeRect(barX, barY, barWidth, barHeight);
     }
 }

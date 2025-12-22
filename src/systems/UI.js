@@ -6,6 +6,7 @@ import { BALANCE } from "../data/Balance.js";
 import SkillOfferSystem from "./SkillOfferSystem.js";
 import PhialOfferSystem from "./PhialOfferSystem.js";
 import ProgressionSystem from "./ProgressionSystem.js";
+import { color as c } from "../data/ColorTuning.js";
 
 const UI = {
     dirty: true,
@@ -50,8 +51,8 @@ const UI = {
             btn.style.setProperty('--confirm-fill', `rgba(${rgba.r},${rgba.g},${rgba.b},0.35)`);
         } else {
             btn.style.setProperty('--confirm-color', color);
-            btn.style.setProperty('--confirm-glow', 'rgba(192,106,58,0.65)');
-            btn.style.setProperty('--confirm-fill', 'rgba(192,106,58,0.35)');
+            btn.style.setProperty('--confirm-glow', c("player.core", 0.65) || "p2");
+            btn.style.setProperty('--confirm-fill', c("player.core", 0.35) || "p2");
         }
         btn.classList.remove('btn-choice-confirm');
         void btn.offsetWidth;
@@ -342,7 +343,7 @@ const UI = {
             phialsEl.innerHTML = "";
             const entries = Array.from((p.phials || new Map()).entries());
             if (entries.length === 0) {
-                phialsEl.innerHTML = `<span style="color:rgba(255,255,255,0.45);font-size:11px">None</span>`;
+                phialsEl.innerHTML = `<span style="color:var(--muted);font-size:11px;opacity:0.9">None</span>`;
             } else {
                 for (const [id, stacks] of entries) {
                     const popTime = p.recentPhialGains?.get?.(id) || 0;
@@ -356,7 +357,9 @@ const UI = {
                     if (pop > 0.02) {
                         chip.style.transform = `scale(${scale})`;
                         chip.style.filter = `brightness(${1 + pop * 0.25})`;
-                        chip.style.boxShadow = `inset 0 0 0 1px rgba(0,0,0,0.4), 0 0 ${10 + pop * 14}px rgba(192,106,58,${0.22 + pop * 0.28})`;
+                        const rim = c("fx.ink", 0.4) || "ink";
+                        const glow = c("player.core", 0.22 + pop * 0.28) || "p2";
+                        chip.style.boxShadow = `inset 0 0 0 1px ${rim}, 0 0 ${10 + pop * 14}px ${glow}`;
                     }
                     chip.innerHTML = `<span class="icon">${icon}</span>${stacks > 1 ? `<span class="stack">${stacks}</span>` : ""}`;
                     phialsEl.appendChild(chip);
@@ -788,8 +791,7 @@ const UI = {
             p.attr[attr] += 5;
             p.levelPicks.attribute--;
             p.recalc();
-            const color = attr === 'might' ? 'rgba(196,107,107,0.75)' : (attr === 'alacrity' ? 'rgba(107,196,140,0.75)' : 'rgba(107,140,196,0.75)');
-            this.playChoiceConfirm(sourceBtn, color);
+            this.playChoiceConfirm(sourceBtn, c(`ui.attributeConfirm.${attr}`) || c("player.core", 0.75) || "p2");
             this.rerenderAttributeRow();
         }
     },
@@ -855,7 +857,7 @@ const UI = {
             }
             p.levelPicks.weapon--;
             p.recalc();
-            this.playChoiceConfirm(sourceBtn, 'rgba(192,106,58,0.75)');
+            this.playChoiceConfirm(sourceBtn, c("player.core", 0.75) || "p2");
             window.setTimeout(() => this.rerenderWeaponRow(), 180);
         }
     },
@@ -909,7 +911,7 @@ const UI = {
             p.levelPicks.phial--;
             if (!p.levelUpOffers) p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
             p.levelUpOffers.phial = null;
-            this.playChoiceConfirm(sourceBtn, 'rgba(192,106,58,0.75)');
+            this.playChoiceConfirm(sourceBtn, c("player.core", 0.75) || "p2");
             window.setTimeout(() => this.rerenderPhialRow(), 180);
             this.dirty = true;
         }

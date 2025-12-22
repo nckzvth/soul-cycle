@@ -85,7 +85,7 @@ const StatusSystem = {
     // Optional one-shot feedback on apply.
     if (next.vfx?.applyText) {
       ParticleSystem.emitText(target.x, target.y - (target.r || 0) - 10, next.vfx.applyText, {
-        color: next.vfx.textColor || "white",
+        color: next.vfx.textColor || "parchment",
         size: next.vfx.textSize || 14,
         life: next.vfx.textLife || 0.6,
       });
@@ -94,7 +94,7 @@ const StatusSystem = {
       ParticleSystem.emit(
         target.x,
         target.y,
-        next.vfx.color || "white",
+        next.vfx.color || "parchment",
         next.vfx.applyBurstCount,
         next.vfx.applyBurstSpeed ?? 120,
         next.vfx.applyBurstSize ?? 2.8,
@@ -116,7 +116,7 @@ const StatusSystem = {
           const baseCount = st.vfx.count ?? 1;
           const perStack = st.vfx.countPerStack ?? 0;
           const count = Math.max(1, Math.round(baseCount + perStack * Math.max(0, (st.stacks || 1) - 1)));
-          ParticleSystem.emit(x, y, st.vfx.color || "white", count, st.vfx.speed ?? 0, st.vfx.size ?? 2.5, st.vfx.life ?? 0.25, null, {
+          ParticleSystem.emit(x, y, st.vfx.color || "parchment", count, st.vfx.speed ?? 0, st.vfx.size ?? 2.5, st.vfx.life ?? 0.25, null, {
             anchoredTo: st.vfx.anchoredToTarget === false ? null : target,
           });
           st.nextVfxAt += st.vfxInterval;

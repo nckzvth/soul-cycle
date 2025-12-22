@@ -5,7 +5,10 @@ import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import ParticleSystem from "../systems/Particles.js";
 import StatusSystem from "../systems/StatusSystem.js";
-import { PALETTE } from "../data/Palette.js";
+import { resolveColor } from "../render/Color.js";
+import { color as tc } from "../data/ColorTuning.js";
+
+const c = (token, alpha) => resolveColor({ token, alpha });
 
 export class TitheExplosion {
     constructor(state, player, x, y, radius, stacks, spec, snapshot) {
@@ -45,7 +48,7 @@ export class TitheExplosion {
         ctx.save();
         
         // Outer ring
-        ctx.strokeStyle = `rgba(192, 106, 58, ${alpha})`;
+        ctx.strokeStyle = tc("fx.ember", alpha) || c("ember", alpha) || "ember";
         ctx.lineWidth = 2 + this.stacks;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.currentRadius, 0, Math.PI * 2);
@@ -53,8 +56,8 @@ export class TitheExplosion {
 
         // Inner fill
         const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, this.currentRadius);
-        gradient.addColorStop(0, `rgba(106, 36, 48, ${alpha * 0.5})`);
-        gradient.addColorStop(1, `rgba(106, 36, 48, 0)`);
+        gradient.addColorStop(0, tc("fx.emberDeep", alpha * 0.5) || c("emberDeep", alpha * 0.5) || "emberDeep");
+        gradient.addColorStop(1, c("emberDeep", 0) || "transparent");
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.currentRadius, 0, Math.PI * 2);
@@ -85,15 +88,21 @@ export class DashTrail {
 
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.strokeStyle = "rgba(108, 199, 194, 0.8)";
-        ctx.lineWidth = width;
+        // Ink rim rule: draw an ink under-stroke for readability over varied backgrounds.
+        ctx.strokeStyle = tc("fx.ink") || "ink";
+        ctx.lineWidth = width + 2;
         ctx.beginPath();
         ctx.moveTo(start.x, start.y);
         ctx.lineTo(end.x, end.y);
         ctx.stroke();
 
+        ctx.strokeStyle = tc("player.core") || "p2";
+        ctx.lineWidth = width;
+        ctx.stroke();
+
         if (this.stacks > 2) {
-            ctx.strokeStyle = "rgba(239, 230, 216, 0.5)";
+            ctx.globalAlpha = alpha * 0.6;
+            ctx.strokeStyle = tc("fx.uiText") || "parchment";
             ctx.lineWidth = 1;
             ctx.stroke();
         }
@@ -185,7 +194,7 @@ export class HammerProjectile {
                 const burnSpecBase = DamageSpecs.hammerBurnTick();
                 const burnSpec = { ...burnSpecBase, coeff: burnSpecBase.coeff * heatMult };
 
-                StatusSystem.applyStatus(e, "hammer:burn", {
+	                StatusSystem.applyStatus(e, "hammer:burn", {
                     source: this.player,
                     stacks: 1,
                     duration,
@@ -195,17 +204,17 @@ export class HammerProjectile {
                     stackMode: "add",
                     maxStacks: 10,
                     dotTextMode: "perTick",
-                    vfx: {
-                        interval: vfx.burnInterval ?? 0.28,
-                        color: vfx.burnColor ?? "rgba(255, 120, 0, 0.85)",
-                        count: vfx.burnCount ?? 1,
-                        countPerStack: vfx.burnCountPerStack ?? 0.45,
-                        size: vfx.burnSize ?? 2.4,
-                        life: vfx.burnLife ?? 0.22,
-                        applyBurstCount: vfx.burnApplyBurstCount ?? 4,
-                        applyBurstSpeed: vfx.burnApplyBurstSpeed ?? 120,
-                    },
-                });
+	                    vfx: {
+	                        interval: vfx.burnInterval ?? 0.28,
+	                        color: vfx.burnColor || { token: "ember", alpha: 0.85 },
+	                        count: vfx.burnCount ?? 1,
+	                        countPerStack: vfx.burnCountPerStack ?? 0.45,
+	                        size: vfx.burnSize ?? 2.4,
+	                        life: vfx.burnLife ?? 0.22,
+	                        applyBurstCount: vfx.burnApplyBurstCount ?? 4,
+	                        applyBurstSpeed: vfx.burnApplyBurstSpeed ?? 120,
+	                    },
+	                });
 
                 // Ignition Threshold: flare when burn stacks reach a threshold (cooldown-limited).
                 if ((stats.hammerIgniteEnable || 0) > 0) {
@@ -214,10 +223,10 @@ export class HammerProjectile {
                     const hammerState = this.player.weaponState?.hammer;
                     if (hammerState && hammerState.igniteCd <= 0 && stacks >= threshold) {
                         hammerState.igniteCd = cfg.igniteInternalCooldown ?? 1.0;
-                        const flareSpec = DamageSpecs.hammerIgniteFlare();
+	                        const flareSpec = DamageSpecs.hammerIgniteFlare();
                         const flareSnapshot = DamageSystem.snapshotOutgoing(this.player, { ...flareSpec, coeff: flareSpec.coeff * (1 + (stats.hammerIgniteCoeffMult || 0)) * heatMult });
                         const radius = cfg.pyreBurstRadius ?? 100;
-                        ParticleSystem.emit(e.x, e.y, vfx.igniteColor ?? "rgba(255, 190, 80, 0.9)", vfx.igniteBurstCount ?? 16, vfx.igniteBurstSpeed ?? 170, 3.0, 0.35);
+	                        ParticleSystem.emit(e.x, e.y, vfx.igniteColor || { token: "ember", alpha: 0.9 }, vfx.igniteBurstCount ?? 16, vfx.igniteBurstSpeed ?? 170, 3.0, 0.35);
                         this.state.enemies.forEach(e2 => {
                             if (e2.dead) return;
                             if (dist2(e.x, e.y, e2.x, e2.y) < radius * radius) {
@@ -235,7 +244,7 @@ export class HammerProjectile {
                     const popSpec = { ...popSpecBase, coeff: popSpecBase.coeff * coeffMult * heatMult };
                     const popSnapshot = DamageSystem.snapshotOutgoing(this.player, popSpec);
                     const radius = cfg.soulBrandRadius ?? 90;
-                    StatusSystem.applyStatus(e, "hammer:soulBrand", {
+	                    StatusSystem.applyStatus(e, "hammer:soulBrand", {
                         source: this.player,
                         stacks: 1,
                         duration,
@@ -244,19 +253,19 @@ export class HammerProjectile {
                         snapshotPolicy: "snapshot",
                         stackMode: "max",
                         maxStacks: 1,
-                        vfx: {
-                            interval: vfx.soulBrandInterval ?? 0.28,
-                            color: vfx.soulBrandColor ?? "rgba(190, 120, 255, 0.85)",
-                            count: vfx.soulBrandCount ?? 1,
-                            size: vfx.soulBrandSize ?? 2.4,
-                            life: vfx.soulBrandLife ?? 0.22,
-                            applyBurstCount: vfx.soulBrandApplyBurstCount ?? 4,
-                            applyBurstSpeed: vfx.soulBrandApplyBurstSpeed ?? 120,
-                        },
-                        onExpire: (tgt, st, stState) => {
-                            ParticleSystem.emit(tgt.x, tgt.y, vfx.soulBrandColor ?? "rgba(190, 120, 255, 0.85)", vfx.soulBrandPopBurstCount ?? 18, vfx.soulBrandPopBurstSpeed ?? 190, 3.0, 0.35);
-                            stState?.enemies?.forEach(e2 => {
-                                if (e2.dead) return;
+	                        vfx: {
+	                            interval: vfx.soulBrandInterval ?? 0.28,
+	                            color: vfx.soulBrandColor || { token: "arcaneDeep", alpha: 0.85 },
+	                            count: vfx.soulBrandCount ?? 1,
+	                            size: vfx.soulBrandSize ?? 2.4,
+	                            life: vfx.soulBrandLife ?? 0.22,
+	                            applyBurstCount: vfx.soulBrandApplyBurstCount ?? 4,
+	                            applyBurstSpeed: vfx.soulBrandApplyBurstSpeed ?? 120,
+	                        },
+	                        onExpire: (tgt, st, stState) => {
+	                            ParticleSystem.emit(tgt.x, tgt.y, vfx.soulBrandColor || { token: "arcaneDeep", alpha: 0.85 }, vfx.soulBrandPopBurstCount ?? 18, vfx.soulBrandPopBurstSpeed ?? 190, 3.0, 0.35);
+	                            stState?.enemies?.forEach(e2 => {
+	                                if (e2.dead) return;
                                 if (dist2(tgt.x, tgt.y, e2.x, e2.y) < radius * radius) {
                                     DamageSystem.dealDamage(this.player, e2, popSpec, { state: stState, snapshot: popSnapshot, particles: ParticleSystem });
                                 }
@@ -277,18 +286,19 @@ export class HammerProjectile {
         const hx = this.cx + Math.cos(this.ang) * this.rad;
         const hy = this.cy + Math.sin(this.ang) * this.rad;
         const hc = s(hx, hy);
-        const r = hb.hitRadius + ((this.player.stats?.hammerHitRadiusAdd) || 0);
+	        const r = hb.hitRadius + ((this.player.stats?.hammerHitRadiusAdd) || 0);
 
-        const grad = ctx.createRadialGradient(hc.x, hc.y, 0, hc.x, hc.y, r * 1.5);
-        grad.addColorStop(0, this.isSalvo ? "rgba(180, 220, 255, 0.8)" : "rgba(255, 240, 220, 0.8)");
-        grad.addColorStop(0.7, this.isSalvo ? "rgba(100, 180, 255, 0.5)" : "rgba(232, 123, 123, 0.5)");
-        grad.addColorStop(1, this.isSalvo ? "rgba(100, 180, 255, 0.0)" : "rgba(232, 123, 123, 0.0)");
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(hc.x, hc.y, r * 1.5, 0, Math.PI * 2);
-        ctx.fill();
+	        const grad = ctx.createRadialGradient(hc.x, hc.y, 0, hc.x, hc.y, r * 1.5);
+	        const glowToken = this.isSalvo ? "p2" : "ember";
+	        grad.addColorStop(0, c(glowToken, 0.8) || tc("fx.uiText") || "parchment");
+	        grad.addColorStop(0.7, c(glowToken, 0.5) || tc("fx.uiText") || "parchment");
+	        grad.addColorStop(1, c(glowToken, 0.0) || "transparent");
+	        ctx.fillStyle = grad;
+	        ctx.beginPath();
+	        ctx.arc(hc.x, hc.y, r * 1.5, 0, Math.PI * 2);
+	        ctx.fill();
 
-        ctx.fillStyle = this.isSalvo ? PALETTE.cyan : PALETTE.ember;
+        ctx.fillStyle = this.isSalvo ? (tc("player.core") || "p2") : (tc("fx.ember") || "ember");
         ctx.beginPath();
         ctx.arc(hc.x, hc.y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -318,12 +328,12 @@ export class FireTrail {
 
         // Visual: flickering embers for the trail zone.
         this.vfxTimer -= dt;
-        if (this.vfxTimer <= 0 && this.life > 0) {
-            this.vfxTimer = vfx.trailInterval ?? 0.12;
-            const x = this.x + (Math.random() - 0.5) * this.r * 1.6;
-            const y = this.y + (Math.random() - 0.5) * this.r * 1.6;
-            ParticleSystem.emit(x, y, vfx.trailColor ?? "rgba(255, 120, 0, 0.6)", vfx.trailCount ?? 2, 20, vfx.trailSize ?? 2.0, vfx.trailLife ?? 0.16);
-        }
+	        if (this.vfxTimer <= 0 && this.life > 0) {
+	            this.vfxTimer = vfx.trailInterval ?? 0.12;
+	            const x = this.x + (Math.random() - 0.5) * this.r * 1.6;
+	            const y = this.y + (Math.random() - 0.5) * this.r * 1.6;
+	            ParticleSystem.emit(x, y, vfx.trailColor || { token: "ember", alpha: 0.6 }, vfx.trailCount ?? 2, 20, vfx.trailSize ?? 2.0, vfx.trailLife ?? 0.16);
+	        }
 
         while (this.tickTimer >= this.tickInterval && this.life > 0) {
             this.tickTimer -= this.tickInterval;
@@ -337,16 +347,16 @@ export class FireTrail {
         return this.life > 0;
     }
 
-    draw(ctx, s) {
-        const p = s(this.x, this.y);
-        ctx.save();
-        ctx.globalAlpha = Math.min(0.6, this.life / 1.2);
-        ctx.fillStyle = "rgba(255, 120, 0, 0.25)";
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, this.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
+	    draw(ctx, s) {
+	        const p = s(this.x, this.y);
+	        ctx.save();
+	        ctx.globalAlpha = Math.min(0.6, this.life / 1.2);
+	        ctx.fillStyle = tc("fx.ember", 0.25) || c("ember", 0.25) || "ember";
+	        ctx.beginPath();
+	        ctx.arc(p.x, p.y, this.r, 0, Math.PI * 2);
+	        ctx.fill();
+	        ctx.restore();
+	    }
 }
 
 export class Projectile {
@@ -384,13 +394,13 @@ export class Projectile {
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = this.isSalvo ? PALETTE.cyan : PALETTE.parchment;
+        ctx.fillStyle = this.isSalvo ? (tc("player.core") || "p2") : (tc("fx.uiText") || "parchment");
         ctx.beginPath();
         ctx.arc(p.x, p.y, 4, 0, 6.28);
         ctx.fill();
         if (this.isSalvo) {
             ctx.globalAlpha = 0.5;
-            ctx.fillStyle = PALETTE.cyan;
+            ctx.fillStyle = tc("player.core") || "p2";
             ctx.beginPath();
             ctx.arc(p.x, p.y, 8, 0, 6.28);
             ctx.fill();
@@ -400,7 +410,7 @@ export class Projectile {
 }
 
 export class EnemyProjectile {
-    constructor(x, y, angle, isBuffed, level) {
+    constructor(x, y, angle, isBuffed, level, kind = "standard") {
         this.x = x;
         this.y = y;
         this.vx = Math.cos(angle) * BALANCE.projectiles.enemy.speed;
@@ -408,6 +418,7 @@ export class EnemyProjectile {
         this.life = BALANCE.projectiles.enemy.life;
         this.isBuffed = isBuffed;
         this.level = level;
+        this.kind = kind || "standard";
         this.spec = DamageSpecs.enemyProjectile(isBuffed, level);
     }
 
@@ -427,10 +438,33 @@ export class EnemyProjectile {
 
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = PALETTE.ember;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 5, 0, 6.28);
-        ctx.fill();
+        const size = 5;
+        const rim = tc("fx.ink") || "ink";
+        const fill = this.kind === "spitter"
+            ? (tc("enemy.projectile.spitter") || tc("fx.toxic") || "toxic")
+            : (tc("enemy.projectile.standard") || "e2");
+
+        const tri = (r) => {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y - r);
+            ctx.lineTo(p.x - r * 0.9, p.y + r);
+            ctx.lineTo(p.x + r * 0.9, p.y + r);
+            ctx.closePath();
+        };
+
+        if (this.kind === "spitter") {
+            ctx.fillStyle = rim;
+            tri(size + 1);
+            ctx.fill();
+            ctx.fillStyle = fill;
+            tri(size);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = fill;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, size, 0, 6.28);
+            ctx.fill();
+        }
     }
 }
 
@@ -450,14 +484,14 @@ export class Shockwave {
     update(dt) {
         this.r += dt * BALANCE.projectiles.shockwave.speed; this.life -= dt;
         this.state.enemies.forEach(e => {
-            if (!e.dead && !this.hitList.includes(e) && dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2) {
-                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
-                if ((this.meta?.perkTier || 0) >= 2) {
-                    const burnSpec = DamageSpecs.soulBlastBurnTick();
-                    const burnCfg = BALANCE.projectiles.soulBlastBurn || { duration: 2.0, tickInterval: 1.0 };
-                    const burnColor = (BALANCE.perks?.soulBlast?.vfx?.burnVfxColor) || "rgba(255, 120, 0, 0.85)";
-                    StatusSystem.applyStatus(e, "perk:soulBlastBurn", {
-                        source: this.player,
+	            if (!e.dead && !this.hitList.includes(e) && dist2(this.x, this.y, e.x, e.y) < (this.r + e.r) ** 2) {
+	                DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
+	                if ((this.meta?.perkTier || 0) >= 2) {
+	                    const burnSpec = DamageSpecs.soulBlastBurnTick();
+	                    const burnCfg = BALANCE.projectiles.soulBlastBurn || { duration: 2.0, tickInterval: 1.0 };
+	                    const burnColor = (BALANCE.perks?.soulBlast?.vfx?.burnVfxColor) || { token: "ember", alpha: 0.85 };
+	                    StatusSystem.applyStatus(e, "perk:soulBlastBurn", {
+	                        source: this.player,
                         stacks: 1,
                         duration: burnCfg.duration,
                         tickInterval: burnCfg.tickInterval,
@@ -480,17 +514,22 @@ export class Shockwave {
         });
         return this.life > 0;
     }
-    draw(ctx, s) {
-        let p = s(this.x, this.y);
-        const vfx = BALANCE.perks?.soulBlast?.vfx || {};
-        const tier = this.meta?.perkTier || 1;
-        const fade = Math.max(0, Math.min(1, this.life * 2));
-        const baseColor = tier >= 2 ? (vfx.ringColorTier2 ?? "rgba(255, 140, 60, 0.85)") : (vfx.ringColor ?? "rgba(215, 196, 138, 0.8)");
-        const m = /^rgba\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\)$/.exec(baseColor);
-        ctx.strokeStyle = m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${Number(m[4]) * fade})` : baseColor;
-        ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.stroke();
-    }
-}
+	    draw(ctx, s) {
+	        let p = s(this.x, this.y);
+	        const vfx = BALANCE.perks?.soulBlast?.vfx || {};
+	        const tier = this.meta?.perkTier || 1;
+	        const fade = Math.max(0, Math.min(1, this.life * 2));
+	        const base = tier >= 2 ? (vfx.ringColorTier2 || { token: "ember", alpha: 0.85 }) : (vfx.ringColor || { token: "p2", alpha: 0.8 });
+	        ctx.save();
+	        ctx.globalAlpha = fade;
+	        ctx.strokeStyle = resolveColor(base) || tc("player.core") || "p2";
+	        ctx.lineWidth = 4;
+	        ctx.beginPath();
+	        ctx.arc(p.x, p.y, this.r, 0, 6.28);
+	        ctx.stroke();
+	        ctx.restore();
+	    }
+	}
 
 export class RootWave {
     constructor(state, x, y) { this.state = state; this.x = x; this.y = y; this.r = 0; this.life = BALANCE.projectiles.rootWave.life; }
@@ -502,12 +541,18 @@ export class RootWave {
         }
         return this.life > 0;
     }
-    draw(ctx, s) {
-        let p = s(this.x, this.y);
-        ctx.strokeStyle = `rgba(239,230,216,${this.life * 2})`;
-        ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, this.r, 0, 6.28); ctx.stroke();
-    }
-}
+	    draw(ctx, s) {
+	        let p = s(this.x, this.y);
+	        ctx.save();
+	        ctx.globalAlpha = Math.max(0, Math.min(1, this.life * 2));
+	        ctx.strokeStyle = tc("fx.uiText") || "parchment";
+	        ctx.lineWidth = 4;
+	        ctx.beginPath();
+	        ctx.arc(p.x, p.y, this.r, 0, 6.28);
+	        ctx.stroke();
+	        ctx.restore();
+	    }
+	}
 
 export class StaticMine {
     constructor(state, player, x, y, spec) { 
@@ -527,7 +572,7 @@ export class StaticMine {
         });
         return this.life > 0;
     }
-    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = PALETTE.cyan; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
+    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = tc("player.core") || "p2"; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
 }
 
 export class Wisp {
@@ -556,7 +601,7 @@ export class Wisp {
         }
         return this.life > 0;
     }
-    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = PALETTE.cyan; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 6.28); ctx.fill(); }
+    draw(ctx, s) { let p = s(this.x, this.y); ctx.fillStyle = tc("player.core") || "p2"; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 6.28); ctx.fill(); }
 }
 
 export class SoulTempest {
@@ -594,7 +639,7 @@ export class SoulTempest {
             const vy = Math.sin(a) * BALANCE.projectiles.soulTempestSplit.speed;
             this.state.shots.push(new SoulTempest(this.state, this.player, this.x, this.y, spec, snapshot, { perkTier: this.meta.perkTier, isSplit: true, vx, vy }));
         }
-        ParticleSystem.emit(this.x, this.y, "rgba(120, 255, 220, 0.85)", 12, 160, 2.6, 0.25);
+        ParticleSystem.emit(this.x, this.y, { token: "p2", alpha: 0.85 }, 12, 160, 2.6, 0.25);
     }
 
     update(dt) {
@@ -616,7 +661,7 @@ export class SoulTempest {
         const vfx = BALANCE.perks?.tempest?.vfx || {};
         if (this.vfxTimer <= 0) {
             this.vfxTimer = vfx.trailInterval ?? 0.06;
-            ParticleSystem.emit(this.x, this.y, vfx.trailColor ?? "rgba(120, 255, 220, 0.35)", vfx.trailCount ?? 1, vfx.trailSpeed ?? 0, vfx.trailSize ?? 2.2, vfx.trailLife ?? 0.18);
+            ParticleSystem.emit(this.x, this.y, vfx.trailColor || { token: "p2", alpha: 0.35 }, vfx.trailCount ?? 1, vfx.trailSpeed ?? 0, vfx.trailSize ?? 2.2, vfx.trailLife ?? 0.18);
         }
 
         if (this.meta?.isSplit) {
@@ -648,7 +693,7 @@ export class SoulTempest {
         const vfx = BALANCE.perks?.tempest?.vfx || {};
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = this.meta?.isSplit ? (vfx.splitColor ?? "rgba(120, 255, 220, 0.8)") : (vfx.bodyColor ?? "rgba(120, 255, 220, 0.95)");
+        ctx.fillStyle = resolveColor(this.meta?.isSplit ? (vfx.splitColor || { token: "p2", alpha: 0.8 }) : (vfx.bodyColor || { token: "p2", alpha: 0.95 })) || tc("player.core") || "p2";
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.meta?.isSplit ? 5 : 7, 0, Math.PI * 2);
         ctx.fill();
@@ -689,7 +734,7 @@ export class OrbitalWisp {
         const vfx = BALANCE.perks?.orbitalWisp?.vfx || {};
         if (this.vfxTimer <= 0) {
             this.vfxTimer = vfx.trailInterval ?? 0.05;
-            ParticleSystem.emit(this.x, this.y, vfx.trailColor ?? "rgba(160, 235, 255, 0.35)", vfx.trailCount ?? 1, vfx.trailSpeed ?? 20, vfx.trailSize ?? 2.0, vfx.trailLife ?? 0.22);
+            ParticleSystem.emit(this.x, this.y, vfx.trailColor || { token: "p2", alpha: 0.35 }, vfx.trailCount ?? 1, vfx.trailSpeed ?? 20, vfx.trailSize ?? 2.0, vfx.trailLife ?? 0.22);
         }
 
         this.state.enemies.forEach(e => {
@@ -723,7 +768,7 @@ export class OrbitalWisp {
                         if (!next) break;
                         visited.add(next);
                         DamageSystem.dealDamage(this.player, next, lightningSpec, { state: this.state, snapshot: lightningSnapshot, particles: ParticleSystem, triggerOnHit: false });
-                        const chainColor = vfx.lightningColor ?? "rgba(160, 235, 255, 0.95)";
+                        const chainColor = vfx.lightningColor || { token: "p1", alpha: 0.95 };
                         this.state.chains.push({ t: 0.15, pts: [{ x: from.x, y: from.y }, { x: next.x, y: next.y }], color: chainColor });
                         ParticleSystem.emit(from.x, from.y, chainColor, vfx.lightningBurstCount ?? 8, vfx.lightningBurstSpeed ?? 120, vfx.lightningBurstSize ?? 2.6, vfx.lightningBurstLife ?? 0.22);
                         ParticleSystem.emit(next.x, next.y, chainColor, vfx.lightningBurstCount ?? 8, vfx.lightningBurstSpeed ?? 120, vfx.lightningBurstSize ?? 2.6, vfx.lightningBurstLife ?? 0.22);
@@ -742,7 +787,7 @@ export class OrbitalWisp {
         const vfx = BALANCE.perks?.orbitalWisp?.vfx || {};
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = vfx.bodyColor ?? "rgba(160, 235, 255, 0.9)";
+        ctx.fillStyle = resolveColor(vfx.bodyColor || { token: "p2", alpha: 0.9 }) || tc("player.core") || "p2";
         ctx.beginPath();
         ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
         ctx.fill();
@@ -766,10 +811,19 @@ export class Hazard {
     }
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = `rgba(255, 0, 0, ${this.life / 2})`;
+        const a = Math.max(0, Math.min(1, this.life / 2));
+        ctx.save();
+        ctx.globalAlpha = a;
+        // Hostile hazard: enemy-owned cue + mandatory ink rim for small moving elements.
+        ctx.fillStyle = tc("fx.ink") || "ink";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 12, 0, 6.28);
+        ctx.fill();
+        ctx.fillStyle = tc("enemy.body.standard") || "e2";
         ctx.beginPath();
         ctx.arc(p.x, p.y, 10, 0, 6.28);
         ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -809,7 +863,15 @@ export class AegisPulse {
         const alpha = this.life * 2; // Fade out
         
         ctx.save();
-        ctx.strokeStyle = `rgba(200, 230, 255, ${alpha})`;
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        // Shield/guard: P4 with ink rim for readability.
+        ctx.strokeStyle = tc("fx.ink") || "ink";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.currentRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = tc("player.guard") || "p4";
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.currentRadius, 0, Math.PI * 2);
@@ -817,7 +879,7 @@ export class AegisPulse {
 
         // Inner ring for higher stacks
         if (this.stacks > 1) {
-            ctx.strokeStyle = `rgba(150, 200, 255, ${alpha * 0.7})`;
+            ctx.strokeStyle = tc("player.spec") || "p1";
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(p.x, p.y, this.currentRadius * 0.7, 0, Math.PI * 2);
@@ -832,7 +894,7 @@ export class AegisPulse {
             const sx = p.x + Math.cos(angle) * dist;
             const sy = p.y + Math.sin(angle) * dist;
             
-            ctx.fillStyle = `rgba(220, 240, 255, ${alpha})`;
+            ctx.fillStyle = tc("player.spec") || "p1";
             ctx.beginPath();
             ctx.arc(sx, sy, 2, 0, Math.PI * 2);
             ctx.fill();

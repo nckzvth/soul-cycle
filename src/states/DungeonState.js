@@ -14,7 +14,8 @@ import { SoulOrb as Soul } from "../entities/Pickups.js";
 import { BALANCE } from "../data/Balance.js";
 import SpawnSystem from "../systems/SpawnSystem.js";
 import SoulOrbMergeSystem from "../systems/SoulOrbMergeSystem.js";
-import { PALETTE } from "../data/Palette.js";
+import { resolveColor } from "../render/Color.js";
+import { color as col } from "../data/ColorTuning.js";
 
 class DungeonState extends State {
     constructor(game) {
@@ -370,9 +371,11 @@ class DungeonState extends State {
         const s = (x, y) => ({ x, y });
 
         // Boss room background should contrast the boss body (violet).
-        ctx.fillStyle = this.room === "boss" ? PALETTE.abyss : PALETTE.slate;
+        ctx.fillStyle = this.room === "boss"
+            ? (col("states.dungeon.backgroundBoss") || col("fx.abyss") || "abyss")
+            : (col("states.dungeon.backgroundNormal") || col("fx.slate") || "slate");
         ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = PALETTE.parchment; ctx.strokeRect(0, 0, w, h);
+        ctx.strokeStyle = col("states.dungeon.frame") || col("fx.uiText") || "parchment"; ctx.strokeRect(0, 0, w, h);
 
         this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
         this.shots.forEach(shot => shot.draw(ctx, s));
@@ -381,12 +384,12 @@ class DungeonState extends State {
         
         // Chains
         ctx.lineWidth = 2;
-        this.chains.forEach(c => {
-            let p1 = s(c.pts[0].x, c.pts[0].y);
-            let p2 = s(c.pts[1].x, c.pts[1].y);
-            ctx.strokeStyle = c.color ?? PALETTE.cyan;
+        this.chains.forEach(chain => {
+            let p1 = s(chain.pts[0].x, chain.pts[0].y);
+            let p2 = s(chain.pts[1].x, chain.pts[1].y);
+            ctx.strokeStyle = resolveColor(chain.color) || col("player.core") || "p2";
             ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-            ctx.globalAlpha = c.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
+            ctx.globalAlpha = chain.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
         });
 
         p.draw(ctx, s);
@@ -396,11 +399,11 @@ class DungeonState extends State {
         // Entry room: boss door.
         if (this.room === "entry" && this.bossDoor) {
             ctx.save();
-            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.fillStyle = col("fx.ink", 0.35) || "ink";
             ctx.fillRect(this.bossDoor.x, this.bossDoor.y, this.bossDoor.width, this.bossDoor.height);
-            ctx.strokeStyle = 'rgba(239,230,216,0.65)';
+            ctx.strokeStyle = col("fx.uiText", 0.65) || "parchment";
             ctx.strokeRect(this.bossDoor.x, this.bossDoor.y, this.bossDoor.width, this.bossDoor.height);
-            ctx.fillStyle = PALETTE.parchment;
+            ctx.fillStyle = col("fx.uiText") || "parchment";
             ctx.font = '16px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('Boss Door', this.bossDoor.x + this.bossDoor.width / 2, this.bossDoor.y + 28);
@@ -415,10 +418,10 @@ class DungeonState extends State {
         // Portal
         if (this.townPortal) {
             let portalPos = s(this.townPortal.x, this.townPortal.y);
-            ctx.fillStyle = PALETTE.cyan;
+            ctx.fillStyle = col("player.core") || "p2";
             ctx.fillRect(portalPos.x, portalPos.y, this.townPortal.width, this.townPortal.height);
             if (this.townPortal.checkInteraction(p)) {
-                ctx.fillStyle = PALETTE.parchment; ctx.font = '24px sans-serif';
+                ctx.fillStyle = col("fx.uiText") || "parchment"; ctx.font = '24px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText("[F] to return to Town", w / 2, h - 50);
                 ctx.textAlign = 'start';
@@ -427,8 +430,8 @@ class DungeonState extends State {
 
         // Boss UI
         if (this.boss && !this.boss.dead) {
-            ctx.fillStyle = PALETTE.blood; ctx.fillRect(w / 2 - 250, 20, 500 * (this.boss.hp / this.boss.hpMax), 20);
-            ctx.strokeStyle = PALETTE.parchment; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
+            ctx.fillStyle = col("states.dungeon.bossHpFill") || col("enemy.body.elite") || "e1"; ctx.fillRect(w / 2 - 250, 20, 500 * (this.boss.hp / this.boss.hpMax), 20);
+            ctx.strokeStyle = col("states.dungeon.bossHpStroke") || col("fx.uiText") || "parchment"; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
         }
 
         // Rift UI is rendered in the DOM HUD (see `src/systems/UI.js`).

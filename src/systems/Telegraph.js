@@ -1,4 +1,5 @@
 // src/systems/Telegraph.js
+import { color as c } from "../data/ColorTuning.js";
 
 const Telegraph = {
     telegraphs: [],
@@ -44,8 +45,9 @@ const Telegraph = {
 
             ctx.save();
             ctx.globalAlpha = alpha;
-            ctx.fillStyle = 'rgba(255, 50, 50, 0.5)'; // Reddish fill
-            ctx.strokeStyle = 'rgba(255, 180, 180, 0.7)';
+            // Enemy-owned telegraph: E2 fill, parchment stroke, ink-safe value.
+            ctx.fillStyle = c("enemy.telegraph.fill") || c("enemy.body.standard", 0.5) || "e2";
+            ctx.strokeStyle = c("enemy.telegraph.stroke") || c("fx.uiText", 0.7) || "parchment";
             ctx.lineWidth = 2;
 
             if (t.type === 'circle') {

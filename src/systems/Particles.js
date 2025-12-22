@@ -1,29 +1,33 @@
 import { dist2 } from "../core/Utils.js";
 import Game from "../core/Game.js";
-import { PALETTE } from "../data/Palette.js";
+import { color as col } from "../data/ColorTuning.js";
+import { hexToRgb, resolveColor as resolveTokenColor } from "../render/Color.js";
 
 const particles = [];
 
 const resolveColor = (color) => {
-    if (!color) return PALETTE.parchment;
+    if (!color) return col("fx.uiText") || "parchment";
+    if (typeof color === "object") return resolveTokenColor(color) || (col("fx.uiText") || "parchment");
     if (typeof color !== "string") return String(color);
     const c = color.trim();
-    if (!c) return PALETTE.parchment;
+    if (!c) return col("fx.uiText") || "parchment";
     if (c === "transparent") return "transparent";
     if (c.startsWith("#") || c.startsWith("rgb(") || c.startsWith("rgba(") || c.startsWith("hsl(") || c.startsWith("hsla(")) return c;
+    const resolved = resolveTokenColor(c);
+    if (resolved && resolved !== c) return resolved;
 
     const named = {
-        white: PALETTE.parchment,
-        black: PALETTE.ink,
-        gray: PALETTE.dust,
-        grey: PALETTE.dust,
-        gold: PALETTE.ember,
-        red: PALETTE.blood,
-        purple: PALETTE.violet,
-        orange: PALETTE.ember,
-        lightblue: PALETTE.cyan,
-        cyan: PALETTE.cyan,
-        teal: PALETTE.teal,
+        white: col("fx.uiText") || "parchment",
+        black: col("fx.ink") || "ink",
+        gray: col("fx.uiMuted") || "dust",
+        grey: col("fx.uiMuted") || "dust",
+        gold: col("ui.xp") || "p3",
+        red: col("fx.bloodBright") || "bloodBright",
+        purple: col("player.guard") || "p4",
+        orange: col("fx.ember") || "ember",
+        lightblue: col("player.core") || "p2",
+        cyan: col("player.core") || "p2",
+        teal: col("player.support") || "p3",
     }[c.toLowerCase()];
 
     return named || c;
@@ -81,16 +85,31 @@ const ParticleSystem = {
                 const pulse = Math.sin(Game.time * 20) * 0.2 + 0.8;
                 const width = 20 * pulse;
                 const grad = ctx.createLinearGradient(pos.x, pos.y - p.size, pos.x, pos.y);
-                grad.addColorStop(0, "rgba(192, 106, 58, 0)");
-                grad.addColorStop(0.5, "rgba(192, 106, 58, 0.7)");
-                grad.addColorStop(1, "rgba(192, 106, 58, 0)");
+                const base = resolveColor(p.color) || (col("player.support") || "p3");
+                const rgb = base && typeof base === "string" ? hexToRgb(base) : null;
+                const stop0 = rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)` : "transparent";
+                const stopMid = rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.7)` : (col("player.support", 0.7) || "p3");
+                grad.addColorStop(0, stop0);
+                grad.addColorStop(0.5, stopMid);
+                grad.addColorStop(1, stop0);
                 ctx.fillStyle = grad;
                 ctx.fillRect(pos.x - width / 2, pos.y - p.size, width, p.size);
             } else {
-                ctx.fillStyle = p.color;
-                ctx.beginPath();
-                ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
+                const colr = resolveColor(p.color) || (col("fx.uiText") || "parchment");
+                const rim = p.options?.rim === false ? null : resolveColor(p.options?.rimColor || (col("fx.ink") || "ink"));
+                const rimW = typeof p.options?.rimWidth === "number" ? p.options.rimWidth : 1;
+                if (rim && colr !== "transparent") {
+                    ctx.fillStyle = rim;
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, p.size + rimW, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                if (colr !== "transparent") {
+                    ctx.fillStyle = colr;
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
         }
         ctx.globalAlpha = 1;
@@ -135,7 +154,7 @@ const ParticleSystem = {
             startLife: options.life || 1.0,
             alpha: 1,
             text,
-            color: resolveColor(options.color || "white"),
+            color: resolveColor(options.color || "parchment"),
             size: options.size || 24,
             isText: true,
             options

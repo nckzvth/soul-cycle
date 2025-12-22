@@ -9,6 +9,7 @@ import { ITEMS } from "../data/Items.js";
 import ParticleSystem from "../systems/Particles.js";
 import Assets from "./Assets.js";
 import { IMAGE_ASSETS } from "../data/Art.js";
+import { color as c } from "../data/ColorTuning.js";
 
 const Game = {
     p: null,
@@ -170,10 +171,19 @@ const Game = {
         }
 
         if (this.p && this.p.salvoCharges > 0) {
-            this.ctx.fillStyle = `rgba(160, 235, 255, ${this.p.salvoGlow * 0.2})`;
+            const a = Math.max(0, Math.min(1, (this.p.salvoGlow || 0) * 0.2));
+            // Small moving gameplay element: ink rim rule for readability.
+            this.ctx.save();
+            this.ctx.globalAlpha = a;
+            this.ctx.fillStyle = c("fx.ink") || "ink";
+            this.ctx.beginPath();
+            this.ctx.arc(mouse.x, mouse.y, 22, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.fillStyle = c("player.core") || "p2";
             this.ctx.beginPath();
             this.ctx.arc(mouse.x, mouse.y, 20, 0, Math.PI * 2);
             this.ctx.fill();
+            this.ctx.restore();
         }
     },
 

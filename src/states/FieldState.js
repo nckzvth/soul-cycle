@@ -19,10 +19,11 @@ import ProgressionSystem from '../systems/ProgressionSystem.js';
 import Boss from '../entities/Boss.js';
 import SpawnSystem from '../systems/SpawnSystem.js';
 import SoulOrbMergeSystem from '../systems/SoulOrbMergeSystem.js';
-import { PALETTE } from "../data/Palette.js";
 import Assets from "../core/Assets.js";
 import { TILED_BACKGROUNDS } from "../data/Art.js";
 import TiledBackground from "../render/TiledBackground.js";
+import { resolveColor } from "../render/Color.js";
+import { color as col } from "../data/ColorTuning.js";
 
 function smooth01(dt, smoothTime) {
     const st = Math.max(0.0001, smoothTime);
@@ -801,7 +802,7 @@ class FieldState extends State {
         const p = this.game.p;
         const s = (x, y) => ({ x: x - p.x + w / 2, y: y - p.y + h / 2 });
 
-        ctx.fillStyle = PALETTE.ink; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = col("states.field.vignette") || col("fx.ink") || "ink"; ctx.fillRect(0, 0, w, h);
 
         // Tiled ground (fallback to grid if asset isn't available yet).
         if (!this._ground) {
@@ -826,17 +827,17 @@ class FieldState extends State {
             const t = this.game.time;
             const pulse = Math.sin(t * 4) * 0.5 + 0.5;
             if (o.kind === "shrine") {
-                ctx.fillStyle = `rgba(192, 106, 58, ${0.22 + 0.22 * pulse})`;
-                ctx.strokeStyle = `rgba(192, 106, 58, ${0.65 + 0.25 * pulse})`;
+                ctx.fillStyle = col("fx.ember", 0.22 + 0.22 * pulse) || "ember";
+                ctx.strokeStyle = col("fx.ember", 0.65 + 0.25 * pulse) || "ember";
             } else {
-                ctx.fillStyle = `rgba(108, 199, 194, ${0.18 + 0.18 * pulse})`;
-                ctx.strokeStyle = `rgba(108, 199, 194, ${0.70 + 0.20 * pulse})`;
+                ctx.fillStyle = col("player.core", 0.18 + 0.18 * pulse) || "p2";
+                ctx.strokeStyle = col("player.core", 0.70 + 0.20 * pulse) || "p2";
             }
             ctx.lineWidth = 2;
             ctx.fillRect(pos.x, pos.y, o.interactable.width, o.interactable.height);
             ctx.strokeRect(pos.x, pos.y, o.interactable.width, o.interactable.height);
             if (o.interactable.checkInteraction(this.p)) {
-                ctx.fillStyle = "rgba(239,230,216,0.9)";
+                ctx.fillStyle = col("fx.uiText", 0.9) || "parchment";
                 ctx.font = '16px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText("[F] Interact", pos.x + o.interactable.width / 2, pos.y - 10);
@@ -847,10 +848,10 @@ class FieldState extends State {
 
         if (this.dungeonPortal) {
             let portalPos = s(this.dungeonPortal.x, this.dungeonPortal.y);
-            ctx.fillStyle = PALETTE.violet;
+            ctx.fillStyle = col("town.dungeonPortal.body") || col("fx.arcaneDeep") || "arcaneDeep";
             ctx.fillRect(portalPos.x, portalPos.y, 50, 50);
             if (this.dungeonPortal.checkInteraction(p)) {
-                ctx.fillStyle = PALETTE.parchment; ctx.font = '18px sans-serif';
+                ctx.fillStyle = col("fx.uiText") || "parchment"; ctx.font = '18px sans-serif';
                 const extra = this.dungeonDecisionTimer > 0 ? ` (${Math.ceil(this.dungeonDecisionTimer)}s)` : "";
                 ctx.fillText(`[F] Enter Dungeon${extra}`, portalPos.x - 20, portalPos.y - 10);
             }
@@ -859,12 +860,12 @@ class FieldState extends State {
         p.draw(ctx, s);
 
         ctx.lineWidth = 2;
-        this.chains.forEach(c => {
-            if (c.pts.length < 2) return;
-            ctx.strokeStyle = c.color ?? (c.isSalvo ? PALETTE.cyan : PALETTE.parchment);
-            ctx.beginPath(); ctx.moveTo(s(c.pts[0].x, c.pts[0].y).x, s(c.pts[0].x, c.pts[0].y).y);
-            ctx.lineTo(s(c.pts[1].x, c.pts[1].y).x, s(c.pts[1].x, c.pts[1].y).y);
-            ctx.globalAlpha = c.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
+        this.chains.forEach(chain => {
+            if (chain.pts.length < 2) return;
+            ctx.strokeStyle = resolveColor(chain.color) || (chain.isSalvo ? (col("player.core") || "p2") : (col("fx.uiText") || "parchment"));
+            ctx.beginPath(); ctx.moveTo(s(chain.pts[0].x, chain.pts[0].y).x, s(chain.pts[0].x, chain.pts[0].y).y);
+            ctx.lineTo(s(chain.pts[1].x, chain.pts[1].y).x, s(chain.pts[1].x, chain.pts[1].y).y);
+            ctx.globalAlpha = chain.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
         });
 
         this.shots.forEach(b => b.draw(ctx, s));
@@ -872,8 +873,8 @@ class FieldState extends State {
 
         // Field Boss health bar (keep visible during the fight).
         if (this.fieldBoss && !this.fieldBoss.dead) {
-            ctx.fillStyle = PALETTE.blood; ctx.fillRect(w / 2 - 250, 20, 500 * (this.fieldBoss.hp / this.fieldBoss.hpMax), 20);
-            ctx.strokeStyle = PALETTE.parchment; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
+            ctx.fillStyle = col("states.field.bossHpFill") || col("enemy.body.elite") || "e1"; ctx.fillRect(w / 2 - 250, 20, 500 * (this.fieldBoss.hp / this.fieldBoss.hpMax), 20);
+            ctx.strokeStyle = col("states.field.bossHpStroke") || col("fx.uiText") || "parchment"; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
         }
 
         // World-space indicators (player-anchored ring, smoothed in update).
@@ -884,8 +885,8 @@ class FieldState extends State {
             drawWorldArrow(ctx, sp, ind.angle, baseSize, color, ind.alpha);
         };
 
-        renderIndicator(this.indicators?.objective, "rgba(192, 106, 58, 0.95)", 13);
-        renderIndicator(this.indicators?.bounty, "rgba(138, 90, 60, 0.95)", 12);
+        renderIndicator(this.indicators?.objective, col("states.field.indicator.objective") || col("fx.ember", 0.95) || "ember", 13);
+        renderIndicator(this.indicators?.bounty, col("states.field.indicator.bounty") || col("fx.uiMuted", 0.95) || "dust", 12);
     }
 
     onEnemyDeath(enemy) {

@@ -12,7 +12,7 @@ import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import StatusSystem from "../systems/StatusSystem.js";
 import ProgressionSystem from "../systems/ProgressionSystem.js";
-import { PALETTE } from "../data/Palette.js";
+import { color as c } from "../data/ColorTuning.js";
 
 export default class PlayerObj {
     constructor() {
@@ -245,7 +245,7 @@ export default class PlayerObj {
                         const y = this.y + (Math.random() - 0.5) * radius * 2;
                         const baseCount = vfx.heatBaseCount ?? 1;
                         const count = Math.max(1, Math.round(baseCount + (vfx.heatCountPerHeat ?? 0.5) * hammerState.heat));
-                        ParticleSystem.emit(x, y, vfx.heatColor ?? "rgba(255, 120, 0, 0.65)", count, 0, vfx.heatSize ?? 2.0, vfx.heatLife ?? 0.16, null, { anchoredTo: this });
+                        ParticleSystem.emit(x, y, vfx.heatColor || { token: "ember", alpha: 0.65 }, count, 0, vfx.heatSize ?? 2.0, vfx.heatLife ?? 0.16, null, { anchoredTo: this });
                     }
                 } else {
                     hammerState.heatVfxTimer = 0;
@@ -269,8 +269,8 @@ export default class PlayerObj {
 
             if (staffState.currentJustGained) {
                 staffState.currentJustGained = false;
-                ParticleSystem.emit(this.x, this.y, vfx.currentBurstColor ?? "rgba(160, 235, 255, 0.95)", vfx.currentBurstCount ?? 16, 160, 3.2, 0.45);
-                ParticleSystem.emitText(this.x, this.y - this.r - 16, "CURRENT", { color: vfx.currentTextColor ?? "rgba(160, 235, 255, 0.95)", size: 14, life: 0.7 });
+                ParticleSystem.emit(this.x, this.y, vfx.currentBurstColor || { token: "p2", alpha: 0.95 }, vfx.currentBurstCount ?? 16, 160, 3.2, 0.45);
+                ParticleSystem.emitText(this.x, this.y - this.r - 16, "CURRENT", { color: vfx.currentTextColor || { token: "p2", alpha: 0.95 }, size: 14, life: 0.7 });
             }
 
             if (staffState.currentTime > 0) {
@@ -280,7 +280,7 @@ export default class PlayerObj {
                     const radius = vfx.currentRadius ?? 22;
                     const x = this.x + (Math.random() - 0.5) * radius * 2;
                     const y = this.y + (Math.random() - 0.5) * radius * 2;
-                    ParticleSystem.emit(x, y, vfx.currentColor ?? "rgba(160, 235, 255, 0.8)", vfx.currentCount ?? 1, 0, vfx.currentSize ?? 2.2, vfx.currentLife ?? 0.18, null, { anchoredTo: this });
+                    ParticleSystem.emit(x, y, vfx.currentColor || { token: "p2", alpha: 0.8 }, vfx.currentCount ?? 1, 0, vfx.currentSize ?? 2.2, vfx.currentLife ?? 0.18, null, { anchoredTo: this });
                 }
             } else {
                 staffState.currentVfxTimer = 0;
@@ -306,7 +306,7 @@ export default class PlayerObj {
                     const count = typeof perStack === "number"
                         ? Math.max(1, Math.round(baseCount + perStack * (intensity - 1)))
                         : intensity;
-                    ParticleSystem.emit(x, y, vfx.voltageColor ?? "rgba(240, 240, 140, 0.85)", count, 0, vfx.voltageSize ?? 2.0, vfx.voltageLife ?? 0.16, null, { anchoredTo: this });
+                    ParticleSystem.emit(x, y, vfx.voltageColor || { token: "p1", alpha: 0.85 }, count, 0, vfx.voltageSize ?? 2.0, vfx.voltageLife ?? 0.16, null, { anchoredTo: this });
                 }
             } else {
                 staffState.voltageVfxTimer = 0;
@@ -528,41 +528,41 @@ export default class PlayerObj {
             return Math.max(0, Math.min(0.95, post));
         };
 
-        // Might: Soul Blast (shockwave)
-        if ((p.perkLevel?.might || 0) >= 1) {
-            const chance = computeChance(t.might || 0);
-            if (Math.random() < chance) {
-                const vfx = perkVfx.soulBlast?.vfx || {};
-                ParticleSystem.emit(p.x, p.y, vfx.procColor ?? "rgba(215, 196, 138, 0.9)", vfx.procBurstCount ?? 12, vfx.procBurstSpeed ?? 140, vfx.procBurstSize ?? 3.0, vfx.procBurstLife ?? 0.35);
-                ParticleSystem.emitText(p.x, p.y - p.r - 14, "SOUL BLAST", { color: vfx.textColor ?? "rgba(215, 196, 138, 0.95)", size: 14, life: 0.7 });
-                state?.combatSystem?.fireShockwave?.(p, state, { perkTier: p.perkLevel.might });
-            }
-        }
+	        // Might: Soul Blast (shockwave)
+	        if ((p.perkLevel?.might || 0) >= 1) {
+	            const chance = computeChance(t.might || 0);
+	            if (Math.random() < chance) {
+	                const vfx = perkVfx.soulBlast?.vfx || {};
+	                ParticleSystem.emit(p.x, p.y, vfx.procColor || { token: "p2", alpha: 0.9 }, vfx.procBurstCount ?? 12, vfx.procBurstSpeed ?? 140, vfx.procBurstSize ?? 3.0, vfx.procBurstLife ?? 0.35);
+	                ParticleSystem.emitText(p.x, p.y - p.r - 14, "SOUL BLAST", { color: vfx.textColor || { token: "p2", alpha: 0.95 }, size: 14, life: 0.7 });
+	                state?.combatSystem?.fireShockwave?.(p, state, { perkTier: p.perkLevel.might });
+	            }
+	        }
 
         // Alacrity: Soul Tempest
-        if ((p.perkLevel?.alacrity || 0) >= 1) {
-            const chance = computeChance(t.alacrity || 0);
-            if (Math.random() < chance) {
-                const vfx = perkVfx.tempest?.vfx || {};
-                ParticleSystem.emit(p.x, p.y, vfx.procColor ?? "rgba(120, 255, 220, 0.85)", 10, 130, 2.7, 0.3);
-                ParticleSystem.emitText(p.x, p.y - p.r - 14, "TEMPEST", { color: vfx.textColor ?? "rgba(120, 255, 220, 0.95)", size: 14, life: 0.7 });
-                state?.combatSystem?.fireSoulTempest?.(p, state, { perkTier: p.perkLevel.alacrity });
-            }
-        }
+	        if ((p.perkLevel?.alacrity || 0) >= 1) {
+	            const chance = computeChance(t.alacrity || 0);
+	            if (Math.random() < chance) {
+	                const vfx = perkVfx.tempest?.vfx || {};
+	                ParticleSystem.emit(p.x, p.y, vfx.procColor || { token: "p2", alpha: 0.85 }, 10, 130, 2.7, 0.3);
+	                ParticleSystem.emitText(p.x, p.y - p.r - 14, "TEMPEST", { color: vfx.textColor || { token: "p2", alpha: 0.95 }, size: 14, life: 0.7 });
+	                state?.combatSystem?.fireSoulTempest?.(p, state, { perkTier: p.perkLevel.alacrity });
+	            }
+	        }
 
         // Will: Orbital Wisp (capped)
-        if ((p.perkLevel?.will || 0) >= 1) {
-            const chance = computeChance(t.will || 0);
-            if (Math.random() < chance) {
-                const cap = bp.perkWillMaxWisps ?? 3;
-                if ((p.activeOrbitalWisps || 0) < cap) {
-                    const vfx = perkVfx.orbitalWisp?.vfx || {};
-                    ParticleSystem.emit(p.x, p.y, vfx.procColor ?? "rgba(160, 235, 255, 0.85)", 8, 120, 2.6, 0.28);
-                    ParticleSystem.emitText(p.x, p.y - p.r - 14, "WISP", { color: vfx.textColor ?? "rgba(160, 235, 255, 0.95)", size: 14, life: 0.7 });
-                    state?.combatSystem?.fireOrbitalWisp?.(p, state, { perkTier: p.perkLevel.will });
-                }
-            }
-        }
+	        if ((p.perkLevel?.will || 0) >= 1) {
+	            const chance = computeChance(t.will || 0);
+	            if (Math.random() < chance) {
+	                const cap = bp.perkWillMaxWisps ?? 3;
+	                if ((p.activeOrbitalWisps || 0) < cap) {
+	                    const vfx = perkVfx.orbitalWisp?.vfx || {};
+	                    ParticleSystem.emit(p.x, p.y, vfx.procColor || { token: "p2", alpha: 0.85 }, 8, 120, 2.6, 0.28);
+	                    ParticleSystem.emitText(p.x, p.y - p.r - 14, "WISP", { color: vfx.textColor || { token: "p2", alpha: 0.95 }, size: 14, life: 0.7 });
+	                    state?.combatSystem?.fireOrbitalWisp?.(p, state, { perkTier: p.perkLevel.will });
+	                }
+	            }
+	        }
     }
 
     recalc() {
@@ -593,8 +593,8 @@ export default class PlayerObj {
             req = ProgressionSystem.getXpRequired(this.lvl);
             
             // Trigger VFX
-            ParticleSystem.emit(this.x, this.y, 'gold', 20, 150, 4, 1.5);
-            ParticleSystem.emit(this.x, this.y - this.r, 'gold', 1, 0, 300, 0.5, null, { beam: true, anchoredTo: this });
+            ParticleSystem.emit(this.x, this.y, 'p3', 20, 150, 4, 1.5);
+            ParticleSystem.emit(this.x, this.y - this.r, 'p3', 1, 0, 300, 0.5, null, { beam: true, anchoredTo: this });
         }
         UI.dirty = true;
     }
@@ -696,10 +696,10 @@ export default class PlayerObj {
                     pistolState.cycloneProcCd = icd;
                     pistolState.cycloneWindowTime = skillsCfg.cycloneProcWindow ?? 0.5;
 
-                    // Burst VFX
-                    const vfx = skillsCfg.vfx || {};
-                    ParticleSystem.emit(this.x, this.y, vfx.cycloneBurstColor ?? "rgba(190, 240, 255, 0.9)", vfx.cycloneBurstCount ?? 18, 180, 3, 0.4);
-                    ParticleSystem.emitText(this.x, this.y - this.r - 16, "CYCLONE", { color: vfx.cycloneTextColor ?? "rgba(190, 240, 255, 0.95)", size: 14, life: 0.7 });
+	                    // Burst VFX
+	                    const vfx = skillsCfg.vfx || {};
+	                    ParticleSystem.emit(this.x, this.y, vfx.cycloneBurstColor || { token: "p2", alpha: 0.9 }, vfx.cycloneBurstCount ?? 18, 180, 3, 0.4);
+	                    ParticleSystem.emitText(this.x, this.y - this.r - 16, "CYCLONE", { color: vfx.cycloneTextColor || { token: "p1", alpha: 0.95 }, size: 14, life: 0.7 });
 
                     // Spawn the 360° spray.
                     state?.combatSystem?.firePistolCycloneBurst?.(this, state);
@@ -734,7 +734,7 @@ export default class PlayerObj {
                     return { ...base, coeff: base.coeff * debtCoeffMult };
                 };
 
-                StatusSystem.applyStatus(target, "pistol:hex", {
+	                StatusSystem.applyStatus(target, "pistol:hex", {
                     source: this,
                     stacks: 1,
                     duration,
@@ -743,16 +743,16 @@ export default class PlayerObj {
                     snapshotPolicy: "snapshot",
                     stackMode: "add",
                     maxStacks,
-                    vfx: {
-                        interval: skillsCfg?.vfx?.hexInterval ?? 0.4,
-                        color: skillsCfg?.vfx?.hexColor ?? "rgba(190, 120, 255, 0.85)",
-                        count: skillsCfg?.vfx?.hexCount ?? 1,
-                        countPerStack: skillsCfg?.vfx?.hexCountPerStack ?? 0.35,
-                        size: skillsCfg?.vfx?.hexSize ?? 2.3,
-                        life: skillsCfg?.vfx?.hexLife ?? 0.2,
-                        applyBurstCount: skillsCfg?.vfx?.hexApplyBurstCount ?? 3,
-                        applyBurstSpeed: skillsCfg?.vfx?.hexApplyBurstSpeed ?? 110,
-                    },
+	                    vfx: {
+	                        interval: skillsCfg?.vfx?.hexInterval ?? 0.4,
+	                        color: skillsCfg?.vfx?.hexColor || { token: "arcaneDeep", alpha: 0.85 },
+	                        count: skillsCfg?.vfx?.hexCount ?? 1,
+	                        countPerStack: skillsCfg?.vfx?.hexCountPerStack ?? 0.35,
+	                        size: skillsCfg?.vfx?.hexSize ?? 2.3,
+	                        life: skillsCfg?.vfx?.hexLife ?? 0.2,
+	                        applyBurstCount: skillsCfg?.vfx?.hexApplyBurstCount ?? 3,
+	                        applyBurstSpeed: skillsCfg?.vfx?.hexApplyBurstSpeed ?? 110,
+	                    },
                     onExpire: debtPopEnabled ? (tgt, st, stState) => {
                         const popSpec = makePopSpec();
                         const popSnapshot = DamageSystem.snapshotOutgoing(this, popSpec);
@@ -883,9 +883,9 @@ export default class PlayerObj {
             const radius = Phials.ashenHalo.baseRadius + Phials.ashenHalo.radiusPerStack * (haloStacks - 1);
             const gradient = ctx.createRadialGradient(pc.x, pc.y, 0, pc.x, pc.y, radius);
             const pulse = Math.sin(Game.time * 5) * 0.1 + 0.9;
-            gradient.addColorStop(0, 'rgba(255, 120, 0, 0)');
-            gradient.addColorStop(0.7, `rgba(255, 100, 0, ${0.1 * pulse})`);
-            gradient.addColorStop(1, `rgba(255, 80, 0, ${0.3 * pulse})`);
+            gradient.addColorStop(0, c("fx.ember", 0) || "transparent");
+            gradient.addColorStop(0.7, c("fx.ember", 0.1 * pulse) || "ember");
+            gradient.addColorStop(1, c("fx.emberDeep", 0.3 * pulse) || "emberDeep");
             ctx.fillStyle = gradient;
             ctx.beginPath();
             ctx.arc(pc.x, pc.y, radius, 0, 6.28);
@@ -896,8 +896,11 @@ export default class PlayerObj {
         if (this.aegisActiveTimer > 0) {
             const alpha = (this.aegisActiveTimer / (Phials.witchglassAegis.baseDuration + Phials.witchglassAegis.durationPerStack * (this.getPhialStacks(Phials.witchglassAegis.id) - 1))) * 0.8;
             const flicker = Math.random() > 0.2 ? alpha : alpha * 0.5;
-            ctx.strokeStyle = `rgba(200, 230, 255, ${flicker})`;
-            ctx.lineWidth = 2;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, Math.min(1, flicker));
+            // Guard/shield: P4 with an ink under-stroke for the rim rule.
+            ctx.strokeStyle = c("fx.ink") || "ink";
+            ctx.lineWidth = 4;
             const segments = 6;
             const segmentAngle = (Math.PI * 2) / segments;
             for (let i = 0; i < segments; i++) {
@@ -905,11 +908,24 @@ export default class PlayerObj {
                 ctx.arc(pc.x, pc.y, this.r + 8, i * segmentAngle + segmentAngle * 0.1, (i + 1) * segmentAngle - segmentAngle * 0.1);
                 ctx.stroke();
             }
+            ctx.strokeStyle = c("player.guard") || "p4";
+            ctx.lineWidth = 2;
+            for (let i = 0; i < segments; i++) {
+                ctx.beginPath();
+                ctx.arc(pc.x, pc.y, this.r + 8, i * segmentAngle + segmentAngle * 0.1, (i + 1) * segmentAngle - segmentAngle * 0.1);
+                ctx.stroke();
+            }
+            ctx.restore();
         }
 
-        ctx.fillStyle = PALETTE.teal;
-        ctx.beginPath(); 
-        ctx.arc(pc.x, pc.y, 12, 0, 6.28); 
+        // Player marker: P2 fill with mandatory ink rim.
+        ctx.fillStyle = c("fx.ink") || "ink";
+        ctx.beginPath();
+        ctx.arc(pc.x, pc.y, 14, 0, 6.28);
+        ctx.fill();
+        ctx.fillStyle = c("player.core") || "p2";
+        ctx.beginPath();
+        ctx.arc(pc.x, pc.y, 12, 0, 6.28);
         ctx.fill();
 
         // Salvo Glyphs
@@ -919,10 +935,17 @@ export default class PlayerObj {
                 const angle = i * angleStep + Game.time * 2;
                 const x = pc.x + Math.cos(angle) * 20;
                 const y = pc.y + Math.sin(angle) * 20;
-                ctx.fillStyle = 'rgba(108, 199, 194, 0.8)';
+                ctx.save();
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = c("fx.ink") || "ink";
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = c("player.core") || "p2";
                 ctx.beginPath();
                 ctx.arc(x, y, 3, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.restore();
             }
         }
 
@@ -932,7 +955,7 @@ export default class PlayerObj {
             const angle = Game.time * 4;
             const x = pc.x + Math.cos(angle) * 30;
             const y = pc.y + Math.sin(angle) * 30;
-            ctx.fillStyle = `rgba(192, 106, 58, ${alpha})`;
+            ctx.fillStyle = c("fx.bloodBright", alpha) || "bloodBright";
             ctx.font = '16px sans-serif';
             ctx.fillText('🩸', x, y);
         }
@@ -954,7 +977,7 @@ export default class PlayerObj {
         // Tithe Engine: prevent self-fueling from tithe explosion kill chains.
         const killedByTithe = enemy?.lastHitSpecId === "phial:titheExplosion";
         if (titheStacks > 0 && !killedByTithe) {
-            ParticleSystem.emit(enemy.x, enemy.y, 'gold', 1, 100, 2, 2.0, this);
+            ParticleSystem.emit(enemy.x, enemy.y, 'p3', 1, 100, 2, 2.0, this);
             this.titheKillsCounter++;
             const requiredKills = clamp(Phials.titheEngine.baseKillsRequired - Phials.titheEngine.killsReductionPerStack * (titheStacks - 1), Phials.titheEngine.minKillsRequired, Phials.titheEngine.baseKillsRequired);
             if (this.titheKillsCounter >= requiredKills) {
