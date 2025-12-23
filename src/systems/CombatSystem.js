@@ -2,7 +2,6 @@
 import { dist2 } from "../core/Utils.js";
 import { Projectile as Proj, Shockwave, StaticMine, Wisp, SoulTempest, OrbitalWisp } from "../entities/Projectile.js";
 import { mouse } from "../core/Input.js";
-import DungeonState from "../states/DungeonState.js";
 import { BALANCE } from "../data/Balance.js";
 import DamageSystem from "./DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
@@ -20,12 +19,7 @@ const CombatSystem = {
     },
 
     firePistol(player, state) {
-        let w;
-        if (state instanceof DungeonState) {
-            w = { x: mouse.x, y: mouse.y };
-        } else {
-            w = state.game.screenToWorld(mouse.x, mouse.y);
-        }
+        const w = state.game.screenToWorld(mouse.x, mouse.y);
         const aimAngle = Math.atan2(w.y - player.y, w.x - player.x);
         const spec = DamageSpecs.pistolShot();
 

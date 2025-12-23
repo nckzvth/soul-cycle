@@ -800,8 +800,11 @@ class FieldState extends State {
         const canvas = this.game.canvas;
         const w = canvas.width, h = canvas.height;
         const p = this.game.p;
-        const s = (x, y) => ({ x: x - p.x + w / 2, y: y - p.y + h / 2 });
+        const zoom = this.game.cameraZoom || 1;
+        const s = (x, y) => ({ x, y });
 
+        // Screen-space base pass
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = col("states.field.vignette") || col("fx.ink") || "ink"; ctx.fillRect(0, 0, w, h);
 
         // Tiled ground (fallback to grid if asset isn't available yet).
@@ -811,8 +814,12 @@ class FieldState extends State {
             if (img) this._ground = new TiledBackground(img, cfg);
         }
         if (this._ground) {
-            this._ground.draw(ctx, { cameraX: p.x, cameraY: p.y, canvasW: w, canvasH: h });
+            this._ground.draw(ctx, { cameraX: p.x, cameraY: p.y, canvasW: w, canvasH: h, zoom });
         }
+
+        // World-space pass (camera centered on player with zoom)
+        ctx.save();
+        this.game.applyWorldTransform(ctx);
 
         Telegraph.render(ctx, s);
         this.drops.forEach(d => d.draw(ctx, s));
@@ -871,12 +878,6 @@ class FieldState extends State {
         this.shots.forEach(b => b.draw(ctx, s));
         ParticleSystem.render(ctx, s);
 
-        // Field Boss health bar (keep visible during the fight).
-        if (this.fieldBoss && !this.fieldBoss.dead) {
-            ctx.fillStyle = col("states.field.bossHpFill") || col("enemy.body.elite") || "e1"; ctx.fillRect(w / 2 - 250, 20, 500 * (this.fieldBoss.hp / this.fieldBoss.hpMax), 20);
-            ctx.strokeStyle = col("states.field.bossHpStroke") || col("fx.uiText") || "parchment"; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
-        }
-
         // World-space indicators (player-anchored ring, smoothed in update).
         const renderIndicator = (ind, color, baseSize) => {
             if (!ind || ind.alpha <= 0.02) return;
@@ -887,6 +888,19 @@ class FieldState extends State {
 
         renderIndicator(this.indicators?.objective, col("states.field.indicator.objective") || col("fx.ember", 0.95) || "ember", 13);
         renderIndicator(this.indicators?.bounty, col("states.field.indicator.bounty") || col("fx.uiMuted", 0.95) || "dust", 12);
+
+        ctx.restore();
+
+        // Screen-space overlays
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        // Field Boss health bar (keep visible during the fight).
+        if (this.fieldBoss && !this.fieldBoss.dead) {
+            ctx.fillStyle = col("states.field.bossHpFill") || col("enemy.body.elite") || "e1"; ctx.fillRect(w / 2 - 250, 20, 500 * (this.fieldBoss.hp / this.fieldBoss.hpMax), 20);
+            ctx.strokeStyle = col("states.field.bossHpStroke") || col("fx.uiText") || "parchment"; ctx.strokeRect(w / 2 - 250, 20, 500, 20);
+        }
+
+        // World-space indicators are rendered in the world pass above.
     }
 
     onEnemyDeath(enemy) {

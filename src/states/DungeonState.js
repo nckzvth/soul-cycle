@@ -367,8 +367,10 @@ class DungeonState extends State {
     render(ctx) {
         const p = this.game.p;
         const w = ctx.canvas.width, h = ctx.canvas.height;
-        // Static Camera
         const s = (x, y) => ({ x, y });
+
+        // Screen-space base pass
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         // Boss room background should contrast the boss body (violet).
         ctx.fillStyle = this.room === "boss"
@@ -376,6 +378,19 @@ class DungeonState extends State {
             : (col("states.dungeon.backgroundNormal") || col("fx.slate") || "slate");
         ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = col("states.dungeon.frame") || col("fx.uiText") || "parchment"; ctx.strokeRect(0, 0, w, h);
+
+        // World-space pass (camera centered on player with zoom)
+        ctx.save();
+        this.game.applyWorldTransform(ctx);
+
+        // Dungeon bounds frame in world coords.
+        if (this.bounds) {
+            ctx.save();
+            ctx.strokeStyle = col("states.dungeon.frame") || col("fx.uiText") || "parchment";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(this.bounds.x, this.bounds.y, this.bounds.w, this.bounds.h);
+            ctx.restore();
+        }
 
         this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
         this.shots.forEach(shot => shot.draw(ctx, s));
@@ -396,6 +411,7 @@ class DungeonState extends State {
 
         ParticleSystem.render(ctx, s);
 
+        // Entry room: boss door (world-space)
         // Entry room: boss door.
         if (this.room === "entry" && this.bossDoor) {
             ctx.save();
@@ -412,20 +428,39 @@ class DungeonState extends State {
                 ctx.fillText('[F] Enter Boss Room', w / 2, 86);
             }
             ctx.restore();
-            ctx.textAlign = 'start';
         }
 
-        // Portal
+        // Portal (world-space)
         if (this.townPortal) {
             let portalPos = s(this.townPortal.x, this.townPortal.y);
             ctx.fillStyle = col("player.core") || "p2";
             ctx.fillRect(portalPos.x, portalPos.y, this.townPortal.width, this.townPortal.height);
-            if (this.townPortal.checkInteraction(p)) {
-                ctx.fillStyle = col("fx.uiText") || "parchment"; ctx.font = '24px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText("[F] to return to Town", w / 2, h - 50);
-                ctx.textAlign = 'start';
-            }
+        }
+
+        ctx.restore();
+
+        // Screen-space prompts/overlays
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.textAlign = 'start';
+
+        if (this.room === "entry" && this.bossDoor && this.bossDoor.checkInteraction(p)) {
+            ctx.save();
+            ctx.fillStyle = col("fx.uiText") || "parchment";
+            ctx.font = '18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('[F] Enter Boss Room', w / 2, 86);
+            ctx.restore();
+            ctx.textAlign = 'start';
+        }
+
+        if (this.townPortal && this.townPortal.checkInteraction(p)) {
+            ctx.save();
+            ctx.fillStyle = col("fx.uiText") || "parchment";
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("[F] to return to Town", w / 2, h - 50);
+            ctx.restore();
+            ctx.textAlign = 'start';
         }
 
         // Boss UI

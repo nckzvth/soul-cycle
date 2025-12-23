@@ -228,10 +228,16 @@ class TownState extends State {
         const p = this.game.p;
         const w = ctx.canvas.width;
         const h = ctx.canvas.height;
-        const s = (x, y) => ({ x: x - p.x + w / 2, y: y - p.y + h / 2 });
+        const s = (x, y) => ({ x, y });
 
+        // Screen-space base pass
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = c("town.background") || c("fx.slate") || "slate";
         ctx.fillRect(0, 0, w, h);
+
+        // World-space pass (camera centered on player with zoom)
+        ctx.save();
+        this.game.applyWorldTransform(ctx);
 
         // Campfire (top-center of town; scale relative to player size).
         this.ensureCampfire();
@@ -311,6 +317,11 @@ class TownState extends State {
 
         p.draw(ctx, s);
         ParticleSystem.render(ctx, s);
+
+        ctx.restore();
+
+        // Screen-space overlays
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         // Overlay
         ctx.fillStyle = c("fx.uiText") || "parchment";

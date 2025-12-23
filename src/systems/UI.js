@@ -12,6 +12,7 @@ const UI = {
     dirty: true,
     _openStack: [],
     _appraiseSession: null,
+    _pauseView: "build",
     buildAttrUI(containerId, suffix) {
         const c = document.getElementById(containerId);
         if (!c) return;
@@ -150,7 +151,10 @@ const UI = {
 
         if (id === "inv") this.renderInv();
         if (id === "appraise") this.renderAppraise();
-        if (id === "pause") this.renderPause();
+        if (id === "pause") {
+            this._pauseView = "build";
+            this.renderPause();
+        }
         if (id === "levelup") this.renderLevelUp();
 
         this.syncPauseState();
@@ -658,36 +662,57 @@ const UI = {
                 <button class="btn primary" id="btn-pause-resume">Resume</button>
                 ${inRun ? `<button class="btn danger" id="btn-pause-restart">Restart Run</button>` : ""}
                 ${inRun ? `<button class="btn danger" id="btn-pause-town">Return to Town</button>` : ""}
+                <button class="btn" id="btn-pause-settings">${this._pauseView === "settings" ? "Back" : "Settings"}</button>
                 <button class="btn danger" id="btn-pause-quit">Quit Game</button>
             </div>
             <div style="margin-top:14px;color:var(--muted);font-size:11px">Press Esc to close this menu.</div>
         `;
 
         const attrTier = p.perkLevel || {};
-        elBuild.innerHTML = `
-            <span class="sec-title">Build</span>
-            <div style="display:flex;flex-direction:column;gap:8px">
-                <div>${perkLine("might", "--red", "Might", attrTier.might, "Soul Blast", "Burn")}</div>
-                <div>${perkLine("alacrity", "--green", "Alacrity", attrTier.alacrity, "Tempest", "Split")}</div>
-                <div>${perkLine("will", "--blue", "Will", attrTier.will, "Wisps", "Rod")}</div>
-            </div>
-            <div style="margin-top:12px">
-                <span class="sec-title">Loadout</span>
-                <div style="display:flex;flex-direction:column;gap:6px">${loadoutHtml}</div>
-            </div>
-            <div style="margin-top:12px">
-                <span class="sec-title">Stats</span>
-                <div style="color:var(--muted);font-size:12px">${statsText}</div>
-            </div>
-            <div style="margin-top:12px">
-                <span class="sec-title">Phials</span>
-                <div style="color:var(--muted);font-size:12px">${phialNames.length ? phialNames.join(", ") : "None"}</div>
-            </div>
-            <div style="margin-top:12px">
-                <span class="sec-title">Loot Collected</span>
-                <div class="inv-list" id="pauseLootList" style="gap:6px"></div>
-            </div>
-        `;
+        if (this._pauseView === "settings") {
+            const presets = [0.9, 1.0, 1.15, 1.25, 1.35];
+            const current = Number(Game.cameraZoom) || 1;
+            const mkBtn = (z) => {
+                const active = Math.abs(current - z) < 1e-6;
+                const cls = active ? "btn primary" : "btn";
+                return `<button class="${cls}" data-zoom="${z}">${z.toFixed(2)}x</button>`;
+            };
+            elBuild.innerHTML = `
+                <span class="sec-title">Settings</span>
+                <div style="color:var(--muted);font-size:12px;margin-top:6px">Zoom (default is slightly closer)</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+                    ${presets.map(mkBtn).join("")}
+                </div>
+                <div style="color:var(--muted);font-size:11px;margin-top:10px">
+                    Zoom affects world rendering only; HUD stays unchanged.
+                </div>
+            `;
+        } else {
+            elBuild.innerHTML = `
+                <span class="sec-title">Build</span>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    <div>${perkLine("might", "--red", "Might", attrTier.might, "Soul Blast", "Burn")}</div>
+                    <div>${perkLine("alacrity", "--green", "Alacrity", attrTier.alacrity, "Tempest", "Split")}</div>
+                    <div>${perkLine("will", "--blue", "Will", attrTier.will, "Wisps", "Rod")}</div>
+                </div>
+                <div style="margin-top:12px">
+                    <span class="sec-title">Loadout</span>
+                    <div style="display:flex;flex-direction:column;gap:6px">${loadoutHtml}</div>
+                </div>
+                <div style="margin-top:12px">
+                    <span class="sec-title">Stats</span>
+                    <div style="color:var(--muted);font-size:12px">${statsText}</div>
+                </div>
+                <div style="margin-top:12px">
+                    <span class="sec-title">Phials</span>
+                    <div style="color:var(--muted);font-size:12px">${phialNames.length ? phialNames.join(", ") : "None"}</div>
+                </div>
+                <div style="margin-top:12px">
+                    <span class="sec-title">Loot Collected</span>
+                    <div class="inv-list" id="pauseLootList" style="gap:6px"></div>
+                </div>
+            `;
+        }
 
         // Wire pause actions directly to the freshly rendered buttons.
         const G = window.Game || Game;
@@ -708,6 +733,22 @@ const UI = {
             if (!window.confirm("Quit the game?")) return;
             G.quitToTitle();
         };
+
+        const settingsBtn = document.getElementById("btn-pause-settings");
+        if (settingsBtn) settingsBtn.onclick = () => {
+            this._pauseView = this._pauseView === "settings" ? "build" : "settings";
+            this.renderPause();
+        };
+
+        if (this._pauseView === "settings") {
+            elBuild.querySelectorAll("[data-zoom]").forEach((btn) => {
+                btn.onclick = () => {
+                    const z = Number(btn.getAttribute("data-zoom"));
+                    if (Number.isFinite(z)) G.setCameraZoom(z);
+                    this.renderPause();
+                };
+            });
+        }
 
         const lootEl = document.getElementById("pauseLootList");
         if (lootEl) {

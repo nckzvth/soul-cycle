@@ -7,7 +7,9 @@ export default class TiledBackground {
         this.pixelArt = !!pixelArt;
     }
 
-    draw(ctx, { cameraX, cameraY, canvasW, canvasH } = {}) {
+    // Draws in screen-space (assumes identity transform). Supports camera zoom by shrinking the
+    // sampled world viewport (viewW/H = canvasW/H / zoom) and scaling tile draw size by zoom.
+    draw(ctx, { cameraX, cameraY, canvasW, canvasH, zoom = 1 } = {}) {
         const img = this.image;
         if (!img?.complete) return;
         const w = canvasW ?? ctx.canvas.width;
@@ -20,15 +22,18 @@ export default class TiledBackground {
         const tileW = Math.max(1, Math.round((img.width || 1) * scale));
         const tileH = Math.max(1, Math.round((img.height || 1) * scale));
 
+        const z = Math.max(0.01, Number(zoom) || 1);
         const camX = this.pixelArt ? Math.round(cameraX || 0) : (cameraX || 0);
         const camY = this.pixelArt ? Math.round(cameraY || 0) : (cameraY || 0);
-        const halfW = this.pixelArt ? Math.floor(w / 2) : (w / 2);
-        const halfH = this.pixelArt ? Math.floor(h / 2) : (h / 2);
+        const viewW = w / z;
+        const viewH = h / z;
+        const halfW = this.pixelArt ? Math.floor(viewW / 2) : (viewW / 2);
+        const halfH = this.pixelArt ? Math.floor(viewH / 2) : (viewH / 2);
 
         const left = camX - halfW;
         const top = camY - halfH;
-        const right = left + w;
-        const bottom = top + h;
+        const right = left + viewW;
+        const bottom = top + viewH;
 
         const startX = Math.floor(left / tileW) * tileW;
         const startY = Math.floor(top / tileH) * tileH;
@@ -38,11 +43,15 @@ export default class TiledBackground {
         ctx.globalAlpha = prevAlpha * (this.alpha ?? 1);
         if (this.pixelArt) ctx.imageSmoothingEnabled = false;
 
+        const drawTileW = this.pixelArt ? Math.round(tileW * z) : (tileW * z);
+        const drawTileH = this.pixelArt ? Math.round(tileH * z) : (tileH * z);
+
         for (let y = startY; y < bottom; y += tileH) {
             for (let x = startX; x < right; x += tileW) {
-                const dx = this.pixelArt ? Math.round(x - left) : (x - left);
-                const dy = this.pixelArt ? Math.round(y - top) : (y - top);
-                ctx.drawImage(img, dx, dy, tileW, tileH);
+                const dx = this.pixelArt ? Math.round((x - left) * z) : ((x - left) * z);
+                const dy = this.pixelArt ? Math.round((y - top) * z) : ((y - top) * z);
+                // Slight overlap helps prevent seam lines under fractional zoom.
+                ctx.drawImage(img, dx, dy, drawTileW + 1, drawTileH + 1);
             }
         }
 

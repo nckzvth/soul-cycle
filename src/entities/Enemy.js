@@ -1,4 +1,4 @@
-import { dist2 } from "../core/Utils.js";
+import { dist2, circleIntersectsAABB } from "../core/Utils.js";
 import { Hazard, RootWave, EnemyProjectile } from "./Projectile.js";
 import Telegraph from "../systems/Telegraph.js";
 import CombatSystem from "../systems/CombatSystem.js";
@@ -8,6 +8,49 @@ import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import StatusSystem from "../systems/StatusSystem.js";
 import { color as c } from "../data/ColorTuning.js";
+import Assets from "../core/Assets.js";
+import SpriteSheet from "../render/SpriteSheet.js";
+import Animation from "../render/Animation.js";
+import { ENEMY_SPRITE_CONFIG, ENEMY_SPRITE_STATES, getEnemySpriteDef } from "../data/EnemySprites.js";
+
+const _spriteCache = new Map();
+
+function _makeFlashCanvas(img, alphaThreshold = 18) {
+    if (!img) return null;
+    const w = img.width || 0;
+    const h = img.height || 0;
+    if (w <= 0 || h <= 0) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0);
+    let data;
+    try {
+        data = ctx.getImageData(0, 0, w, h);
+    } catch {
+        return null;
+    }
+    const d = data.data;
+    const t = Math.max(0, Math.min(255, Math.floor(alphaThreshold)));
+    for (let i = 0; i < d.length; i += 4) {
+        const a = d[i + 3];
+        if (a <= t) {
+            d[i + 3] = 0;
+        } else {
+            d[i] = 255;
+            d[i + 1] = 255;
+            d[i + 2] = 255;
+            d[i + 3] = 255;
+        }
+    }
+    ctx.putImageData(data, 0, 0);
+    return canvas;
+}
 
 /**
  * @class Enemy
@@ -42,12 +85,184 @@ export class Enemy {
         this.damageAccumulator = 0;
         StatusSystem.init(this);
 
+        // Sprite visuals
+        this.spriteType = "enemy";
+        this.spriteVariant = null;
+        this._sprite = {
+            enabled: true,
+            dir: 0,
+            state: ENEMY_SPRITE_STATES.idle,
+            attackTimer: 0,
+            specialTimer: 0,
+            sheets: null, // shared via cache
+            flashSheets: null, // shared via cache
+            anims: null,  // per-instance
+            scale: ENEMY_SPRITE_CONFIG.defaultScale,
+        };
+
         // Apply elite multipliers for stats that are NOT typically overridden by subclasses (like radius).
         // HP is handled in the subclass constructors to ensure correct order of operations.
         if (this.isElite) {
             this.r *= BALANCE.enemies.eliteRadiusMult;
             this.soulValue *= BALANCE.enemies.eliteSoulMult;
         }
+    }
+
+    _getSpriteDef() {
+        return getEnemySpriteDef(this.spriteType, this.spriteVariant);
+    }
+
+    _ensureSpriteAssets() {
+        const sp = this._sprite;
+        if (!sp?.enabled) return false;
+        const def = this._getSpriteDef();
+        if (!def) return false;
+
+        // Per-type scale (can be overridden per enemy instance if needed).
+        sp.scale = typeof def.scale === "number" ? def.scale : (ENEMY_SPRITE_CONFIG.defaultScale || 2.0);
+
+        if (sp.sheets && sp.anims) return true;
+
+        const cacheKey = `${def.baseKey}`;
+        let cached = _spriteCache.get(cacheKey);
+        if (!cached) {
+            const sheets = {};
+            const flashSheets = {};
+            for (const [state, st] of Object.entries(def.states || {})) {
+                const img = Assets.getImage(`${def.baseKey}${st.suffix}`);
+                if (!img) return false;
+                sheets[state] = new SpriteSheet(img, {
+                    frameWidth: ENEMY_SPRITE_CONFIG.frameWidth,
+                    frameHeight: ENEMY_SPRITE_CONFIG.frameHeight,
+                });
+
+                const flashCanvas = _makeFlashCanvas(img, 18);
+                if (flashCanvas) {
+                    flashSheets[state] = new SpriteSheet(flashCanvas, {
+                        frameWidth: ENEMY_SPRITE_CONFIG.frameWidth,
+                        frameHeight: ENEMY_SPRITE_CONFIG.frameHeight,
+                    });
+                }
+            }
+            cached = { sheets, flashSheets };
+            _spriteCache.set(cacheKey, cached);
+        }
+
+        sp.sheets = cached.sheets;
+        sp.flashSheets = cached.flashSheets;
+        sp.anims = {};
+        for (const [state, st] of Object.entries(def.states || {})) {
+            sp.anims[state] = new Animation({
+                fps: st.fps ?? 10,
+                frameCount: ENEMY_SPRITE_CONFIG.framesPerDir,
+                loop: st.loop !== false,
+            });
+        }
+        return true;
+    }
+
+    _setSpriteState(next) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return;
+        if (sp.state === next) return;
+        sp.state = next;
+        if (!this._ensureSpriteAssets()) return;
+        sp.anims?.[next]?.reset?.();
+    }
+
+    triggerAttack(duration = 0.25) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return;
+        sp.attackTimer = Math.max(sp.attackTimer || 0, Math.max(0, duration));
+    }
+
+    triggerSpecial(duration = 0.35) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return;
+        sp.specialTimer = Math.max(sp.specialTimer || 0, Math.max(0, duration));
+    }
+
+    _updateSprite(dt, player) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return;
+
+        sp.attackTimer = Math.max(0, (sp.attackTimer || 0) - Math.max(0, dt || 0));
+        sp.specialTimer = Math.max(0, (sp.specialTimer || 0) - Math.max(0, dt || 0));
+
+        if (player) {
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 > 1e-6) {
+                const a = Math.atan2(dy, dx);
+                const oct = Math.PI / 4;
+                sp.dir = ((Math.round(a / oct) % ENEMY_SPRITE_CONFIG.dirCount) + ENEMY_SPRITE_CONFIG.dirCount) % ENEMY_SPRITE_CONFIG.dirCount;
+            }
+        }
+
+        const hasSpecial = !!this._getSpriteDef()?.states?.[ENEMY_SPRITE_STATES.special];
+        const moving = (this.vx * this.vx + this.vy * this.vy) > 6;
+        if (sp.specialTimer > 0 && hasSpecial) this._setSpriteState(ENEMY_SPRITE_STATES.special);
+        else if (sp.attackTimer > 0) this._setSpriteState(ENEMY_SPRITE_STATES.attack);
+        else if (moving) this._setSpriteState(ENEMY_SPRITE_STATES.run);
+        else this._setSpriteState(ENEMY_SPRITE_STATES.idle);
+
+        if (this._ensureSpriteAssets()) sp.anims?.[sp.state]?.update?.(dt);
+    }
+
+    _drawSprite(ctx, p, { flashAlpha = 0 } = {}) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return false;
+        if (!this._ensureSpriteAssets()) return false;
+
+        const sheet = sp.sheets?.[sp.state] || sp.sheets?.[ENEMY_SPRITE_STATES.idle];
+        const anim = sp.anims?.[sp.state] || sp.anims?.[ENEMY_SPRITE_STATES.idle];
+        if (!sheet?.image || !anim) return false;
+        if (sheet.image.complete === false) return false;
+
+        const frameIndex = (sp.dir * ENEMY_SPRITE_CONFIG.framesPerDir) + (anim.frame ?? 0);
+
+        const fw = sheet.frameWidth;
+        const fh = sheet.frameHeight;
+        const scale = sp.scale * (this.isElite ? (ENEMY_SPRITE_CONFIG.elite.scaleMult ?? 1.15) : 1);
+        const dw = fw * scale;
+        const dh = fh * scale;
+        const dx = p.x - dw / 2;
+        const dy = p.y - dh / 2;
+
+        if (this.isElite) {
+            const a = ENEMY_SPRITE_CONFIG.elite.glowAlpha ?? 0.28;
+            const r = (this.r || 12) * (ENEMY_SPRITE_CONFIG.elite.glowRadiusMult ?? 1.7);
+            ctx.save();
+            ctx.globalAlpha *= a;
+            const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+            g.addColorStop(0, c("enemy.body.elite", 0.55) || c("e1", 0.55) || "rgba(111,29,92,0.55)");
+            g.addColorStop(1, "transparent");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        const prevSmoothing = ctx.imageSmoothingEnabled;
+        if (ENEMY_SPRITE_CONFIG.pixelArt) ctx.imageSmoothingEnabled = false;
+        sheet.drawFrame(ctx, frameIndex, dx, dy, dw, dh);
+
+        // Hit flash: tint the sprite itself (not a circle under it).
+        if (flashAlpha > 0) {
+            const flashSheet = sp.flashSheets?.[sp.state] || sp.flashSheets?.[ENEMY_SPRITE_STATES.idle];
+            if (flashSheet) {
+                ctx.save();
+                ctx.globalAlpha *= Math.max(0, Math.min(1, flashAlpha));
+                ctx.globalCompositeOperation = "screen";
+                flashSheet.drawFrame(ctx, frameIndex, dx, dy, dw, dh);
+                ctx.restore();
+            }
+        }
+
+        ctx.imageSmoothingEnabled = prevSmoothing;
+        return true;
     }
 
     update(dt, player, fieldState) {
@@ -80,11 +295,12 @@ export class Enemy {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
 
-        if (dist2(this.x, this.y, player.x, player.y) < (this.r + player.r + 5) ** 2) {
-            this.handlePlayerCollision(player, fieldState, dt);
-        }
+        const hb = player?.getCollisionAABB?.(5) || { x: player.x - (player.r || 12), y: player.y - (player.r || 12), w: (player.r || 12) * 2, h: (player.r || 12) * 2 };
+        if (circleIntersectsAABB(this.x, this.y, this.r + 5, hb.x, hb.y, hb.w, hb.h)) this.handlePlayerCollision(player, fieldState, dt);
 
         this.applySeparation(player, fieldState.enemies, fieldState);
+
+        this._updateSprite(dt, player);
     }
     
     applySeparation(player, allEnemies, state) {
@@ -147,19 +363,11 @@ export class Enemy {
             });
         }
 
-        const playerDist2 = dist2(this.x, this.y, player.x, player.y);
-        const playerCombinedRadii = (this.r + player.r) ** 2;
-        if (playerDist2 < playerCombinedRadii && playerDist2 > 0) {
-            const d = Math.sqrt(playerDist2);
-            const overlap = (this.r + player.r) - d;
-            const pushX = (this.x - player.x) / d * overlap * separationForce;
-            const pushY = (this.y - player.y) / d * overlap * separationForce;
-            this.x += pushX;
-            this.y += pushY;
-        }
+        // No separation against player: player shouldn't be able to "push" enemies around by walking.
     }
 
     handlePlayerCollision(player, fieldState, dt) {
+        this.triggerAttack(0.18);
         CombatSystem.onPlayerHit(this, fieldState);
         const spec = DamageSpecs.enemyContact("enemy", this.isBuffed);
         DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
@@ -167,18 +375,23 @@ export class Enemy {
 
     draw(ctx, s) {
         let p = s(this.x, this.y);
-        ctx.fillStyle = this.flash > 0
-            ? (c("fx.flash") || c("fx.uiText") || "parchment")
-            : (this.isElite
-                ? (c("enemy.body.elite") || "e1")
-                : (c(this.colorRole) || c("enemy.body.standard") || "e2"));
-        if (this.blinded > 0) {
-            ctx.globalAlpha = 0.5;
+        const prevAlpha = ctx.globalAlpha;
+        if (this.blinded > 0) ctx.globalAlpha *= 0.5;
+
+        const flashA = this.flash > 0 ? Math.max(0, Math.min(1, this.flash / 0.2)) : 0;
+        if (!this._drawSprite(ctx, p, { flashAlpha: flashA })) {
+            // Fallback: circle
+            ctx.fillStyle = this.flash > 0
+                ? (c("fx.flash") || c("fx.uiText") || "parchment")
+                : (this.isElite
+                    ? (c("enemy.body.elite") || "e1")
+                    : (c(this.colorRole) || c("enemy.body.standard") || "e2"));
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, this.r, 0, 6.28);
+            ctx.fill();
         }
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, this.r, 0, 6.28);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+
+        ctx.globalAlpha = prevAlpha;
     }
 
     takeDamage(amount, state) {
@@ -202,6 +415,8 @@ export class Walker extends Enemy {
         const variants = BALANCE.enemies?.walkerVariants || {};
         const cfg = variants[v] || BALANCE.enemies.walker;
         this.variant = v;
+        this.spriteType = "walker";
+        this.spriteVariant = v;
         this.colorRole = `enemy.walker.variant.${v}`;
         
         this.hp = cfg.baseHp + level * cfg.hpPerLevel;
@@ -219,6 +434,7 @@ export class Walker extends Enemy {
     }
 
     handlePlayerCollision(player, fieldState, dt) {
+        this.triggerAttack(0.22);
         CombatSystem.onPlayerHit(this, fieldState);
         const spec = DamageSpecs.enemyContact("walker", this.isBuffed);
         DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState, context: { dt } });
@@ -248,32 +464,23 @@ export class Walker extends Enemy {
     }
 
     draw(ctx, s) {
+        super.draw(ctx, s);
         const p = s(this.x, this.y);
-        const base = this.flash > 0
-            ? (c("fx.flash") || c("fx.uiText") || "parchment")
-            : (this.isElite
-                ? (c("enemy.body.elite") || "e1")
-                : (c(this.colorRole) || c("enemy.body.standard") || "e2"));
-        if (this.blinded > 0) {
-            ctx.globalAlpha = 0.5;
-        }
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, this.r, 0, 6.28);
-        ctx.fillStyle = base;
-        ctx.fill();
 
         if (this.flash <= 0 && this.rooting > 0) {
             const denom = BALANCE.projectiles.rootWave.life || 1;
             const t = 1 - (this.rooting / denom);
             const overlay = c("enemy.walker.rootOverlay", Math.max(0, Math.min(1, t)));
             if (overlay) {
+                ctx.save();
+                ctx.globalAlpha *= 0.55;
                 ctx.fillStyle = overlay;
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, this.r, 0, 6.28);
+                ctx.arc(p.x, p.y, Math.max(8, this.r || 12) * 1.25, 0, 6.28);
                 ctx.fill();
+                ctx.restore();
             }
         }
-        ctx.globalAlpha = 1;
     }
 }
 
@@ -290,6 +497,7 @@ export class Charger extends Enemy {
 
         this.speed = cfg.speed;
         this.colorRole = "enemy.charger.body";
+        this.spriteType = "charger";
         this.state = 0;
         this.timer = 0;
     }
@@ -300,6 +508,7 @@ export class Charger extends Enemy {
             const pack = fieldState.chargerPacks.find(p => p && p.id === this.packId);
             if (pack) {
                 if (pack.phase === "windup") {
+                    this.triggerSpecial(pack.phaseT || 0.65);
                     // Telegraph where the charge will go; keep it growing during windup.
                     this.applyFriction = true;
                     this.vx *= 0.5;
@@ -316,6 +525,7 @@ export class Charger extends Enemy {
                 }
 
                 if (pack.phase === "charge") {
+                    this.triggerAttack(0.35);
                     this.applyFriction = false;
                     if (this.packChargeSeq !== pack.chargeSeq) {
                         this.packChargeSeq = pack.chargeSeq;
@@ -362,6 +572,7 @@ export class Charger extends Enemy {
                 this.telegraphSpawned = false;
             }
         } else if (this.state === 1) { // Prep
+            this.triggerSpecial(this.timer);
             this.applyFriction = true;
             this.vx *= 0.5;
             this.vy *= 0.5;
@@ -399,6 +610,7 @@ export class Charger extends Enemy {
                 this.vy = Math.sin(ang) * spd;
             }
         } else { // Dash
+            this.triggerAttack(this.timer);
             this.applyFriction = false;
             this.timer -= dt;
             if (this.timer <= 0) {
@@ -413,6 +625,7 @@ export class Charger extends Enemy {
 
     handlePlayerCollision(player, fieldState, dt) {
         if (this.iframes > 0) return;
+        this.triggerAttack(0.25);
         CombatSystem.onPlayerHit(this, fieldState);
         const spec = DamageSpecs.enemyContact("charger", this.isBuffed);
         DamageSystem.dealPlayerDamage(this, player, spec, { state: fieldState });
@@ -420,17 +633,7 @@ export class Charger extends Enemy {
     }
 
     draw(ctx, s) {
-        let p = s(this.x, this.y);
-        ctx.fillStyle = this.flash > 0 || this.state === 1
-            ? (c("fx.flash") || c("fx.uiText") || "parchment")
-            : (this.isElite
-                ? (c("enemy.body.elite") || "e1")
-                : (c(this.colorRole) || c("enemy.body.standard") || "e2"));
-        ctx.beginPath();
-        ctx.moveTo(p.x + 10, p.y);
-        ctx.lineTo(p.x - 8, p.y + 8);
-        ctx.lineTo(p.x - 8, p.y - 8);
-        ctx.fill();
+        super.draw(ctx, s);
     }
 }
 
@@ -447,6 +650,7 @@ export class Spitter extends Enemy {
 
         this.speed = cfg.speed;
         this.colorRole = "enemy.spitter.body";
+        this.spriteType = "spitter";
         this.r = 10;
         this.shootCd = 2;
     }
@@ -468,6 +672,8 @@ export class Spitter extends Enemy {
             if (this.orbitShootCd <= 0) {
                 this.orbitShootCd = o.shootInterval ?? 2.4;
                 const a = Math.atan2(player.y - this.y, player.x - this.x);
+                if (this.isElite) this.triggerSpecial(0.35);
+                else this.triggerAttack(0.25);
                 fieldState.shots.push(new EnemyProjectile(this.x, this.y, a, this.isBuffed, this.level, "spitter"));
             }
             return;
@@ -491,11 +697,13 @@ export class Spitter extends Enemy {
             this.vy = 0;
             let a = Math.atan2(dy, dx);
             if (this.isElite) {
+                this.triggerSpecial(0.4);
                 for (let i = 0; i < 8; i++) {
                     let angle = a + (i - 3.5) * 0.1;
                     fieldState.shots.push(new EnemyProjectile(this.x, this.y, angle, this.isBuffed, this.level, "spitter"));
                 }
             } else {
+                this.triggerAttack(0.28);
                 fieldState.shots.push(new EnemyProjectile(this.x, this.y, a, this.isBuffed, this.level, "spitter"));
             }
         }
@@ -522,6 +730,7 @@ export class Anchor extends Enemy {
         this.speed = cfg.speed;
         this.r = 15;
         this.colorRole = "enemy.anchor.body";
+        this.spriteType = "anchor";
         this.auraRad = cfg.auraRadius;
         this.eliteTimer = 0;
     }
@@ -544,6 +753,7 @@ export class Anchor extends Enemy {
             this.eliteTimer -= dt;
             if (this.eliteTimer <= 0) {
                 this.eliteTimer = 5;
+                this.triggerSpecial(0.6);
                 Telegraph.create(this.x, this.y, this.auraRad * 2, this.auraRad * 2, 1, 'circle');
                 fieldState.enemies.forEach(e => {
                     if (e.isBuffed) e.hp = Math.min(e.hpMax, e.hp + 10);

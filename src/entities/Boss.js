@@ -1,5 +1,5 @@
 // src/entities/Boss.js
-import { dist2 } from '../core/Utils.js';
+import { dist2, circleIntersectsAABB } from '../core/Utils.js';
 import UI from '../systems/UI.js';
 import { BALANCE } from '../data/Balance.js';
 import DamageSystem from '../systems/DamageSystem.js';
@@ -108,8 +108,9 @@ class Boss {
                     this.y += this.vy * dt;
                     this.life -= dt;
 
-                    // Check collision with player
-                    if (dist2(this.x, this.y, p.x, p.y) < (p.r + 5)**2) {
+                    // Check collision with player (AABB hitbox derived from sprite).
+                    const hb = p?.getCollisionAABB?.(5) || { x: p.x - (p.r || 12), y: p.y - (p.r || 12), w: (p.r || 12) * 2, h: (p.r || 12) * 2 };
+                    if (circleIntersectsAABB(this.x, this.y, 5, hb.x, hb.y, hb.w, hb.h)) {
                         DamageSystem.dealPlayerDamage(source, p, this.spec, { state, ui: UI });
                         return false; // Projectile is destroyed on hit
                     }

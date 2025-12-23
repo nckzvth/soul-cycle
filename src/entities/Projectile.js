@@ -1,4 +1,4 @@
-import { dist2 } from "../core/Utils.js";
+import { dist2, circleIntersectsAABB } from "../core/Utils.js";
 import { BALANCE } from "../data/Balance.js";
 import Game from "../core/Game.js";
 import DamageSystem from "../systems/DamageSystem.js";
@@ -428,7 +428,8 @@ export class EnemyProjectile {
         this.life -= dt;
 
         const pl = state.game.p;
-        if (dist2(this.x, this.y, pl.x, pl.y) < (pl.r + 5) ** 2) {
+        const hb = pl?.getCollisionAABB?.(5) || { x: pl.x - (pl.r || 12), y: pl.y - (pl.r || 12), w: (pl.r || 12) * 2, h: (pl.r || 12) * 2 };
+        if (circleIntersectsAABB(this.x, this.y, 5, hb.x, hb.y, hb.w, hb.h)) {
             state.combatSystem.onPlayerHit(this, state);
             DamageSystem.dealPlayerDamage(this, pl, this.spec, { state });
             return false;
@@ -536,7 +537,8 @@ export class RootWave {
     update(dt) {
         this.r += dt * BALANCE.projectiles.rootWave.speed; this.life -= dt;
         const p = this.state.game.p;
-        if (dist2(this.x, this.y, p.x, p.y) < (this.r + p.r) ** 2 && p.dashTimer <= 0) {
+        const hb = p?.getCollisionAABB?.(0) || { x: p.x - (p.r || 12), y: p.y - (p.r || 12), w: (p.r || 12) * 2, h: (p.r || 12) * 2 };
+        if (circleIntersectsAABB(this.x, this.y, this.r, hb.x, hb.y, hb.w, hb.h) && p.dashTimer <= 0) {
             this.state.combatSystem.rootPlayer(p, BALANCE.projectiles.rootWave.duration);
         }
         return this.life > 0;
@@ -803,9 +805,11 @@ export class Hazard {
     }
     update(dt) {
         this.life -= dt;
-        if (dist2(this.x, this.y, this.state.game.p.x, this.state.game.p.y) < (this.state.game.p.r + 5)**2) {
+        const p = this.state.game.p;
+        const hb = p?.getCollisionAABB?.(5) || { x: p.x - (p.r || 12), y: p.y - (p.r || 12), w: (p.r || 12) * 2, h: (p.r || 12) * 2 };
+        if (circleIntersectsAABB(this.x, this.y, 12, hb.x, hb.y, hb.w, hb.h)) {
             this.state.combatSystem.onPlayerHit(this, this.state);
-            DamageSystem.dealPlayerDamage(this, this.state.game.p, this.spec, { state: this.state, context: { dt } });
+            DamageSystem.dealPlayerDamage(this, p, this.spec, { state: this.state, context: { dt } });
         }
         return this.life > 0;
     }

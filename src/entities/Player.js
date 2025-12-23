@@ -13,6 +13,10 @@ import DamageSpecs from "../data/DamageSpecs.js";
 import StatusSystem from "../systems/StatusSystem.js";
 import ProgressionSystem from "../systems/ProgressionSystem.js";
 import { color as c } from "../data/ColorTuning.js";
+import Assets from "../core/Assets.js";
+import SpriteSheet from "../render/SpriteSheet.js";
+import Animation from "../render/Animation.js";
+import { PLAYER_SPRITE_CONFIG } from "../data/PlayerSprites.js";
 
 export default class PlayerObj {
     constructor() {
@@ -21,6 +25,31 @@ export default class PlayerObj {
         this.x = 0; 
         this.y = 0; 
         this.r = 12; 
+        
+        // Visuals (spritesheet-driven; collision stays circle-based via `r`)
+        const spCfg = PLAYER_SPRITE_CONFIG;
+        this._sprite = {
+            enabled: true,
+            scale: spCfg.scale,
+            offset: { x: spCfg.offset.x, y: spCfg.offset.y },
+            shadow: spCfg.shadow,
+            pixelArt: spCfg.pixelArt,
+            collisionLocalBounds: null,
+
+            framesPerDir: spCfg.framesPerDir,
+            dirCount: spCfg.dirCount,
+            dir: 0,
+
+            aim: { x: 1, y: 0 },
+            move: { x: 0, y: 0 },
+
+            state: "idle", // idle | run | runBack | strafeL | strafeR | attack | die
+            attackTimer: 0,
+            shot: { since: 999, hold: 0, frameOverride: null },
+
+            sheets: null,
+            anims: null,
+        };
         
         // Stats
         this.hp = 100; this.hpMax = 100;
@@ -212,6 +241,259 @@ export default class PlayerObj {
             this.updateWeaponStates(dt, scene);
             this.processCombat(dt, scene);
         }
+
+        // 6. Visuals (aim-facing directional animation)
+        this._updateSprite(dt, scene, allowCombat);
+    }
+
+    _ensureSpriteAssets() {
+        const sp = this._sprite;
+        if (!sp?.enabled) return false;
+        if (sp.sheets && sp.anims) {
+            if (!sp.collisionLocalBounds) {
+                sp.collisionLocalBounds =
+                    this._computeSpriteCollisionLocalBounds(sp.sheets.idle) ||
+                    PLAYER_SPRITE_CONFIG.collision?.fallbackLocalBounds ||
+                    null;
+            }
+            return true;
+        }
+
+        const cfg = PLAYER_SPRITE_CONFIG;
+        const states = cfg?.states || {};
+
+        // If preload hasn't finished (or assets missing), keep fallback rendering.
+        const images = {};
+        for (const [state, def] of Object.entries(states)) {
+            const img = Assets.getImage(def.imageKey);
+            if (!img) return false;
+            images[state] = img;
+        }
+
+        sp.sheets = {};
+        sp.anims = {};
+        for (const [state, def] of Object.entries(states)) {
+            sp.sheets[state] = new SpriteSheet(images[state], { frameWidth: cfg.frameWidth, frameHeight: cfg.frameHeight });
+            sp.anims[state] = new Animation({ fps: def.fps, frameCount: cfg.framesPerDir, loop: def.loop });
+        }
+
+        // Compute a stable collision "footprint" box from alpha once images are ready.
+        sp.collisionLocalBounds = this._computeSpriteCollisionLocalBounds(sp.sheets.idle) || cfg.collision?.fallbackLocalBounds || null;
+        return true;
+    }
+
+    _computeSpriteCollisionLocalBounds(sheet) {
+        const cfg = PLAYER_SPRITE_CONFIG;
+        const cCfg = cfg.collision || {};
+        if (cCfg.mode !== "alphaFootprint") return null;
+        if (!sheet?.image?.complete) return null;
+
+        const img = sheet.image;
+        const fw = sheet.frameWidth;
+        const fh = sheet.frameHeight;
+        const yStart = Math.max(0, Math.min(fh - 1, Math.floor(fh * (cCfg.footprintYStartRatio ?? 0.55))));
+        const alphaT = Math.max(0, Math.min(255, Math.floor(cCfg.alphaThreshold ?? 10)));
+
+        // Offscreen scan (one-time). Keep it local to avoid global allocations.
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width || 1;
+        canvas.height = img.height || 1;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return null;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+
+        let data;
+        try {
+            data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        } catch {
+            return null;
+        }
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const w = canvas.width;
+        const h = canvas.height;
+        for (let y = 0; y < h; y++) {
+            const ly = y % fh;
+            if (ly < yStart) continue;
+            const row = y * w * 4;
+            for (let x = 0; x < w; x++) {
+                const a = data[row + x * 4 + 3];
+                if (a <= alphaT) continue;
+                const lx = x % fw;
+                if (lx < minX) minX = lx;
+                if (lx > maxX) maxX = lx;
+                if (ly < minY) minY = ly;
+                if (ly > maxY) maxY = ly;
+            }
+        }
+
+        if (!Number.isFinite(minX) || !Number.isFinite(minY) || maxX < minX || maxY < minY) return null;
+        return { minX, minY, maxX, maxY };
+    }
+
+    getCollisionAABB(padding = 0) {
+        const sp = this._sprite;
+        const cfg = PLAYER_SPRITE_CONFIG;
+        const fw = cfg.frameWidth;
+        const fh = cfg.frameHeight;
+        const scale = sp?.scale ?? cfg.scale ?? 1;
+        const offX = sp?.offset?.x || 0;
+        const offY = sp?.offset?.y || 0;
+
+        const spriteX = this.x - (fw * scale) / 2 + offX;
+        const spriteY = this.y - (fh * scale) / 2 + offY;
+
+        const b = sp?.collisionLocalBounds || cfg.collision?.fallbackLocalBounds;
+        const pad = Math.max(0, (cfg.collision?.paddingPx ?? 0) + (Number(padding) || 0));
+
+        if (b && Number.isFinite(b.minX)) {
+            const x = spriteX + b.minX * scale - pad;
+            const y = spriteY + b.minY * scale - pad;
+            const w = (b.maxX - b.minX + 1) * scale + pad * 2;
+            const h = (b.maxY - b.minY + 1) * scale + pad * 2;
+            return { x, y, w, h };
+        }
+
+        // Fallback: legacy circle as an AABB.
+        const r = this.r || 12;
+        return { x: this.x - r, y: this.y - r, w: r * 2, h: r * 2 };
+    }
+
+    _setSpriteState(next) {
+        const sp = this._sprite;
+        if (!sp || sp.state === next) return;
+        sp.state = next;
+        if (!this._ensureSpriteAssets()) return;
+        const anim = sp.anims?.[next];
+        anim?.reset?.();
+    }
+
+    _updateSprite(dt, scene, allowCombat) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return;
+
+        sp.attackTimer = Math.max(0, (sp.attackTimer || 0) - Math.max(0, dt || 0));
+        if (sp.shot) {
+            sp.shot.since = Math.max(0, (sp.shot.since ?? 999) + Math.max(0, dt || 0));
+            sp.shot.frameOverride = null;
+        }
+
+        // Aim is always mouse-relative (world-space).
+        let ax = sp.aim.x, ay = sp.aim.y;
+        try {
+            const wp = Game.screenToWorld(mouse.x, mouse.y);
+            const dx = (wp.x - this.x);
+            const dy = (wp.y - this.y);
+            const d2 = dx * dx + dy * dy;
+            if (d2 > 1e-6) {
+                const inv = 1 / Math.sqrt(d2);
+                ax = dx * inv;
+                ay = dy * inv;
+                sp.aim.x = ax;
+                sp.aim.y = ay;
+            }
+        } catch {
+            // Non-fatal: keep last aim vector.
+        }
+
+        // 8-way direction index. Note: canvas y+ is "down", so atan2 is clockwise.
+        const angle = Math.atan2(ay, ax);
+        const oct = Math.PI / 4;
+        sp.dir = ((Math.round(angle / oct) % sp.dirCount) + sp.dirCount) % sp.dirCount; // East=0
+
+        if (this.hp <= 0) {
+            this._setSpriteState("die");
+            this._ensureSpriteAssets();
+            sp.anims?.die?.update?.(dt);
+            return;
+        }
+
+        const weaponCls = this.gear?.weapon?.cls;
+        const ranged = !!allowCombat && (weaponCls === "pistol" || weaponCls === "staff");
+        const meleeAttack = (sp.attackTimer || 0) > 0;
+        const rangedAttack = ranged && (sp.shot?.since ?? 999) < (sp.shot?.hold ?? 0) && this.dashTimer <= 0;
+        const attacking = rangedAttack || meleeAttack;
+
+        // Movement vector: dash uses dashVec; otherwise input vector.
+        const mvx = this.dashTimer > 0 ? (this.dashVec?.x || 0) : (sp.move.x || 0);
+        const mvy = this.dashTimer > 0 ? (this.dashVec?.y || 0) : (sp.move.y || 0);
+        const moving = (mvx * mvx + mvy * mvy) > 1e-6;
+
+        if (attacking) {
+            const state = "attack";
+            this._setSpriteState("attack");
+
+            if (rangedAttack && sp.framesPerDir > 1 && sp.shot) {
+                const hold = Math.max(0.08, sp.shot.hold || 0.12);
+                const t = Math.max(0, Math.min(0.999, (sp.shot.since || 0) / hold));
+                sp.shot.frameOverride = Math.min(sp.framesPerDir - 1, Math.floor(t * sp.framesPerDir));
+            }
+
+            if (this._ensureSpriteAssets()) sp.anims?.attack?.update?.(dt);
+            return;
+        }
+
+        if (!moving) {
+            this._setSpriteState("idle");
+            if (this._ensureSpriteAssets()) sp.anims?.idle?.update?.(dt);
+            return;
+        }
+
+        // Locomotion relative to aim direction.
+        const dot = mvx * ax + mvy * ay;
+        const cross = mvx * ay - mvy * ax;
+        const t = 0.35;
+
+        if (dot <= -t) this._setSpriteState("runBack");
+        else if (dot >= t) this._setSpriteState("run");
+        else if (cross > 0) this._setSpriteState("strafeL");
+        else this._setSpriteState("strafeR");
+
+        if (!this._ensureSpriteAssets()) return;
+        sp.anims?.[sp.state]?.update?.(dt);
+    }
+
+    _drawSprite(ctx, pc) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return false;
+        if (!this._ensureSpriteAssets()) return false;
+
+        const state = this.hp <= 0 ? "die" : (sp.state || "idle");
+        const sheet = sp.sheets[state] || sp.sheets.idle;
+
+        if (!sheet?.image?.complete) return false;
+        const anim = sp.anims[state] || sp.anims.idle;
+
+        const localFrame =
+            state === "attack" && typeof sp.shot?.frameOverride === "number"
+                ? sp.shot.frameOverride
+                : (anim?.frame ?? 0);
+        const frameIndex = (sp.dir * sp.framesPerDir) + localFrame;
+
+        const fw = sheet.frameWidth;
+        const fh = sheet.frameHeight;
+        const dw = fw * sp.scale;
+        const dh = fh * sp.scale;
+
+        const dx = pc.x - dw / 2 + (sp.offset?.x || 0);
+        const dy = pc.y - dh / 2 + (sp.offset?.y || 0);
+
+        if (sp.shadow) {
+            ctx.save();
+            ctx.globalAlpha *= 0.25;
+            ctx.fillStyle = c("fx.ink") || "ink";
+            ctx.beginPath();
+            ctx.arc(pc.x, pc.y + this.r * 0.55, this.r * 0.95, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        const prevSmoothing = ctx.imageSmoothingEnabled;
+        if (sp.pixelArt) ctx.imageSmoothingEnabled = false;
+        sheet.drawFrame(ctx, frameIndex, dx, dy, dw, dh);
+        ctx.imageSmoothingEnabled = prevSmoothing;
+        return true;
     }
 
     updateWeaponStates(dt, scene) {
@@ -354,6 +636,10 @@ export default class PlayerObj {
             let l = Math.sqrt(mx * mx + my * my);
             mx /= l; my /= l;
         }
+        if (this._sprite) {
+            this._sprite.move.x = mx;
+            this._sprite.move.y = my;
+        }
 
         // Dash Trigger
         if (keys["Space"]) {
@@ -495,16 +781,34 @@ export default class PlayerObj {
             if (w.cls === "pistol") {
                 scene.combatSystem.firePistol(this, scene);
                 this.atkCd = rate;
+                this._triggerRangedShotAnim(rate);
                 this.onAttack(scene, { weaponCls: "pistol" });
             } else if (w.cls === "staff") {
                 scene.combatSystem.fireZap(this, scene);
                 this.atkCd = rate * BALANCE.player.staffRateMult;
+                this._triggerRangedShotAnim(rate * BALANCE.player.staffRateMult);
                 this.onAttack(scene, { weaponCls: "staff" });
             }
         }
     }
 
+    _triggerRangedShotAnim(shotIntervalSec) {
+        const sp = this._sprite;
+        if (!sp?.enabled) return;
+        const interval = Math.max(0.03, Number(shotIntervalSec) || 0.12);
+        // Clamp so very fast pistols don't look like a seizure strobe.
+        const hold = Math.max(0.08, Math.min(0.22, interval * 0.9));
+        sp.shot.since = 0;
+        sp.shot.hold = hold;
+        sp.shot.frameOverride = 0;
+    }
+
     onAttack(state, meta = {}) {
+        if (meta?.weaponCls === "hammer" && this._sprite) {
+            // Hold a short "attack" state for melee swings (ranged uses mouse-hold).
+            this._sprite.attackTimer = Math.max(this._sprite.attackTimer || 0, 0.35);
+        }
+
         const p = this;
         const t = p.totalAttr || p.attr;
         const bp = BALANCE.player;
@@ -918,15 +1222,18 @@ export default class PlayerObj {
             ctx.restore();
         }
 
-        // Player marker: P2 fill with mandatory ink rim.
-        ctx.fillStyle = c("fx.ink") || "ink";
-        ctx.beginPath();
-        ctx.arc(pc.x, pc.y, 14, 0, 6.28);
-        ctx.fill();
-        ctx.fillStyle = c("player.core") || "p2";
-        ctx.beginPath();
-        ctx.arc(pc.x, pc.y, 12, 0, 6.28);
-        ctx.fill();
+        // Player sprite (fallback to legacy circle marker if spritesheets not ready).
+        if (!this._drawSprite(ctx, pc)) {
+            // Legacy marker: P2 fill with mandatory ink rim.
+            ctx.fillStyle = c("fx.ink") || "ink";
+            ctx.beginPath();
+            ctx.arc(pc.x, pc.y, 14, 0, 6.28);
+            ctx.fill();
+            ctx.fillStyle = c("player.core") || "p2";
+            ctx.beginPath();
+            ctx.arc(pc.x, pc.y, 12, 0, 6.28);
+            ctx.fill();
+        }
 
         // Salvo Glyphs
         if (this.salvoCharges > 0) {

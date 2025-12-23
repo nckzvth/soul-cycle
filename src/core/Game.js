@@ -16,6 +16,7 @@ const Game = {
     stateManager: null,
     time: 0,
     paused: false,
+    cameraZoom: 1.35,
     lastTime: 0,
     canvas: null,
     ctx: null,
@@ -27,6 +28,15 @@ const Game = {
         UI.init(this);
         Assets.registerAll(IMAGE_ASSETS);
 
+        // Settings
+        try {
+            const saved = window.localStorage?.getItem?.("cameraZoom");
+            const z = saved != null ? Number(saved) : NaN;
+            if (Number.isFinite(z)) this.cameraZoom = Math.max(0.75, Math.min(2.5, z));
+        } catch {
+            // Ignore storage errors
+        }
+
         window.addEventListener('keydown', (e) => {
             if (e.code === 'KeyP') {
                 this.debug = !this.debug;
@@ -36,6 +46,27 @@ const Game = {
                 }
             }
         });
+    },
+
+    setCameraZoom(z) {
+        const next = Math.max(0.75, Math.min(2.5, Number(z) || 1));
+        this.cameraZoom = next;
+        try {
+            window.localStorage?.setItem?.("cameraZoom", String(next));
+        } catch {
+            // Ignore storage errors
+        }
+    },
+
+    applyWorldTransform(ctx) {
+        const p = this.p;
+        const canvas = this.canvas;
+        if (!ctx || !p || !canvas) return;
+        const z = Math.max(0.01, Number(this.cameraZoom) || 1);
+        const w = canvas.width || 0;
+        const h = canvas.height || 0;
+        // World->screen: center camera on player
+        ctx.setTransform(z, 0, 0, z, w / 2 - p.x * z, h / 2 - p.y * z);
     },
     beginRunTracking() {
         const p = this.p;
@@ -100,7 +131,56 @@ const Game = {
 
         // Preload core art used immediately in Town (non-fatal if it fails).
         try {
-            await Assets.preload(["campfireSheet", "hammerIcon", "pistolIcon", "staffIcon", "fieldForestGroundDraft"]);
+            await Assets.preload([
+                "campfireSheet",
+                "hammerIcon",
+                "pistolIcon",
+                "staffIcon",
+                "fieldForestGroundDraft",
+
+                // Player spritesheets (directional 8x15 @ 64x64)
+                "playerIdleSheet",
+                "playerRunSheet",
+                "playerAttackSheet",
+                "playerRunBackwardsSheet",
+                "playerStrafeLeftSheet",
+                "playerStrafeRightSheet",
+                "playerDieSheet",
+
+                // Enemy spritesheets (directional 8x8 @ 64x64)
+                "enemyWalkerIdleSheet",
+                "enemyWalkerRunSheet",
+                "enemyWalkerAttackSheet",
+                "enemyWalkerDieSheet",
+                "enemyThrallIdleSheet",
+                "enemyThrallRunSheet",
+                "enemyThrallAttackSheet",
+                "enemyThrallDieSheet",
+                "enemyCursedIdleSheet",
+                "enemyCursedRunSheet",
+                "enemyCursedAttackSheet",
+                "enemyCursedDieSheet",
+                "enemyBruteIdleSheet",
+                "enemyBruteRunSheet",
+                "enemyBruteAttackSheet",
+                "enemyBruteSpecialAtkSheet",
+                "enemyBruteDieSheet",
+                "enemyChargerIdleSheet",
+                "enemyChargerRunSheet",
+                "enemyChargerAttackSheet",
+                "enemyChargerSpecialAtkSheet",
+                "enemyChargerDieSheet",
+                "enemySpitterIdleSheet",
+                "enemySpitterRunSheet",
+                "enemySpitterAttackSheet",
+                "enemySpitterSpecialAtkSheet",
+                "enemySpitterDieSheet",
+                "enemyAnchorIdleSheet",
+                "enemyAnchorRunSheet",
+                "enemyAnchorAttackSheet",
+                "enemyAnchorSpecialAtkSheet",
+                "enemyAnchorDieSheet",
+            ]);
         } catch (e) {
             console.warn("Asset preload failed:", e);
         }
@@ -163,6 +243,8 @@ const Game = {
     render() {
         if (!this.canvas) return;
         this.stateManager.render(this.ctx);
+        // Ensure UI/cursor overlays are in screen-space regardless of state render transforms.
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         // HUD should never be able to crash the game loop.
         try {
             UI.render(); // always update HUD
@@ -188,7 +270,14 @@ const Game = {
     },
 
     screenToWorld(sx, sy) {
-        return { x: sx - this.canvas.width / 2 + this.p.x, y: sy - this.canvas.height / 2 + this.p.y };
+        const p = this.p;
+        const canvas = this.canvas;
+        if (!p || !canvas) return { x: sx, y: sy };
+        const z = Math.max(0.01, Number(this.cameraZoom) || 1);
+        return {
+            x: (sx - canvas.width / 2) / z + p.x,
+            y: (sy - canvas.height / 2) / z + p.y
+        };
     },
 
     loot(forceType) {
