@@ -15,6 +15,9 @@ import { ENEMY_SPRITE_CONFIG, ENEMY_SPRITE_STATES, getEnemySpriteDef } from "../
 
 const _spriteCache = new Map();
 
+const DEATH_FADE_SEC = 0.28;
+const DEATH_DISSOLVE_INTERVAL = 0.05;
+
 function _makeFlashCanvas(img, alphaThreshold = 18) {
     if (!img) return null;
     const w = img.width || 0;
@@ -84,6 +87,12 @@ export class Enemy {
         this.blinded = 0;
         this.damageAccumulator = 0;
         StatusSystem.init(this);
+
+        // Death presentation (corpse): plays die animation then fades/dissolves out.
+        this.deathTimer = 0;
+        this.deathAnimSec = 0;
+        this.deathFadeSec = DEATH_FADE_SEC;
+        this.deathVfxTimer = 0;
 
         // Sprite visuals
         this.spriteType = "enemy";
@@ -168,6 +177,49 @@ export class Enemy {
         sp.state = next;
         if (!this._ensureSpriteAssets()) return;
         sp.anims?.[next]?.reset?.();
+    }
+
+    _getDieAnimDurationSec() {
+        const def = this._getSpriteDef();
+        const st = def?.states?.[ENEMY_SPRITE_STATES.die];
+        const fps = st?.fps ?? 12;
+        const frames = ENEMY_SPRITE_CONFIG.framesPerDir ?? 8;
+        return Math.max(0.05, frames / Math.max(0.01, fps));
+    }
+
+    _beginDeath(state) {
+        if (this.deathTimer > 0) return;
+        this.dead = true;
+        this.vx = 0;
+        this.vy = 0;
+        this.applyFriction = false;
+        this.iframes = 9999;
+
+        this.deathAnimSec = this._getDieAnimDurationSec();
+        this.deathFadeSec = DEATH_FADE_SEC;
+        this.deathTimer = this.deathAnimSec + this.deathFadeSec;
+        this.deathVfxTimer = 0;
+
+        this._setSpriteState(ENEMY_SPRITE_STATES.die);
+        this._sprite?.anims?.[ENEMY_SPRITE_STATES.die]?.reset?.();
+    }
+
+    _updateDeath(dt, state) {
+        this.deathTimer = Math.max(0, (this.deathTimer || 0) - Math.max(0, dt || 0));
+        this._setSpriteState(ENEMY_SPRITE_STATES.die);
+        this._sprite?.anims?.[ENEMY_SPRITE_STATES.die]?.update?.(dt);
+
+        // Dissolve near the end (subtle ink motes).
+        if ((this.deathTimer || 0) > 0 && (this.deathTimer || 0) <= (this.deathFadeSec || DEATH_FADE_SEC)) {
+            this.deathVfxTimer = (this.deathVfxTimer || 0) - dt;
+            while ((this.deathVfxTimer || 0) <= 0) {
+                this.deathVfxTimer += DEATH_DISSOLVE_INTERVAL;
+                const rr = (this.r || 12) * 0.75;
+                const px = this.x + (Math.random() - 0.5) * rr * 2;
+                const py = this.y + (Math.random() - 0.5) * rr * 2;
+                ParticleSystem.emit(px, py, c("fx.ink", 0.5) || "ink", 1, 55, 2.0, 0.45);
+            }
+        }
     }
 
     triggerAttack(duration = 0.25) {
@@ -266,7 +318,10 @@ export class Enemy {
     }
 
     update(dt, player, fieldState) {
-        if (this.dead) return;
+        if (this.dead) {
+            this._updateDeath(dt, fieldState);
+            return;
+        }
 
         this.flash -= dt;
         this.iframes -= dt;
@@ -378,7 +433,15 @@ export class Enemy {
         const prevAlpha = ctx.globalAlpha;
         if (this.blinded > 0) ctx.globalAlpha *= 0.5;
 
-        const flashA = this.flash > 0 ? Math.max(0, Math.min(1, this.flash / 0.2)) : 0;
+        // Corpse fade/dissolve is handled purely in rendering.
+        if (this.dead && (this.deathTimer || 0) > 0) {
+            const fadeSec = Math.max(0.001, this.deathFadeSec || DEATH_FADE_SEC);
+            if ((this.deathTimer || 0) <= fadeSec) {
+                ctx.globalAlpha *= Math.max(0, Math.min(1, (this.deathTimer || 0) / fadeSec));
+            }
+        }
+
+        const flashA = (!this.dead && this.flash > 0) ? Math.max(0, Math.min(1, this.flash / 0.2)) : 0;
         if (!this._drawSprite(ctx, p, { flashAlpha: flashA })) {
             // Fallback: circle
             ctx.fillStyle = this.flash > 0
@@ -398,9 +461,7 @@ export class Enemy {
         if (this.iframes > 0) return;
         this.hp -= amount;
         this.flash = 0.2;
-        if (this.hp <= 0) {
-            this.dead = true;
-        }
+        if (this.hp <= 0 && !this.dead) this._beginDeath(state);
     }
 
     performAI(dt, player, fieldState) { }

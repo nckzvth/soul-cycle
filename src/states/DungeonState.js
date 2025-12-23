@@ -23,6 +23,7 @@ class DungeonState extends State {
         this.isRun = true;
         this.boss = null;
         this.enemies = [];
+        this.corpses = [];
         this.shots = []; 
         this.drops = [];
         this.souls = [];
@@ -66,6 +67,7 @@ class DungeonState extends State {
         this.room = "entry";
         this.boss = null;
         this.enemies = [];
+        this.corpses = [];
         this.shots = [];
         this.drops = [];
         this.souls = [];
@@ -156,6 +158,10 @@ class DungeonState extends State {
         }
 
         // 3. BOSS/ENEMIES
+        // Corpse pass: update death animations without affecting gameplay pacing/drops.
+        this.corpses.forEach(e => e?.update?.(dt, p, this));
+        this.corpses = this.corpses.filter(e => (e?.deathTimer || 0) > 0);
+
         // Reset per-frame buff state; Anchors re-apply during enemy updates and it must persist into shot updates.
         this.enemies.forEach(e => {
             if (!e) return;
@@ -179,6 +185,7 @@ class DungeonState extends State {
         this.enemies = this.enemies.filter(e => {
             if (!e || e.dead) {
                 if (e) this.onEnemyDeath(e);
+                if (e) this.corpses.push(e);
                 return false;
             }
             return true;
@@ -396,6 +403,7 @@ class DungeonState extends State {
         this.shots.filter(shot => shot?.layer === "ground").forEach(shot => shot.draw(ctx, s));
         ParticleSystem.render(ctx, s, "ground");
 
+        this.corpses.forEach(e => { e.draw?.(ctx, s); });
         this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
         this.shots.filter(shot => shot?.layer !== "ground").forEach(shot => shot.draw(ctx, s));
         this.drops.forEach(d => d.draw(ctx, s));

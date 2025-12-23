@@ -83,6 +83,7 @@ class FieldState extends State {
 
     reset() {
         this.enemies = [];
+        this.corpses = [];
         this.shots = [];
         this.drops = [];
         this.souls = [];
@@ -342,6 +343,9 @@ class FieldState extends State {
         // --- Entity Updates ---
         Telegraph.update(dt);
         ParticleSystem.update(dt);
+        // Corpse pass: update death animations without affecting gameplay pacing/drops.
+        this.corpses.forEach(e => e?.update?.(dt, this.p, this));
+        this.corpses = this.corpses.filter(e => (e?.deathTimer || 0) > 0);
         // Reset per-frame buff state; Anchors re-apply during enemy updates and it must persist into shot updates.
         this.enemies.forEach(e => {
             e.isBuffed = false;
@@ -354,6 +358,7 @@ class FieldState extends State {
         this.enemies = this.enemies.filter(e => {
             if(e.dead) {
                 this.onEnemyDeath(e);
+                this.corpses.push(e);
                 return false;
             }
             return true;
@@ -828,6 +833,7 @@ class FieldState extends State {
         this.drops.forEach(d => d.draw(ctx, s));
         this.pickups.forEach(p => p.draw(ctx, s));
         this.souls.forEach(o => o.draw(ctx, s));
+        this.corpses.forEach(e => { ctx.save(); e.draw(ctx, s); ctx.restore(); });
         this.enemies.forEach(e => { ctx.save(); e.draw(ctx, s); ctx.restore(); });
 
         // Objectives (shrines/chests)
