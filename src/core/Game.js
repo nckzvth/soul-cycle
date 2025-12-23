@@ -7,6 +7,7 @@ import { keys, mouse } from "./Input.js";
 import { SLOTS } from "../data/Constants.js";
 import { ITEMS } from "../data/Items.js";
 import ParticleSystem from "../systems/Particles.js";
+import DecalSystem from "../systems/DecalSystem.js";
 import Assets from "./Assets.js";
 import { IMAGE_ASSETS } from "../data/Art.js";
 import { color as c } from "../data/ColorTuning.js";
@@ -21,6 +22,7 @@ const Game = {
     canvas: null,
     ctx: null,
     debug: false,
+    decals: null,
 
     init() {
         this.canvas = document.getElementById("game");
@@ -193,6 +195,7 @@ const Game = {
         this.p.gear.weapon = { id: "starter:none", type: "weapon", name: "Bare Hands", rarity: "common", stats: { dmg: 0 }, cls: "none", identified: true };
         this.p.recalc();
 
+        this.decals = new DecalSystem(this);
         this.stateManager = new GameStateManager(this);
         this.stateManager.switchState(new TownState(this));
         

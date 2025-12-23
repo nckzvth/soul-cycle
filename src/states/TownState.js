@@ -49,6 +49,7 @@ class TownState extends State {
     enter() {
         console.log("Entering Town State");
         const p = this.game.p;
+        this.game?.decals?.clear?.();
         
         // Encapsulated Reset
         p.teleport(400, 300);
@@ -161,6 +162,10 @@ class TownState extends State {
         this.campfire?.update(dt);
         this.weaponIcons?.forEach((w) => w.update(dt, p));
         ParticleSystem.update(dt);
+        const canvas = this.game?.canvas;
+        if (this.game?.decals && canvas) {
+            this.game.decals.update(dt, { cameraX: p.x, cameraY: p.y, canvasW: canvas.width, canvasH: canvas.height, zoom: this.game.cameraZoom || 1 });
+        }
 
         // Debug: toggle and tune campfire placement (scales to other future props).
         const toggleDown = !!keys["KeyO"];
@@ -238,6 +243,11 @@ class TownState extends State {
         // World-space pass (camera centered on player with zoom)
         ctx.save();
         this.game.applyWorldTransform(ctx);
+
+        // Persistent ground decals (state-agnostic; usually empty in Town).
+        if (this.game?.decals) {
+            this.game.decals.renderWorld(ctx, { cameraX: p.x, cameraY: p.y, canvasW: w, canvasH: h, zoom: this.game.cameraZoom || 1 });
+        }
 
         // Campfire (top-center of town; scale relative to player size).
         this.ensureCampfire();

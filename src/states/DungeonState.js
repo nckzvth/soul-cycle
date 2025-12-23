@@ -134,6 +134,10 @@ class DungeonState extends State {
         p.update(dt, this, true);
 
         ParticleSystem.update(dt);
+        const canvas = this.game?.canvas;
+        if (this.game?.decals && canvas) {
+            this.game.decals.update(dt, { cameraX: p.x, cameraY: p.y, canvasW: canvas.width, canvasH: canvas.height, zoom: this.game.cameraZoom || 1 });
+        }
 
         // 2. WALLS (Clamp Position)
         const c = this.game?.canvas;
@@ -389,6 +393,11 @@ class DungeonState extends State {
         // World-space pass (camera centered on player with zoom)
         ctx.save();
         this.game.applyWorldTransform(ctx);
+
+        // Persistent ground decals (blood spatter etc.)
+        if (this.game?.decals) {
+            this.game.decals.renderWorld(ctx, { cameraX: p.x, cameraY: p.y, canvasW: w, canvasH: h, zoom: this.game.cameraZoom || 1 });
+        }
 
         // Dungeon bounds frame in world coords.
         if (this.bounds) {

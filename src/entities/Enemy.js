@@ -202,6 +202,9 @@ export class Enemy {
 
         this._setSpriteState(ENEMY_SPRITE_STATES.die);
         this._sprite?.anims?.[ENEMY_SPRITE_STATES.die]?.reset?.();
+
+        // Ground spatter (state-agnostic): persistent decal under the corpse.
+        state?.game?.decals?.addEnemyDeathSpatter?.(this, state);
     }
 
     _updateDeath(dt, state) {

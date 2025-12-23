@@ -343,6 +343,10 @@ class FieldState extends State {
         // --- Entity Updates ---
         Telegraph.update(dt);
         ParticleSystem.update(dt);
+        const canvas = this.game?.canvas;
+        if (this.game?.decals && canvas) {
+            this.game.decals.update(dt, { cameraX: this.p.x, cameraY: this.p.y, canvasW: canvas.width, canvasH: canvas.height, zoom: this.game.cameraZoom || 1 });
+        }
         // Corpse pass: update death animations without affecting gameplay pacing/drops.
         this.corpses.forEach(e => e?.update?.(dt, this.p, this));
         this.corpses = this.corpses.filter(e => (e?.deathTimer || 0) > 0);
@@ -825,6 +829,11 @@ class FieldState extends State {
         // World-space pass (camera centered on player with zoom)
         ctx.save();
         this.game.applyWorldTransform(ctx);
+
+        // Persistent ground decals (blood spatter etc.)
+        if (this.game?.decals) {
+            this.game.decals.renderWorld(ctx, { cameraX: p.x, cameraY: p.y, canvasW: w, canvasH: h, zoom });
+        }
 
         Telegraph.render(ctx, s);
         // Ground effects: draw beneath enemies/player so they look like they're standing in it.
