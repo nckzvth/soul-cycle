@@ -3,7 +3,7 @@ export const IMAGE_ASSETS = Object.freeze({
     hammerIcon: "notes/references/hammer_icon.png",
     pistolIcon: "notes/references/pistol_icon.png",
     staffIcon: "notes/references/staff_icon.png",
-    fieldForestGroundDraft: "notes/references/field_forest-ground-draft.png",
+    fieldForestGroundDraft: "notes/references/GRASS.png",
 
     // Player (directional 8x15 @ 64x64)
     playerIdleSheet: "notes/references/Sprites/Player/PlayerIdle.png",

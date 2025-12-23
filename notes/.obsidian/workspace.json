@@ -171,6 +171,7 @@
   },
   "active": "22a4ad481dd15e67",
   "lastOpenFiles": [
+    "references/GRASS.png",
     "references/Sprites/Projectiles/hammer_spin.png",
     "references/Sprites/Projectiles",
     "references/Sprites/Player/PlayerRunAttack.png",
@@ -182,7 +183,6 @@
     "references/Sprites/Enemy/SpitterRun.png",
     "references/Sprites/Enemy/SpitterIdle.png",
     "references/Sprites/Enemy/SpitterDie.png",
-    "references/Sprites/Enemy/SpitterAttack.png",
     "references/Sprites/Enemy",
     "references/Sprites/Player",
     "references/Sprites",
