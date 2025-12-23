@@ -822,6 +822,9 @@ class FieldState extends State {
         this.game.applyWorldTransform(ctx);
 
         Telegraph.render(ctx, s);
+        // Ground effects: draw beneath enemies/player so they look like they're standing in it.
+        this.shots.filter(b => b?.layer === "ground").forEach(b => b.draw(ctx, s));
+        ParticleSystem.render(ctx, s, "ground");
         this.drops.forEach(d => d.draw(ctx, s));
         this.pickups.forEach(p => p.draw(ctx, s));
         this.souls.forEach(o => o.draw(ctx, s));
@@ -875,8 +878,8 @@ class FieldState extends State {
             ctx.globalAlpha = chain.t * 5; ctx.stroke(); ctx.globalAlpha = 1;
         });
 
-        this.shots.forEach(b => b.draw(ctx, s));
-        ParticleSystem.render(ctx, s);
+        this.shots.filter(b => b?.layer !== "ground").forEach(b => b.draw(ctx, s));
+        ParticleSystem.render(ctx, s, "default");
 
         // World-space indicators (player-anchored ring, smoothed in update).
         const renderIndicator = (ind, color, baseSize) => {

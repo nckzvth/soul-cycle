@@ -70,8 +70,10 @@ const ParticleSystem = {
         }
     },
 
-    render(ctx, s) {
+    render(ctx, s, layer = null) {
+        const wantLayer = layer != null ? String(layer) : null;
         for (const p of particles) {
+            if (wantLayer && p.layer !== wantLayer) continue;
             const pos = s(p.x, p.y);
             ctx.globalAlpha = p.alpha;
             
@@ -132,7 +134,8 @@ const ParticleSystem = {
                 alpha: 1,
                 target,
                 speed: speed * 2, // Speed for seeking
-                options
+                options,
+                layer: options?.layer ? String(options.layer) : "default",
             };
 
             if (options.anchoredTo) {
@@ -157,7 +160,8 @@ const ParticleSystem = {
             color: resolveColor(options.color || "parchment"),
             size: options.size || 24,
             isText: true,
-            options
+            options,
+            layer: options?.layer ? String(options.layer) : "default",
         };
         particles.push(p);
     }

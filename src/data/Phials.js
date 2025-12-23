@@ -15,9 +15,19 @@ export const Phials = {
         icon: "➕",
         name: "Soul Salvo",
         category: "gauge",
-        description: "On Soul Gauge fill, gain charges that add extra spectral projectiles to your next attacks.",
+        description: "On Soul Gauge fill, gain a short-lived burst of charges that add extra spectral attacks.",
         baseChargesPerFill: 5,
-        chargesPerStack: 2
+        chargesPerStack: 2,
+        // Tuning knobs (best-practice anti-infinite controls):
+        // - Charges only granted when none are active
+        // - Hard cap to prevent runaway stacking
+        // - Duration so it feels like a moment, not a permanent state
+        // - ICD so it can't immediately re-trigger
+        grantOnlyWhenEmpty: true,
+        maxChargesBase: 5,
+        maxChargesPerStack: 1,
+        durationSec: 5.0,
+        procIcdSec: 8.0
     },
     witchglassAegis: {
         id: "witchglassAegis",
@@ -56,13 +66,34 @@ export const Phials = {
         icon: "🩸",
         name: "Tithe Engine",
         category: "killRhythm",
-        description: "Every few kills grants a charge. The next hit creates a soul explosion.",
+        description: "Every few kills grants a charge. The next hit creates a soul explosion; enemies struck return a brief tithe (heal-over-time + short power).",
         baseKillsRequired: 6,
         killsReductionPerStack: 1,
         minKillsRequired: 3,
         baseExplosionDamage: 5,
-        explosionDamagePerStack: 5,
         baseExplosionRadius: 80,
-        radiusPerStack: 10
+        radiusPerStack: 10,
+
+        // Tithe Harvest (Option A):
+        // - Explosion damage stays flat (uncapped AoE)
+        // - Successful explosions grant a small, capped HoT and a very short power buff
+        // - Neither effect refreshes while active (prevents chain overlaps/perma-uptime)
+        harvest: {
+            hotDurationSec: 3.0,
+            hotTickSec: 0.5,
+            hotHealPctMaxHpPerTickBase: 0.0075,      // 0.75% max HP per tick
+            hotHealPctMaxHpPerTickPerStack: 0.0015,  // +0.15% per extra stack
+
+            // Cap total healing per proc (prevents immortality)
+            hotMaxTotalHealPctBase: 0.06,            // 6% max HP per proc
+            hotMaxTotalHealPctPerStack: 0.01,        // +1% per extra stack
+            hotMaxTotalHealPctCap: 0.10,             // hard cap at 10%
+
+            buffDurationSec: 1.25,
+            buffPowerMultAddBase: 0.08,              // +8% power
+            buffPowerMultAddPerStack: 0.02,          // +2% per extra stack
+
+            noRefreshWhileActive: true,
+        }
     }
 };

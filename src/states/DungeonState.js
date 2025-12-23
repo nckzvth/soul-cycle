@@ -392,8 +392,12 @@ class DungeonState extends State {
             ctx.restore();
         }
 
+        // Ground effects should sit below sprites (enemies/player).
+        this.shots.filter(shot => shot?.layer === "ground").forEach(shot => shot.draw(ctx, s));
+        ParticleSystem.render(ctx, s, "ground");
+
         this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
-        this.shots.forEach(shot => shot.draw(ctx, s));
+        this.shots.filter(shot => shot?.layer !== "ground").forEach(shot => shot.draw(ctx, s));
         this.drops.forEach(d => d.draw(ctx, s));
         this.souls.forEach(o => o.draw(ctx, s));
         
@@ -409,7 +413,7 @@ class DungeonState extends State {
 
         p.draw(ctx, s);
 
-        ParticleSystem.render(ctx, s);
+        ParticleSystem.render(ctx, s, "default");
 
         // Entry room: boss door (world-space)
         // Entry room: boss door.

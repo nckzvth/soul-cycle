@@ -53,6 +53,9 @@ export const IMAGE_ASSETS = Object.freeze({
     enemyAnchorAttackSheet: "notes/references/Sprites/Enemy/AnchorAttack.png",
     enemyAnchorSpecialAtkSheet: "notes/references/Sprites/Enemy/AnchorSpecialAtk.png",
     enemyAnchorDieSheet: "notes/references/Sprites/Enemy/AnchorDie.png",
+
+    // Projectiles
+    hammerSpinSheet: "notes/references/Sprites/Projectiles/hammer_spin.png",
 });
 
 export const TILED_BACKGROUNDS = Object.freeze({

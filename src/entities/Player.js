@@ -92,12 +92,19 @@ export default class PlayerObj {
         this.haloTimer = 0;
         this.salvoCharges = 0;
         this.salvoGlow = 0;
+        this.salvoDuration = 0;
+        this.salvoProcCd = 0;
         this.aegisCooldownTimer = 0;
         this.aegisActiveTimer = 0;
         this.aegisDamageMultiplier = 1;
         this.titheKillsCounter = 0;
         this.titheCharges = 0;
         this.titheChargeGainedTimer = 0;
+        this.titheHotTimer = 0;
+        this.titheHotTickTimer = 0;
+        this.titheHotTickInterval = 0.5;
+        this.titheHotHealPerTick = 0;
+        this.titheHotRemainingHeal = 0;
 
         // Temporary buffs
         this.soulMagnetTimer = 0;
@@ -158,6 +165,8 @@ export default class PlayerObj {
         this.haloTimer = 0;
         this.salvoCharges = 0;
         this.salvoGlow = 0;
+        this.salvoDuration = 0;
+        this.salvoProcCd = 0;
         this.aegisCooldownTimer = 0;
         this.aegisActiveTimer = 0;
         this.aegisDamageMultiplier = 1;
@@ -165,6 +174,10 @@ export default class PlayerObj {
         this.titheKillsCounter = 0;
         this.titheCharges = 0;
         this.titheChargeGainedTimer = 0;
+        this.titheHotTimer = 0;
+        this.titheHotTickTimer = 0;
+        this.titheHotHealPerTick = 0;
+        this.titheHotRemainingHeal = 0;
     }
 
     clearSkills() {
@@ -891,9 +904,15 @@ export default class PlayerObj {
             this.levelPicks.attribute++;
             this.levelPicks.weapon++;
             this.levelPicks.phial++;
-            this.hp = this.hpMax;
             UI.toast("LEVEL UP!");
+            const prevHp = this.hp;
             this.recalc();
+            const healPct = BALANCE?.progression?.levelUpHealPctMaxHp ?? 0;
+            if (healPct > 0) {
+                this.hp = Math.min(this.hpMax, prevHp + this.hpMax * healPct);
+            } else {
+                this.hp = Math.min(this.hpMax, prevHp);
+            }
             req = ProgressionSystem.getXpRequired(this.lvl);
             
             // Trigger VFX
@@ -954,19 +973,101 @@ export default class PlayerObj {
         if (this.salvoGlow > 0) {
             this.salvoGlow -= dt;
         }
+        if (this.salvoProcCd > 0) {
+            this.salvoProcCd = Math.max(0, this.salvoProcCd - dt);
+        }
+        if (this.salvoDuration > 0) {
+            this.salvoDuration = Math.max(0, this.salvoDuration - dt);
+            if (this.salvoDuration <= 0) {
+                this.salvoCharges = 0;
+            }
+        }
+        // If you spend the last charge early, end the active window (ICD still applies).
+        if ((this.salvoCharges || 0) <= 0 && (this.salvoDuration || 0) > 0) {
+            this.salvoDuration = 0;
+        }
 
         // Tithe Engine
         if (this.titheChargeGainedTimer > 0) {
             this.titheChargeGainedTimer -= dt;
+        }
+
+        // Tithe Harvest (heal-over-time)
+        if ((this.titheHotTimer || 0) > 0) {
+            this.titheHotTimer = Math.max(0, this.titheHotTimer - dt);
+            this.titheHotTickTimer = (this.titheHotTickTimer || 0) - dt;
+
+            const tickInterval = Math.max(0.05, this.titheHotTickInterval || 0.5);
+            while (this.titheHotTimer > 0 && this.titheHotTickTimer <= 0) {
+                this.titheHotTickTimer += tickInterval;
+                const heal = Math.min(this.titheHotRemainingHeal || 0, this.titheHotHealPerTick || 0);
+                if (heal > 0) {
+                    this.hp = Math.min(this.hpMax, this.hp + heal);
+                    this.titheHotRemainingHeal = Math.max(0, (this.titheHotRemainingHeal || 0) - heal);
+                }
+                if ((this.titheHotRemainingHeal || 0) <= 0) break;
+            }
+
+            if (this.titheHotTimer <= 0 || (this.titheHotRemainingHeal || 0) <= 0) {
+                this.titheHotTimer = 0;
+                this.titheHotRemainingHeal = 0;
+            }
+        }
+    }
+
+    applyTitheHarvest(stacks = 1) {
+        const cfg = Phials?.titheEngine?.harvest || {};
+        const n = Math.max(0, (stacks || 1) - 1);
+        const noRefresh = cfg.noRefreshWhileActive !== false;
+
+        // HoT (capped total healing per proc)
+        if (!(noRefresh && (this.titheHotTimer || 0) > 0)) {
+            const hpMax = this.hpMax || 0;
+            const perTickPct =
+                (cfg.hotHealPctMaxHpPerTickBase || 0) +
+                (cfg.hotHealPctMaxHpPerTickPerStack || 0) * n;
+            const maxTotalPctRaw =
+                (cfg.hotMaxTotalHealPctBase || 0) +
+                (cfg.hotMaxTotalHealPctPerStack || 0) * n;
+            const cap = cfg.hotMaxTotalHealPctCap;
+            const maxTotalPct = typeof cap === "number" ? Math.min(cap, maxTotalPctRaw) : maxTotalPctRaw;
+
+            this.titheHotTickInterval = Math.max(0.05, cfg.hotTickSec || 0.5);
+            this.titheHotHealPerTick = Math.max(0, hpMax * Math.max(0, perTickPct));
+            this.titheHotRemainingHeal = Math.max(0, hpMax * Math.max(0, maxTotalPct));
+            this.titheHotTimer = Math.max(0, cfg.hotDurationSec || 3.0);
+            this.titheHotTickTimer = 0;
+        }
+
+        // Very short power buff (no refresh while active)
+        if (!(noRefresh && (this.combatBuffTimers.powerMult || 0) > 0)) {
+            const add =
+                (cfg.buffPowerMultAddBase || 0) +
+                (cfg.buffPowerMultAddPerStack || 0) * n;
+            this.combatBuffs.powerMult = 1.0 + Math.max(0, add);
+            this.combatBuffTimers.powerMult = Math.max(0, cfg.buffDurationSec || 1.25);
         }
     }
 
     onGaugeFill(state) {
         const salvoStacks = this.getPhialStacks(Phials.soulSalvo.id);
         if (salvoStacks > 0) {
-            const chargesToAdd = Phials.soulSalvo.baseChargesPerFill + Phials.soulSalvo.chargesPerStack * (salvoStacks - 1);
-            this.salvoCharges += chargesToAdd;
-            this.salvoGlow = 2.0; // Glow for 2 seconds
+            const cfg = Phials.soulSalvo || {};
+            const grantOnlyWhenEmpty = cfg.grantOnlyWhenEmpty !== false;
+            const activeCharges = (this.salvoCharges || 0) > 0;
+            const onCd = (this.salvoProcCd || 0) > 0;
+            if ((grantOnlyWhenEmpty && activeCharges) || onCd) {
+                // Keep a small feedback pulse, but do not grant more charges.
+                this.salvoGlow = Math.max(this.salvoGlow || 0, 0.35);
+                return;
+            }
+
+            const chargesToAdd = (cfg.baseChargesPerFill || 0) + (cfg.chargesPerStack || 0) * (salvoStacks - 1);
+            const maxCharges = (cfg.maxChargesBase || chargesToAdd) + (cfg.maxChargesPerStack || 0) * (salvoStacks - 1);
+            this.salvoCharges = Math.max(0, Math.min(maxCharges, chargesToAdd));
+            this.salvoDuration = Math.max(0, cfg.durationSec || 5.0);
+            this.salvoProcCd = Math.max(0, cfg.procIcdSec || 8.0);
+            this.salvoGlow = 2.0; // Strong glow for proc moment
         }
     }
 

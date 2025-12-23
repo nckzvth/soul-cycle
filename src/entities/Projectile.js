@@ -7,8 +7,21 @@ import ParticleSystem from "../systems/Particles.js";
 import StatusSystem from "../systems/StatusSystem.js";
 import { resolveColor } from "../render/Color.js";
 import { color as tc } from "../data/ColorTuning.js";
+import Assets from "../core/Assets.js";
+import SpriteSheet from "../render/SpriteSheet.js";
+import Animation from "../render/Animation.js";
 
 const c = (token, alpha) => resolveColor({ token, alpha });
+const HAMMER_SPIN_FPS = 8; // Dial hammer spin animation speed here.
+
+let _hammerSpinSheet = null;
+function getHammerSpinSheet() {
+    if (_hammerSpinSheet) return _hammerSpinSheet;
+    const img = Assets.getImage("hammerSpinSheet");
+    if (!img) return null;
+    _hammerSpinSheet = new SpriteSheet(img, { frameWidth: 32, frameHeight: 32, frameCount: 4 });
+    return _hammerSpinSheet;
+}
 
 export class TitheExplosion {
     constructor(state, player, x, y, radius, stacks, spec, snapshot) {
@@ -23,6 +36,7 @@ export class TitheExplosion {
         this.life = 0.6;
         this.currentRadius = 0;
         this.hitList = [];
+        this.harvestApplied = false;
     }
 
     update(dt) {
@@ -32,7 +46,11 @@ export class TitheExplosion {
         this.state.enemies.forEach(e => {
             if (!e.dead && !this.hitList.includes(e)) {
                 if (dist2(this.x, this.y, e.x, e.y) < (this.currentRadius + e.r) ** 2) {
-                    DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
+                    const res = DamageSystem.dealDamage(this.player, e, this.spec, { state: this.state, snapshot: this.snapshot, particles: ParticleSystem, triggerOnHit: false });
+                    if (!this.harvestApplied && (res?.amount || 0) > 0 && typeof this.player?.applyTitheHarvest === "function") {
+                        this.harvestApplied = true;
+                        this.player.applyTitheHarvest(this.stacks);
+                    }
                     this.hitList.push(e);
                 }
             }
@@ -130,9 +148,11 @@ export class HammerProjectile {
         this.creationTime = Game.time;
         this.markedForDeletion = false;
         this.hitList = [];
+        this._anim = new Animation({ fps: HAMMER_SPIN_FPS, frameCount: 4, loop: true });
     }
 
     update(dt) {
+        this._anim?.update?.(dt);
         const hb = BALANCE.player.hammer;
         const cfg = BALANCE.skills?.hammer || {};
         const vfx = cfg.vfx || {};
@@ -288,20 +308,49 @@ export class HammerProjectile {
         const hc = s(hx, hy);
 	        const r = hb.hitRadius + ((this.player.stats?.hammerHitRadiusAdd) || 0);
 
-	        const grad = ctx.createRadialGradient(hc.x, hc.y, 0, hc.x, hc.y, r * 1.5);
-	        const glowToken = this.isSalvo ? "p2" : "ember";
-	        grad.addColorStop(0, c(glowToken, 0.8) || tc("fx.uiText") || "parchment");
-	        grad.addColorStop(0.7, c(glowToken, 0.5) || tc("fx.uiText") || "parchment");
-	        grad.addColorStop(1, c(glowToken, 0.0) || "transparent");
-	        ctx.fillStyle = grad;
-	        ctx.beginPath();
-	        ctx.arc(hc.x, hc.y, r * 1.5, 0, Math.PI * 2);
-	        ctx.fill();
-
-        ctx.fillStyle = this.isSalvo ? (tc("player.core") || "p2") : (tc("fx.ember") || "ember");
+        // Keep a subtle glow for readability; sprite replaces the old solid circle.
+        const grad = ctx.createRadialGradient(hc.x, hc.y, 0, hc.x, hc.y, r * 1.25);
+        const glowToken = this.isSalvo ? "p1" : "ember";
+        grad.addColorStop(0, c(glowToken, this.isSalvo ? 0.35 : 0.55) || tc("fx.uiText") || "parchment");
+        grad.addColorStop(1, c(glowToken, 0.0) || "transparent");
+        ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(hc.x, hc.y, r, 0, Math.PI * 2);
+        ctx.arc(hc.x, hc.y, r * 1.25, 0, Math.PI * 2);
         ctx.fill();
+
+        const sheet = getHammerSpinSheet();
+        if (!sheet?.image?.complete) return;
+
+        const frame = this._anim?.frame ?? 0;
+        const baseScale = (r * 2) / 32;
+        const scale = this.isSalvo ? baseScale * 0.85 : baseScale;
+        const dw = 32 * scale;
+        const dh = 32 * scale;
+        const dx = hc.x - dw / 2;
+        const dy = hc.y - dh / 2;
+
+        ctx.save();
+        ctx.translate(hc.x, hc.y);
+        // Extra rotation so the sprite follows the orbit visually.
+        ctx.rotate(this.ang + (this.isSalvo ? Math.PI : 0));
+        ctx.translate(-hc.x, -hc.y);
+
+        const prevAlpha = ctx.globalAlpha;
+        ctx.globalAlpha = prevAlpha * (this.isSalvo ? 0.65 : 0.95);
+        sheet.drawFrame(ctx, frame, dx, dy, dw, dh);
+
+        if (this.isSalvo) {
+            // Slight P1 tint for Soul Salvo proc hammers.
+            ctx.save();
+            ctx.globalAlpha = prevAlpha * 0.28;
+            ctx.globalCompositeOperation = "source-atop";
+            ctx.fillStyle = tc("player.support") || tc("player.core") || "p1";
+            ctx.fillRect(dx, dy, dw, dh);
+            ctx.restore();
+        }
+
+        ctx.globalAlpha = prevAlpha;
+        ctx.restore();
     }
 }
 
@@ -313,11 +362,13 @@ export class FireTrail {
         this.y = y;
         this.r = radius;
         this.life = life;
+        this.layer = "ground";
         this.spec = spec;
         this.snapshot = snapshot;
         this.tickInterval = tickInterval;
         this.tickTimer = 0;
         this.vfxTimer = 0;
+        this._phase = (Math.floor(x * 13) ^ Math.floor(y * 17)) * 0.01;
     }
 
     update(dt) {
@@ -326,13 +377,23 @@ export class FireTrail {
         this.life -= dt;
         this.tickTimer += dt;
 
-        // Visual: flickering embers for the trail zone.
+        // Visual: flickering embers for the trail zone (ground-layer particles).
         this.vfxTimer -= dt;
 	        if (this.vfxTimer <= 0 && this.life > 0) {
 	            this.vfxTimer = vfx.trailInterval ?? 0.12;
 	            const x = this.x + (Math.random() - 0.5) * this.r * 1.6;
 	            const y = this.y + (Math.random() - 0.5) * this.r * 1.6;
-	            ParticleSystem.emit(x, y, vfx.trailColor || { token: "ember", alpha: 0.6 }, vfx.trailCount ?? 2, 20, vfx.trailSize ?? 2.0, vfx.trailLife ?? 0.16);
+	            ParticleSystem.emit(
+                    x,
+                    y,
+                    vfx.trailColor || { token: "ember", alpha: 0.55 },
+                    vfx.trailCount ?? 2,
+                    16,
+                    vfx.trailSize ?? 2.0,
+                    vfx.trailLife ?? 0.18,
+                    null,
+                    { layer: "ground", rim: false }
+                );
 	        }
 
         while (this.tickTimer >= this.tickInterval && this.life > 0) {
@@ -350,11 +411,41 @@ export class FireTrail {
 	    draw(ctx, s) {
 	        const p = s(this.x, this.y);
 	        ctx.save();
-	        ctx.globalAlpha = Math.min(0.6, this.life / 1.2);
-	        ctx.fillStyle = tc("fx.ember", 0.25) || c("ember", 0.25) || "ember";
+	        const t = Math.max(0, Math.min(1, this.life / 1.2));
+	        ctx.globalAlpha = Math.min(0.75, t);
+
+            // Palette-aligned ground pool: ember core + emberDeep rim + ink-safe outline.
+            const r = this.r;
+            const pulse = 0.88 + 0.12 * Math.sin((Game.time * 6) + this._phase);
+            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+            grad.addColorStop(0, tc("fx.emberDeep", 0.18 * pulse) || c("emberDeep", 0.18 * pulse) || "rgba(126,59,34,0.18)");
+            grad.addColorStop(0.55, tc("fx.ember", 0.14 * pulse) || c("ember", 0.14 * pulse) || "rgba(192,106,58,0.14)");
+            grad.addColorStop(1, "transparent");
+
+	        ctx.fillStyle = grad;
 	        ctx.beginPath();
-	        ctx.arc(p.x, p.y, this.r, 0, Math.PI * 2);
+	        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
 	        ctx.fill();
+
+            // Rim stroke for visibility when the ground is bright.
+            ctx.strokeStyle = tc("fx.ink", 0.28 * pulse) || c("ink", 0.28 * pulse) || "rgba(12,13,18,0.28)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r * 0.92, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Subtle ember sparks inside the pool (drawn as part of ground layer).
+            const sparkCount = 6;
+            for (let i = 0; i < sparkCount; i++) {
+                const a = (Game.time * 1.8) + this._phase + i * (Math.PI * 2 / sparkCount);
+                const rr = r * (0.25 + 0.25 * Math.sin(a * 1.7 + i));
+                const sx = p.x + Math.cos(a) * rr;
+                const sy = p.y + Math.sin(a * 1.3) * rr;
+                ctx.fillStyle = tc("fx.ember", 0.22) || c("ember", 0.22) || "rgba(192,106,58,0.22)";
+                ctx.beginPath();
+                ctx.arc(sx, sy, 1.4, 0, Math.PI * 2);
+                ctx.fill();
+            }
 	        ctx.restore();
 	    }
 }

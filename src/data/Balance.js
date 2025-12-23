@@ -42,6 +42,8 @@ export const BALANCE = {
             highHpThreshold: 0.99,
             highHpChanceMult: 0.15,
         },
+        // Percent of max HP restored on level-up (0 disables healing).
+        levelUpHealPctMaxHp: 0,
         soulMagnet: {
             durationSec: 6.0,
             attractRadius: 5000,

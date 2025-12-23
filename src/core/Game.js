@@ -180,6 +180,9 @@ const Game = {
                 "enemyAnchorAttackSheet",
                 "enemyAnchorSpecialAtkSheet",
                 "enemyAnchorDieSheet",
+
+                // Projectiles
+                "hammerSpinSheet",
             ]);
         } catch (e) {
             console.warn("Asset preload failed:", e);

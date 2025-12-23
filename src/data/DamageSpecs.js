@@ -285,7 +285,8 @@ const DamageSpecs = {
   },
 
   titheExplosion(stacks) {
-    const dmg = Phials.titheEngine.baseExplosionDamage + Phials.titheEngine.explosionDamagePerStack * (stacks - 1);
+    // Flat damage (uncapped AoE): stacks scale trigger cadence + radius, not damage.
+    const dmg = Phials.titheEngine.baseExplosionDamage;
     return {
       id: "phial:titheExplosion",
       base: dmg,
