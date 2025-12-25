@@ -5,6 +5,7 @@ import DamageSystem from "../systems/DamageSystem.js";
 import DamageSpecs from "../data/DamageSpecs.js";
 import ParticleSystem from "../systems/Particles.js";
 import StatusSystem from "../systems/StatusSystem.js";
+import { StatusId } from "../data/Vocabulary.js";
 import { resolveColor } from "../render/Color.js";
 import { color as tc } from "../data/ColorTuning.js";
 import Assets from "../core/Assets.js";
@@ -125,6 +126,218 @@ export class DashTrail {
             ctx.stroke();
         }
         ctx.restore();
+    }
+}
+
+export class ScytheSlash {
+    constructor(state, player, {
+        dirX = 1,
+        dirY = 0,
+        step = 0,
+        radius = 85,
+        dual = false,
+        range = 75,
+        coneDot = 0.05,
+        spec = null,
+        snapshot = null,
+        markDuration = 0,
+        markVfx = null,
+    } = {}) {
+        this.state = state;
+        this.player = player;
+        this.dirX = Number(dirX) || 1;
+        this.dirY = Number(dirY) || 0;
+        this.step = Math.max(0, Math.min(2, Math.floor(Number(step) || 0)));
+        this.radius = Math.max(20, Number(radius) || 85);
+        this.dual = !!dual;
+        this.range = Math.max(0, Number(range) || 0);
+        this.coneDot = Number.isFinite(coneDot) ? Number(coneDot) : 0.05;
+        this.spec = spec;
+        this.snapshot = snapshot;
+        this.markDuration = Math.max(0, Number(markDuration) || 0);
+        this.markVfx = markVfx;
+
+        const mag = Math.hypot(this.dirX, this.dirY);
+        if (mag > 0.0001) {
+            this.dirX /= mag;
+            this.dirY /= mag;
+        } else {
+            this.dirX = 1;
+            this.dirY = 0;
+        }
+
+        // Capture the attack anchor once to avoid inconsistencies from player/enemy motion between spawn and update.
+        this.originX = Number(player?.x) || 0;
+        this.originY = Number(player?.y) || 0;
+        const baseRange = this.range || this.radius || 80;
+        const offsetBase = Math.max(10, Math.min(28, baseRange * 0.25));
+        this.centerX = this.originX + this.dirX * (this.step === 2 ? offsetBase * 1.1 : offsetBase);
+        this.centerY = this.originY + this.dirY * (this.step === 2 ? offsetBase * 1.1 : offsetBase);
+
+        this.t = 0;
+        this.life = this.step === 2 ? 0.22 : 0.18;
+        this.hitSet = new Set();
+    }
+
+    update(dt) {
+        const state = this.state;
+        this.t += Math.max(0, Number(dt) || 0);
+
+        // Apply damage as the arc sweeps/spins so the whole visible slash can hit (without double-proccing).
+        if (this.player && state?.enemies && this.spec && this.t <= this.life) {
+            const clamp01 = (x) => Math.max(0, Math.min(1, x));
+            const TAU = Math.PI * 2;
+            const unwrapNear = (ang, ref) => {
+                let a = ang;
+                while (a - ref > Math.PI) a -= TAU;
+                while (a - ref < -Math.PI) a += TAU;
+                return a;
+            };
+
+            const progress = clamp01(this.t / Math.max(0.001, this.life));
+            const baseAng = Math.atan2(this.dirY, this.dirX);
+
+            let arcStart = baseAng;
+            let arcEnd = baseAng;
+            let ref = baseAng;
+            if (this.step === 0) {
+                const half = Math.PI * 0.60;
+                arcStart = baseAng - half;
+                arcEnd = arcStart + (half * 2) * progress;
+                ref = baseAng;
+            } else if (this.step === 1) {
+                const half = Math.PI * 0.60;
+                arcStart = baseAng + half;
+                arcEnd = arcStart - (half * 2) * progress;
+                ref = baseAng;
+            } else {
+                arcEnd = baseAng + TAU * progress;
+                arcStart = arcEnd - Math.PI * 0.55;
+                ref = arcEnd;
+            }
+
+            arcStart = unwrapNear(arcStart, ref);
+            arcEnd = unwrapNear(arcEnd, ref);
+
+            const maxDist = Math.max(0, this.range || this.radius || 0);
+            const cx = this.centerX;
+            const cy = this.centerY;
+
+            state.enemies.forEach((enemy) => {
+                if (!enemy || enemy.dead) return;
+                if (this.hitSet.has(enemy)) return;
+
+                const ex = enemy.x - cx;
+                const ey = enemy.y - cy;
+                const d2 = ex * ex + ey * ey;
+                const er = Math.max(0, Number(enemy.r) || 0);
+                if (maxDist > 0 && d2 > (maxDist + er) * (maxDist + er)) return;
+
+                const ang = unwrapNear(Math.atan2(ey, ex), ref);
+                const inArc = arcEnd >= arcStart ? (ang >= arcStart && ang <= arcEnd) : (ang <= arcStart && ang >= arcEnd);
+                if (!inArc) return;
+
+                this.hitSet.add(enemy);
+                const res = DamageSystem.dealDamage(this.player, enemy, this.spec, {
+                    state,
+                    snapshot: this.snapshot,
+                    particles: ParticleSystem,
+                    triggerOnHit: true,
+                });
+
+                if (this.step === 2 && this.markDuration > 0 && (res?.amount || 0) > 0) {
+                    StatusSystem.applyStatus(enemy, StatusId.Marked, {
+                        source: this.player,
+                        stacks: 1,
+                        duration: this.markDuration,
+                        tickInterval: 9999,
+                        spec: null,
+                        snapshotPolicy: "snapshot",
+                        triggerOnHit: false,
+                        stackMode: "max",
+                        vfx: this.markVfx || null,
+                    });
+                }
+            });
+        }
+
+        return this.t <= this.life;
+    }
+
+    draw(ctx, s) {
+        const pc = s(this.centerX, this.centerY);
+
+        const progress = Math.max(0, Math.min(1, this.t / Math.max(0.001, this.life)));
+        const alpha = 1 - progress;
+
+        // Aim-relative base angle (centered on aim direction).
+        const baseAng = Math.atan2(this.dirY, this.dirX);
+        const r = this.radius;
+
+        const drawArc = ({ start, end, color, width }) => {
+            const stepCount = Math.max(6, Math.min(26, Math.ceil(Math.abs(end - start) / (Math.PI / 18))));
+            ctx.save();
+            ctx.globalAlpha *= alpha;
+            ctx.lineWidth = width;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+
+            // Ink rim rule for readability.
+            ctx.strokeStyle = tc("fx.ink", Math.min(1, alpha * 0.65)) || c("ink", Math.min(1, alpha * 0.65)) || "rgba(12,13,18,0.65)";
+            ctx.beginPath();
+            for (let i = 0; i <= stepCount; i++) {
+                const t = i / stepCount;
+                const ang = start + (end - start) * t;
+                const x = pc.x + Math.cos(ang) * r;
+                const y = pc.y + Math.sin(ang) * r;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = Math.max(1, width - 2);
+            ctx.beginPath();
+            for (let i = 0; i <= stepCount; i++) {
+                const t = i / stepCount;
+                const ang = start + (end - start) * t;
+                const x = pc.x + Math.cos(ang) * r;
+                const y = pc.y + Math.sin(ang) * r;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            ctx.restore();
+        };
+
+        if (this.step === 0) {
+            // Swipe 1: in-front arc sweeping left -> right around aim.
+            const half = Math.PI * 0.60;
+            const start = baseAng - half;
+            const end = start + (half * 2) * progress;
+            const col = tc("player.guard", alpha) || tc("player.core", alpha) || c("p4", alpha) || "rgba(110,81,129,1)";
+            drawArc({ start, end, color: col, width: 8 });
+            if (this.dual) drawArc({ start: start + Math.PI * 0.08, end: end + Math.PI * 0.08, color: col, width: 6 });
+            return;
+        }
+
+        if (this.step === 1) {
+            // Swipe 2: in-front arc sweeping right -> left around aim.
+            const half = Math.PI * 0.60;
+            const start = baseAng + half;
+            const end = start - (half * 2) * progress;
+            const col = tc("player.guard", alpha) || tc("player.core", alpha) || c("p4", alpha) || "rgba(110,81,129,1)";
+            drawArc({ start, end, color: col, width: 8 });
+            if (this.dual) drawArc({ start: start - Math.PI * 0.08, end: end - Math.PI * 0.08, color: col, width: 6 });
+            return;
+        }
+
+        // Harvest finisher: fast spin highlight.
+        const end = baseAng + Math.PI * 2 * progress;
+        const start = end - Math.PI * 0.55; // trailing arc segment
+        const col = tc("player.spec", alpha) || c("p1", alpha) || tc("fx.uiText", alpha) || "rgba(108,237,237,1)";
+        drawArc({ start, end, color: col, width: 12 });
+        if (this.dual) drawArc({ start: start + Math.PI * 0.18, end: end + Math.PI * 0.18, color: col, width: 9 });
     }
 }
 

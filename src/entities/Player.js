@@ -5,7 +5,7 @@ import UI from "../systems/UI.js";
 import { BALANCE } from "../data/Balance.js";
 import Game from "../core/Game.js";
 import { Phials } from "../data/Phials.js";
-import { HammerProjectile, AegisPulse, DashTrail, TitheExplosion } from "./Projectile.js";
+import { HammerProjectile, AegisPulse, DashTrail, TitheExplosion, ScytheSlash } from "./Projectile.js";
 import ParticleSystem from "../systems/Particles.js";
 import StatsSystem from "../systems/StatsSystem.js";
 import DamageSystem from "../systems/DamageSystem.js";
@@ -21,11 +21,20 @@ import EffectSystem from "../systems/EffectSystem.js";
 import { FeatureFlags } from "../core/FeatureFlags.js";
 import { buildActivePhialEffectSources } from "../data/PhialEffectDefs.js";
 import { ProfileStore } from "../core/ProfileStore.js";
-import { getWeaponConfigByCls } from "../data/Weapons.js";
+import { getWeaponConfigByCls, normalizeWeaponCls } from "../data/Weapons.js";
 import { LevelToSocketLevel, getUnlockedSkillIdsForSocket } from "../data/PerkSockets.js";
 import { SKILLS } from "../data/Skills.js";
 import { StatusId } from "../data/Vocabulary.js";
 import { GolemMinion } from "./Minions.js";
+
+function triggerActivePhialEffects(player, trigger, ctx, { shadow } = {}) {
+    try {
+        EffectSystem.setActiveSources(buildActivePhialEffectSources(player));
+        EffectSystem.trigger(trigger, ctx, { shadow: !!shadow });
+    } catch {
+        // Never allow effect validation to crash gameplay.
+    }
+}
 
 let _skillById = null;
 function getSkillDefById(id) {
@@ -280,16 +289,17 @@ export default class PlayerObj {
         // 2. Handle Passive Perks & Phials
         if (allowCombat) {
             this.updatePerks(dt, scene);
-            this.updatePhials(dt, scene);
+            if (!FeatureFlags.isOn("progression.effectSystemEnabled")) {
+                this.updatePhials(dt, scene);
+            }
         }
 
-        // Phase 3: EffectSystem shadow-mode hook (no gameplay change unless enabled).
-        if (allowCombat && FeatureFlags.isOn("progression.effectSystemShadow")) {
-            try {
-                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
-                EffectSystem.trigger(EffectSystem.TRIGGERS.tick, { player: this, state: scene, dt, particles: ParticleSystem }, { shadow: true });
-            } catch {
-                // Never allow effect validation to crash gameplay.
+        // EffectSystem: when enabled, drives all shipped phial behavior; shadow mode remains a migration tool.
+        if (allowCombat) {
+            const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
+            const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
+            if (enabled || shadow) {
+                triggerActivePhialEffects(this, EffectSystem.TRIGGERS.tick, { player: this, state: scene, dt, particles: ParticleSystem }, { shadow });
             }
         }
         
@@ -502,8 +512,8 @@ export default class PlayerObj {
             return;
         }
 
-        const weaponCls = this.gear?.weapon?.cls;
-        const ranged = !!allowCombat && (weaponCls === "pistol" || weaponCls === "staff");
+        const weaponCls = normalizeWeaponCls(this.gear?.weapon?.cls);
+        const ranged = !!allowCombat && (weaponCls === "repeater" || weaponCls === "staff");
         const meleeAttack = (sp.attackTimer || 0) > 0;
         const rangedAttack = ranged && (sp.shot?.since ?? 999) < (sp.shot?.hold ?? 0) && this.dashTimer <= 0;
         const attacking = rangedAttack || meleeAttack;
@@ -775,6 +785,7 @@ export default class PlayerObj {
     processCombat(dt, scene) {
         const w = this.gear.weapon;
         if (!w) return;
+        const weaponCls = normalizeWeaponCls(w.cls);
 
         // Scythe combo state (swipe, swipe, harvest).
         const scytheState = this.weaponState?.scythe;
@@ -782,8 +793,8 @@ export default class PlayerObj {
 
         // --- Pistol windup/cyclone base kit ---
         const pistolState = this.weaponState?.pistol;
-        const usingPistol = w.cls === "pistol";
-        const firingPistol = usingPistol && mouse.down && this.dashTimer <= 0;
+        const usingRepeater = weaponCls === "repeater";
+        const firingRepeater = usingRepeater && mouse.down && this.dashTimer <= 0;
         if (pistolState) {
             const skillsCfg = BALANCE.skills?.pistol || {};
             const gainBase = skillsCfg.windupGainPerSecond ?? 0.8;
@@ -792,7 +803,7 @@ export default class PlayerObj {
             const gainMult = 1 + (this.stats.pistolWindupGainMult || 0);
             const decayMult = Math.max(0.05, 1 + (this.stats.pistolWindupDecayMult || 0));
 
-            if (firingPistol) pistolState.windup = Math.min(1, pistolState.windup + dt * gainBase * gainMult);
+            if (firingRepeater) pistolState.windup = Math.min(1, pistolState.windup + dt * gainBase * gainMult);
             else pistolState.windup = Math.max(0, pistolState.windup - dt * decayBase * decayMult);
 
             // Reaper's Vortex chaining budget (occult keystone limiter).
@@ -811,7 +822,7 @@ export default class PlayerObj {
         }
 
         // Scythe: swipe-swipe-harvest (mark) melee combo.
-        if (w.cls === "scythe") {
+        if (weaponCls === "scythe") {
             const cfg = BALANCE.player.scythe || {};
             const skillsCfg = BALANCE.skills?.scythe || {};
 
@@ -855,45 +866,35 @@ export default class PlayerObj {
                 const markDuration = (skillsCfg.markDurationSec ?? 6.0) * (1 + (this.stats.scytheMarkDurationMult || 0));
                 const vfx = skillsCfg.vfx || {};
 
-                scene.enemies?.forEach((enemy) => {
-                    if (!enemy || enemy.dead) return;
-                    const ex = enemy.x - this.x;
-                    const ey = enemy.y - this.y;
-                    const d2 = ex * ex + ey * ey;
-                    if (d2 > range * range) return;
-                    const d = Math.sqrt(d2) || 1;
-                    const ndx = ex / d;
-                    const ndy = ey / d;
-                    const dot = ndx * dx + ndy * dy;
-                    if (dot < coneDot) return;
+                // Visual slash feedback (Scythe currently has no dedicated sprite attack animation).
+                // This is purely VFX and should track combo step and basic skill toggles.
+                scene.shots = Array.isArray(scene.shots) ? scene.shots : [];
+                scene.shots.push(new ScytheSlash(scene, this, {
+                    dirX: dx,
+                    dirY: dy,
+                    step,
+                    radius: range,
+                    dual: (this.stats.scytheDualScythesEnable || 0) > 0,
+                    range,
+                    coneDot,
+                    spec: spec2,
+                    snapshot,
+                    markDuration: step === 2 ? markDuration : 0,
+                    markVfx: step === 2 ? {
+                        interval: 0.35,
+                        color: vfx.markColor || { token: "p4", alpha: 0.9 },
+                        count: 1,
+                        size: 2.6,
+                        life: 0.22,
+                        applyText: "MARKED",
+                        applyBurstCount: 3,
+                        applyBurstSpeed: 120,
+                    } : null,
+                }));
 
-                    DamageSystem.dealDamage(this, enemy, spec2, { state: scene, snapshot, particles: ParticleSystem, triggerOnHit: true });
-
-                    if (step === 2) {
-                        StatusSystem.applyStatus(enemy, StatusId.Marked, {
-                            source: this,
-                            stacks: 1,
-                            duration: markDuration,
-                            tickInterval: 9999,
-                            spec: null,
-                            snapshotPolicy: "snapshot",
-                            triggerOnHit: false,
-                            stackMode: "max",
-                            vfx: {
-                                interval: 0.35,
-                                color: vfx.markColor || { token: "p4", alpha: 0.9 },
-                                count: 1,
-                                size: 2.6,
-                                life: 0.22,
-                                applyText: "MARKED",
-                                applyBurstCount: 3,
-                                applyBurstSpeed: 120,
-                            },
-                        });
-                    }
-                });
-
-                this.atkCd = cooldown;
+                // Brief additional recovery after the Harvest finisher.
+                const harvestExtra = cfg.harvestCooldownExtraSec ?? 0.12;
+                this.atkCd = step === 2 ? (cooldown + Math.max(0, harvestExtra)) : cooldown;
                 if (this._sprite) this._sprite.attackTimer = Math.max(this._sprite.attackTimer || 0, 0.22);
                 this.onAttack(scene, { weaponCls: "scythe" });
             }
@@ -958,7 +959,7 @@ export default class PlayerObj {
         // Shooting (Pistol/Staff) - Don't shoot while dashing
         if (mouse.down && this.atkCd <= 0 && this.dashTimer <= 0) {
             let attackSpeed = this.stats.attackSpeed || (1 + this.stats.spd);
-            if (usingPistol && pistolState) {
+            if (usingRepeater && pistolState) {
                 const skillsCfg = BALANCE.skills?.pistol || {};
                 const windupBonus = skillsCfg.windupAttackSpeedBonus ?? 2.0; // at full windup: +200%
                 const mult = (1 + pistolState.windup * windupBonus);
@@ -966,12 +967,12 @@ export default class PlayerObj {
             }
             let rate = BALANCE.player.pistolBaseRate / attackSpeed;
             
-            if (w.cls === "pistol") {
+            if (weaponCls === "repeater") {
                 scene.combatSystem.firePistol(this, scene);
                 this.atkCd = rate;
                 this._triggerRangedShotAnim(rate);
-                this.onAttack(scene, { weaponCls: "pistol" });
-            } else if (w.cls === "staff") {
+                this.onAttack(scene, { weaponCls: "repeater" });
+            } else if (weaponCls === "staff") {
                 scene.combatSystem.fireZap(this, scene);
                 this.atkCd = rate * BALANCE.player.staffRateMult;
                 this._triggerRangedShotAnim(rate * BALANCE.player.staffRateMult);
@@ -1245,6 +1246,13 @@ export default class PlayerObj {
     }
 
     onGaugeFill(state) {
+        const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
+        const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
+        if (enabled || shadow) {
+            triggerActivePhialEffects(this, EffectSystem.TRIGGERS.gaugeFill, { player: this, state, particles: ParticleSystem }, { shadow });
+            if (enabled) return;
+        }
+
         const salvoStacks = this.getPhialStacks(Phials.soulSalvo.id);
         if (salvoStacks > 0) {
             const cfg = Phials.soulSalvo || {};
@@ -1264,29 +1272,12 @@ export default class PlayerObj {
             this.salvoProcCd = Math.max(0, cfg.procIcdSec || 8.0);
             this.salvoGlow = 2.0; // Strong glow for proc moment
         }
-
-        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
-            try {
-                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
-                EffectSystem.trigger(EffectSystem.TRIGGERS.gaugeFill, { player: this, state }, { shadow: true });
-            } catch {
-                // ignore
-            }
-        }
     }
 
     onHit(target, state, hit) {
-        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
-            try {
-                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
-                EffectSystem.trigger(EffectSystem.TRIGGERS.hit, { player: this, state, target, hit }, { shadow: true });
-            } catch {
-                // ignore
-            }
-        }
         // --- Weapon upgrade hooks (keep phials independent) ---
         const weapon = this.gear.weapon;
-        if (weapon?.cls === "pistol") {
+        if (normalizeWeaponCls(weapon?.cls) === "repeater") {
             const skillsCfg = BALANCE.skills?.pistol || {};
             const pistolState = this.weaponState?.pistol;
             const spec = hit?.spec;
@@ -1419,6 +1410,15 @@ export default class PlayerObj {
             }
         }
 
+        // Phial effects: EffectSystem cutover lives here so weapon hooks above keep their legacy ordering.
+        const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
+        const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
+        if (enabled || shadow) {
+            triggerActivePhialEffects(this, EffectSystem.TRIGGERS.hit, { player: this, state, target, hit, particles: ParticleSystem }, { shadow });
+            if (enabled) return;
+        }
+
+        // Legacy: Tithe Engine explosion (disabled once EffectSystem cutover is enabled).
         const titheStacks = this.getPhialStacks(Phials.titheEngine.id);
         if (titheStacks > 0 && this.titheCharges > 0) {
             this.titheCharges--;
@@ -1442,13 +1442,11 @@ export default class PlayerObj {
     }
 
     onDash(state) {
-        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
-            try {
-                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
-                EffectSystem.trigger(EffectSystem.TRIGGERS.dash, { player: this, state }, { shadow: true });
-            } catch {
-                // ignore
-            }
+        const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
+        const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
+        if (enabled || shadow) {
+            triggerActivePhialEffects(this, EffectSystem.TRIGGERS.dash, { player: this, state, particles: ParticleSystem }, { shadow });
+            if (enabled) return;
         }
         const blindStacks = this.getPhialStacks(Phials.blindingStep.id);
         if (blindStacks > 0) {
@@ -1484,13 +1482,11 @@ export default class PlayerObj {
     }
 
     onDamageTaken(source) {
-        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
-            try {
-                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
-                EffectSystem.trigger(EffectSystem.TRIGGERS.damageTaken, { player: this, state: Game.stateManager?.currentState, source }, { shadow: true });
-            } catch {
-                // ignore
-            }
+        const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
+        const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
+        if (enabled || shadow) {
+            triggerActivePhialEffects(this, EffectSystem.TRIGGERS.damageTaken, { player: this, state: Game.stateManager?.currentState, source, particles: ParticleSystem }, { shadow });
+            if (enabled) return;
         }
         const aegisStacks = this.getPhialStacks(Phials.witchglassAegis.id);
         if (aegisStacks > 0 && this.aegisCooldownTimer <= 0) {
@@ -1641,6 +1637,16 @@ export default class PlayerObj {
         }
         if (enemy.isBoss) {
             this.killStats.bossesSession++;
+        }
+
+        const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
+        const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
+        if (enabled || shadow) {
+            triggerActivePhialEffects(this, EffectSystem.TRIGGERS.kill, { player: this, state: Game.stateManager?.currentState, enemy, particles: ParticleSystem }, { shadow });
+            if (enabled) {
+                UI.dirty = true;
+                return;
+            }
         }
 
         const titheStacks = this.getPhialStacks(Phials.titheEngine.id);

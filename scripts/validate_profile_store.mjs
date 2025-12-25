@@ -15,14 +15,13 @@ globalThis.window.localStorage = {
 
 // Default profile sanity
 const d = createDefaultProfile();
-invariant(d.schemaVersion === 1, "default schemaVersion should be 1");
+invariant(d.schemaVersion === 2, "default schemaVersion should be 2");
 invariant(!!d.mastery?.attributes?.Constitution, "Constitution mastery scaffold missing");
 invariant(Array.isArray(d.history?.recentRuns), "recentRuns should exist");
 
 // Save/load roundtrip
 ProfileStore.save(d);
 const loaded = ProfileStore.load();
-invariant(loaded.schemaVersion === 1, "loaded schemaVersion should be 1");
+invariant(loaded.schemaVersion === 2, "loaded schemaVersion should be 2");
 
 console.log("validate_profile_store: OK");
-

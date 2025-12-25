@@ -2,7 +2,7 @@ export const ITEMS = {
     weapon: [
         { base: "War Hammer", cls: "hammer", stats: { dmg: 8, knockback: 15 } },
         { base: "Arcane Staff", cls: "staff", stats: { dmg: 6, will: 2 } },
-        { base: "Flintlock", cls: "pistol", stats: { dmg: 5, atkSpd: 0.1 } },
+        { base: "Repeater", cls: "repeater", stats: { dmg: 5, atkSpd: 0.1 } },
         { base: "Grave Scythe", cls: "scythe", stats: { dmg: 6, constitution: 2 } }
     ],
     helmet: [{ base: "Iron Helm", stats: { hp: 20, might: 1 } }, { base: "Silk Hood", stats: { will: 2, soulGain: 0.1 } }],

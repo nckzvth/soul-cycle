@@ -15,6 +15,8 @@ import { ProfileStore } from "./ProfileStore.js";
 import { FeatureFlags } from "./FeatureFlags.js";
 import EffectSystem from "../systems/EffectSystem.js";
 import { computeRunResult, applyMetaProgression, appendRunHistory } from "../systems/MasterySystem.js";
+import { validateAllContent } from "../data/ValidateAllContent.js";
+import { normalizeWeaponCls } from "../data/Weapons.js";
 
 const Game = {
     p: null,
@@ -30,6 +32,35 @@ const Game = {
     profile: null,
 
     init() {
+        // Stage 2: strict vocabulary validation fails fast at boot when enabled (and is intended
+        // to be default-on once all content is fully tagged).
+        if (FeatureFlags.isOn("content.useVocabularyValidationStrict")) {
+            try {
+                validateAllContent({ strict: true });
+            } catch (e) {
+                const msg = String(e?.message || e);
+                console.error("Boot content validation failed:", e);
+                try {
+                    const escapeHtml = (s) =>
+                        String(s)
+                            .replaceAll("&", "&amp;")
+                            .replaceAll("<", "&lt;")
+                            .replaceAll(">", "&gt;")
+                            .replaceAll('"', "&quot;")
+                            .replaceAll("'", "&#039;");
+                    document.body.innerHTML = `
+                        <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; padding: 16px; color: #fff; background: #120a16;">
+                            <div style="font-weight: 800; margin-bottom: 10px;">Content validation failed at boot</div>
+                            <pre style="white-space: pre-wrap; line-height: 1.35; margin: 0; color: #ffd7f3;">${escapeHtml(msg)}</pre>
+                        </div>
+                    `;
+                } catch {
+                    // ignore
+                }
+                throw e;
+            }
+        }
+
         this.canvas = document.getElementById("game");
         this.ctx = this.canvas.getContext("2d");
         UI.init(this);
@@ -298,14 +329,15 @@ const Game = {
 
     equipStartingWeapon(wepType) {
         if (!this.p) return;
-        const t = String(wepType || "");
+        const t = normalizeWeaponCls(wepType);
         const bases = { hammer: "Rusty Hammer", pistol: "Old Flintlock", repeater: "Old Repeater", staff: "Worn Staff", scythe: "Rusty Scythe" };
         if (!bases[t]) return;
 
         const w = this.loot("weapon");
         w.name = bases[t];
-        // Runtime cls remains "pistol" until a dedicated rename pass; "repeater" is a UI/identity alias.
-        w.cls = (t === "repeater") ? "pistol" : t;
+        // Stage 5: canonical runtime cls is now "repeater" (legacy saves/items may still say "pistol").
+        const repeaterEnabled = FeatureFlags.isOn("content.weaponIdRepeaterEnabled");
+        w.cls = (t === "repeater" && !repeaterEnabled) ? "pistol" : t;
         w.stats = { dmg: 6 };
         this.p.gear.weapon = w;
         this.p.recalc();

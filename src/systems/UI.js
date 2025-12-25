@@ -9,9 +9,10 @@ import ProgressionSystem from "./ProgressionSystem.js";
 import { color as c } from "../data/ColorTuning.js";
 import { FeatureFlags } from "../core/FeatureFlags.js";
 import { ProfileStore } from "../core/ProfileStore.js";
-import { getWeaponConfigByCls, WeaponId } from "../data/Weapons.js";
+import { getWeaponConfigByCls, WeaponId, normalizeWeaponCls } from "../data/Weapons.js";
 import { PerkSocketLevel, getSkillDef, getSocketOptions, getUnlockedSkillIdsForSocket } from "../data/PerkSockets.js";
 import { getWeaponMasteryLevel } from "./MasterySystem.js";
+import { AttributeId } from "../data/Vocabulary.js";
 
 const UI = {
     dirty: true,
@@ -546,7 +547,12 @@ const UI = {
             this.renderArmoryPerks();
             return;
         }
-        if (this._armoryTab === "weaponMastery" || this._armoryTab === "attributeMastery") {
+        if (this._armoryTab === "weaponMastery") {
+            this.renderArmoryWeaponMastery();
+            return;
+        }
+        if (this._armoryTab === "attributeMastery") {
+            this.renderArmoryAttributeMastery();
             return;
         }
 
@@ -665,14 +671,16 @@ const UI = {
                 const desc = sk?.desc || "";
                 const active = id === current;
                 const isUnlocked = unlocked.has(id);
-                const cls = active ? "btn-upgrade primary" : "btn-upgrade";
+                const cls = active ? "btn-upgrade selected" : "btn-upgrade";
                 const lockedNote = metaEnabled && !isUnlocked ? ` <span style="opacity:0.75">[Unlock WM${unlockAtWeaponMasteryLevel}]</span>` : "";
                 const disabledAttr = metaEnabled && !isUnlocked ? "disabled" : "";
-                return `<button class="${cls}" data-socket="${socketLevel}" data-skill-id="${id}" ${disabledAttr}>${title}${lockedNote}<small>${desc}</small></button>`;
+                const aria = active ? `aria-pressed="true"` : `aria-pressed="false"`;
+                return `<button class="${cls}" data-socket="${socketLevel}" data-skill-id="${id}" ${aria} ${disabledAttr}>${title}${lockedNote}<small>${desc}</small></button>`;
             }).join("");
 
-            const noneCls = current == null ? "btn-upgrade primary" : "btn-upgrade";
-            const noneBtn = `<button class="${noneCls}" data-socket="${socketLevel}" data-skill-id="">None<small>Leave this milestone empty</small></button>`;
+            const noneActive = current == null;
+            const noneCls = noneActive ? "btn-upgrade selected" : "btn-upgrade";
+            const noneBtn = `<button class="${noneCls}" data-socket="${socketLevel}" data-skill-id="" aria-pressed="${noneActive ? "true" : "false"}">None<small>Leave this milestone empty</small></button>`;
 
             return `
                 <div class="levelup-row" style="margin-top:10px">
@@ -738,6 +746,145 @@ const UI = {
                 this.renderArmoryPerks();
             };
         });
+    },
+
+    renderArmoryWeaponMastery() {
+        let profile = Game.profile;
+        if (!profile) {
+            try { profile = ProfileStore.load(); Game.profile = profile; } catch { /* ignore */ }
+        }
+        if (!profile) return;
+
+        const container = document.getElementById("armory-view-weapon-mastery");
+        if (!container) return;
+
+        const metaEnabled = FeatureFlags.isOn("progression.metaMasteryEnabled");
+
+        const ensureWeaponId = () => {
+            if (this._armoryWeaponId) return this._armoryWeaponId;
+            const weaponCls = Game?.p?.gear?.weapon?.cls || null;
+            const cfg = getWeaponConfigByCls(weaponCls);
+            this._armoryWeaponId = cfg?.weaponId || WeaponId.Hammer;
+            return this._armoryWeaponId;
+        };
+        const weaponId = ensureWeaponId();
+
+        const track = profile?.mastery?.weapons?.[weaponId] || { level: 0, xp: 0 };
+        const level = Math.max(0, Math.floor(Number(track.level || 0)));
+        const xp = Math.max(0, Math.floor(Number(track.xp || 0)));
+        const curve = BALANCE?.progression?.mastery?.weaponCurve || { reqBase: 160, reqGrowth: 1.28 };
+        const reqForLevel = (lvl) => Math.floor(Math.max(1, Number(curve.reqBase || 160)) * Math.pow(Math.max(1.01, Number(curve.reqGrowth || 1.28)), Math.max(0, lvl)));
+        const req = reqForLevel(level);
+        const pct = req > 0 ? Math.max(0, Math.min(1, xp / req)) : 0;
+
+        const socketSummaries = [PerkSocketLevel.level2, PerkSocketLevel.level5, PerkSocketLevel.level10].map((socketLevel) => {
+            const opts = getSocketOptions(weaponId, socketLevel);
+            const unlocked = metaEnabled ? opts.filter(o => (o.unlockAtWeaponMasteryLevel || 0) <= level) : opts;
+            const next = metaEnabled ? opts
+                .filter(o => (o.unlockAtWeaponMasteryLevel || 0) > level)
+                .sort((a, b) => (a.unlockAtWeaponMasteryLevel || 0) - (b.unlockAtWeaponMasteryLevel || 0))
+                .slice(0, 3) : [];
+
+            const nextHtml = next.length
+                ? `<div style="color:var(--muted);font-size:12px;margin-top:4px">Next unlocks: ${next.map(n => `${getSkillDef(n.id)?.name || n.id} (lvl ${n.unlockAtWeaponMasteryLevel || 0})`).join(", ")}</div>`
+                : `<div style="color:var(--muted);font-size:12px;margin-top:4px">Next unlocks: —</div>`;
+
+            return `
+                <div class="stat-row" style="border-color:rgba(var(--parchment-rgb),0.14)">
+                    <div style="display:flex;flex-direction:column;gap:2px">
+                        <b style="font-size:12px">${socketLevel.toUpperCase()}</b>
+                        <div style="color:var(--muted);font-size:12px">${unlocked.length}/${opts.length} available${metaEnabled ? "" : " (meta disabled)"}</div>
+                        ${nextHtml}
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        const weaponBtn = (id, label) => {
+            const active = id === weaponId;
+            const cls = active ? "btn primary" : "btn";
+            return `<button class="${cls}" data-weapon-id="${id}">${label}</button>`;
+        };
+
+        container.innerHTML = `
+            <span class="sec-title">Weapon Mastery</span>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+                ${weaponBtn(WeaponId.Hammer, "Hammer")}
+                ${weaponBtn(WeaponId.Staff, "Staff")}
+                ${weaponBtn(WeaponId.Repeater, "Repeater")}
+                ${weaponBtn(WeaponId.Scythe, "Scythe")}
+            </div>
+            <div style="margin-top:10px;color:var(--muted);font-size:12px;line-height:1.5">
+                Weapon mastery gates perk socket options. XP is granted at run end when meta progression is enabled.
+            </div>
+            <div style="margin-top:10px">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+                    <div>Level: <b>${level}</b>${metaEnabled ? "" : " (meta disabled)"}</div>
+                    <div style="color:var(--muted);font-size:12px">XP: ${xp} / ${req}</div>
+                </div>
+                <div class="hud-progress-bar" style="margin-top:8px">
+                    <div class="fill-progress" style="width:${Math.round(pct * 100)}%"></div>
+                </div>
+            </div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+                ${socketSummaries}
+            </div>
+        `;
+
+        container.querySelectorAll("[data-weapon-id]").forEach((btn) => {
+            btn.onclick = (e) => {
+                const id = e.currentTarget.getAttribute("data-weapon-id");
+                if (!id) return;
+                this._armoryWeaponId = id;
+                this.renderArmoryWeaponMastery();
+            };
+        });
+    },
+
+    renderArmoryAttributeMastery() {
+        let profile = Game.profile;
+        if (!profile) {
+            try { profile = ProfileStore.load(); Game.profile = profile; } catch { /* ignore */ }
+        }
+        if (!profile) return;
+
+        const container = document.getElementById("armory-view-attribute-mastery");
+        if (!container) return;
+
+        const metaEnabled = FeatureFlags.isOn("progression.metaMasteryEnabled");
+        const curve = BALANCE?.progression?.mastery?.attributeCurve || { reqBase: 120, reqGrowth: 1.25 };
+        const reqForLevel = (lvl) => Math.floor(Math.max(1, Number(curve.reqBase || 120)) * Math.pow(Math.max(1.01, Number(curve.reqGrowth || 1.25)), Math.max(0, lvl)));
+
+        const attrs = Object.values(AttributeId);
+        const rows = attrs.map((attrId) => {
+            const track = profile?.mastery?.attributes?.[attrId] || { level: 0, xp: 0 };
+            const level = Math.max(0, Math.floor(Number(track.level || 0)));
+            const xp = Math.max(0, Math.floor(Number(track.xp || 0)));
+            const req = reqForLevel(level);
+            const pct = req > 0 ? Math.max(0, Math.min(1, xp / req)) : 0;
+            return `
+                <div class="stat-row" style="border-color:rgba(var(--parchment-rgb),0.14);flex-direction:column;align-items:stretch;gap:8px">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+                        <div style="font-weight:900">${attrId}</div>
+                        <div style="color:var(--muted);font-size:12px">Level <b>${level}</b> • XP ${xp} / ${req}</div>
+                    </div>
+                    <div class="hud-progress-bar">
+                        <div class="fill-progress" style="width:${Math.round(pct * 100)}%"></div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        container.innerHTML = `
+            <span class="sec-title">Attribute Mastery</span>
+            <div style="margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5">
+                Attribute mastery advances at run end when meta progression is enabled. XP is distributed 70% to your weapon’s primary attribute and 30% across picked phials (weighted by stacks).
+                ${metaEnabled ? "" : "<br><b>Meta progression is currently disabled.</b>"}
+            </div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+                ${rows}
+            </div>
+        `;
     },
     identifyItem(item) {
         if (!item || item.identified !== false) return;
@@ -824,7 +971,7 @@ const UI = {
             if (!stacks) continue;
             const skill = SKILLS.find(s => s.id === id);
             if (!skill) continue;
-            if (weaponCls && skill.cls !== weaponCls) continue;
+            if (weaponCls && normalizeWeaponCls(skill.cls) !== normalizeWeaponCls(weaponCls)) continue;
             upgrades.push(stacks > 1 ? `${skill.name} x${stacks}` : skill.name);
         }
 

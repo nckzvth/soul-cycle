@@ -106,9 +106,8 @@ class TownState extends State {
         const imgHammer = Assets.getImage("hammerIcon");
         const imgPistol = Assets.getImage("pistolIcon");
         const imgStaff = Assets.getImage("staffIcon");
-        const imgScythe = Assets.getImage("scytheIcon");
         // Scythe uses a placeholder icon until dedicated art is added.
-        
+        const imgScythe = imgStaff;
         if (!imgHammer || !imgPistol || !imgStaff || !imgScythe) return;
 
         const mkIcon = (img, label, auraColor, auraStroke) => {

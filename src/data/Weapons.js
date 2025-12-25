@@ -27,10 +27,13 @@ export function normalizeWeaponCls(cls) {
   return c;
 }
 
+export function areWeaponClsEquivalent(a, b) {
+  return normalizeWeaponCls(a) === normalizeWeaponCls(b);
+}
+
 export function getWeaponConfigByCls(cls) {
   const key = normalizeWeaponCls(cls);
   const cfg = RAW_WEAPON_CONFIGS[key] || null;
   if (!cfg) return null;
   return validateWeaponConfig(cfg, { context: { kind: "weapon", id: key } }).normalized;
 }
-

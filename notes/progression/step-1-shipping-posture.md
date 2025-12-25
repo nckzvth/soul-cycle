@@ -17,7 +17,7 @@ The target end-state is “new world fully active” with defaults flipped to en
 - `content.useVocabularyValidationStrict=true`
 - `progression.effectSystemEnabled=true`
 - `progression.effectSystemShadow=false` (shadow mode is a migration tool; end-state should not need it)
-- `content.weaponIdRepeaterEnabled=true` **only once it is actually wired** (today it’s reserved/not used; do not flip by default until Step 5 is complete)
+- `content.weaponIdRepeaterEnabled=true`
 
 ## Source of truth (where to look)
 
@@ -57,14 +57,14 @@ Flags are stored as `flag:${key}` with `"1"`/`"0"`.
 ## Current defaults (today)
 
 From `src/core/FeatureFlags.js`:
-- `content.useVocabularyValidationStrict=false`
+- `content.useVocabularyValidationStrict=true`
 - `progression.constitutionEnabled=true`
-- `progression.phialsOnlyLevelUps=false`
-- `progression.preRunWeaponPerks=false`
-- `progression.metaMasteryEnabled=false`
-- `content.weaponIdRepeaterEnabled=false` (reserved)
+- `progression.phialsOnlyLevelUps=true`
+- `progression.preRunWeaponPerks=true`
+- `progression.metaMasteryEnabled=true`
+- `content.weaponIdRepeaterEnabled=true`
 - `progression.effectSystemShadow=false`
-- `progression.effectSystemEnabled=false` (reserved)
+- `progression.effectSystemEnabled=true`
 
 ## Rollout order (recommended)
 

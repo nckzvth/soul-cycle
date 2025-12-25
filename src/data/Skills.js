@@ -1,6 +1,8 @@
 // Weapon upgrade cards (stackable, town-reset). No phial dependencies.
 // `mods` are consumed by StatsSystem today; `dial` is the forward-looking schema for behavior systems.
 
+import { AttributeId } from "./Vocabulary.js";
+
 const C = "common";
 const U = "uncommon";
 const R = "rare";
@@ -492,3 +494,19 @@ export const SKILLS = [
     mods: {},
   },
 ];
+
+const ATTRIBUTE_BY_WEAPON_CLS = Object.freeze({
+  hammer: AttributeId.Might,
+  staff: AttributeId.Will,
+  pistol: AttributeId.Alacrity,
+  repeater: AttributeId.Alacrity,
+  scythe: AttributeId.Constitution,
+});
+
+// Phase 0–2 scaffolding allowed missing tags; strict mode requires tags on all shipped defs.
+for (const sk of SKILLS) {
+  if (sk && typeof sk === "object" && sk.tags == null) {
+    const attributeTag = ATTRIBUTE_BY_WEAPON_CLS[String(sk.cls || "").toLowerCase()] || null;
+    sk.tags = attributeTag ? { attributeTag } : {};
+  }
+}

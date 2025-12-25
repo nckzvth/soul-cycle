@@ -26,7 +26,7 @@ export default class DecalSystem {
     const cfg = BALANCE?.vfx?.decals?.blood;
     return {
       chunkSize: cfg?.chunkSize ?? 512,
-      pixelScale: cfg?.pixelScale ?? 5,
+      pixelScale: cfg?.pixelScale ?? 2,
       fadeHalfLifeSec: cfg?.fadeHalfLifeSec ?? 42,
       maxChunks: cfg?.maxChunks ?? 72,
       pruneAfterSec: cfg?.pruneAfterSec ?? 90,

@@ -362,7 +362,34 @@ export class Enemy {
     }
     
     applySeparation(player, allEnemies, state) {
-        const separationForce = 0.5;
+        const enemyForce = 0.5;
+        const playerForce = 1.0;
+
+        const pushAwayFrom = (ox, oy, combinedR, force) => {
+            let dx = this.x - ox;
+            let dy = this.y - oy;
+            let d2 = dx * dx + dy * dy;
+
+            // If two entities occupy the same point, pick a stable direction so they can separate.
+            if (d2 <= 1e-8) {
+                const frame = state?._frameId ?? 0;
+                const seed = (this.x * 12.9898 + this.y * 78.233 + frame * 0.37) * 0.01;
+                const frac = ((Math.sin(seed) * 43758.5453) % 1 + 1) % 1;
+                const ang = frac * Math.PI * 2;
+                dx = Math.cos(ang);
+                dy = Math.sin(ang);
+                d2 = 1;
+            }
+
+            const d = Math.sqrt(d2);
+            if (d <= 1e-6) return false;
+            const overlap = combinedR - d;
+            if (overlap <= 0) return false;
+            const m = Math.max(0, Math.min(1, Number(force) || 0));
+            this.x += (dx / d) * overlap * m;
+            this.y += (dy / d) * overlap * m;
+            return true;
+        };
 
         const useGrid = !!state && (allEnemies?.length || 0) >= 90;
         if (useGrid) {
@@ -394,13 +421,8 @@ export class Enemy {
                         if (this === other || other.dead) continue;
                         const d2 = dist2(this.x, this.y, other.x, other.y);
                         const combinedRadii = (this.r + other.r) ** 2;
-                        if (d2 < combinedRadii && d2 > 0) {
-                            const d = Math.sqrt(d2);
-                            const overlap = (this.r + other.r) - d;
-                            const pushX = (this.x - other.x) / d * overlap * separationForce;
-                            const pushY = (this.y - other.y) / d * overlap * separationForce;
-                            this.x += pushX;
-                            this.y += pushY;
+                        if (d2 < combinedRadii) {
+                            pushAwayFrom(other.x, other.y, (this.r + other.r), enemyForce);
                         }
                     }
                 }
@@ -410,18 +432,18 @@ export class Enemy {
                 if (this === other || other.dead) return;
                 const d2 = dist2(this.x, this.y, other.x, other.y);
                 const combinedRadii = (this.r + other.r) ** 2;
-                if (d2 < combinedRadii && d2 > 0) {
-                    const d = Math.sqrt(d2);
-                    const overlap = (this.r + other.r) - d;
-                    const pushX = (this.x - other.x) / d * overlap * separationForce;
-                    const pushY = (this.y - other.y) / d * overlap * separationForce;
-                    this.x += pushX;
-                    this.y += pushY;
+                if (d2 < combinedRadii) {
+                    pushAwayFrom(other.x, other.y, (this.r + other.r), enemyForce);
                 }
             });
         }
 
-        // No separation against player: player shouldn't be able to "push" enemies around by walking.
+        // Prevent enemies from stacking directly on top of (or underneath) the player.
+        // We only move the enemy, never the player.
+        if (player && typeof player.x === "number" && typeof player.y === "number") {
+            const pr = Math.max(6, Number(player.r || 12));
+            pushAwayFrom(player.x, player.y, (this.r + pr + 2), playerForce);
+        }
     }
 
     handlePlayerCollision(player, fieldState, dt) {

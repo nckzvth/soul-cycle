@@ -3,7 +3,13 @@
 
 const PROFILE_STORAGE_KEY = "soulcycle:profile";
 const PROFILE_BACKUP_KEY = "soulcycle:profile:backup";
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
+
+function normalizeWeaponCls(cls) {
+  const c = String(cls || "").toLowerCase();
+  if (c === "pistol") return "repeater";
+  return c;
+}
 
 function safeParseJson(text) {
   if (typeof text !== "string" || text.trim() === "") return null;
@@ -91,6 +97,40 @@ function migrateProfile(raw) {
       next.mastery = { ...next.mastery, ...(raw.mastery || {}) };
       next.history = { ...next.history, ...(raw.history || {}) };
     }
+    next.schemaVersion = CURRENT_SCHEMA_VERSION;
+    next.updatedAt = nowIso();
+    return next;
+  }
+
+  // v1 -> v2: migrate legacy pistol cls to repeater in persisted loadout snapshots + run history.
+  if (v === 1) {
+    const next = isProfileObject(raw) ? { ...raw } : createDefaultProfile();
+
+    next.armory = isProfileObject(next.armory) ? { ...next.armory } : {};
+    next.armory.loadout = isProfileObject(next.armory.loadout) ? { ...next.armory.loadout } : {};
+
+    if (next.armory.loadout.weaponCls) {
+      next.armory.loadout.weaponCls = normalizeWeaponCls(next.armory.loadout.weaponCls);
+    }
+
+    const gearBySlot = next.armory.loadout.gearBySlot;
+    if (isProfileObject(gearBySlot) && isProfileObject(gearBySlot.weapon)) {
+      const weaponSnap = { ...gearBySlot.weapon };
+      if (weaponSnap.cls) weaponSnap.cls = normalizeWeaponCls(weaponSnap.cls);
+      next.armory.loadout.gearBySlot = { ...gearBySlot, weapon: weaponSnap };
+    }
+
+    // Normalize recent run snapshots for UI/telemetry consistency.
+    if (next.history && Array.isArray(next.history.recentRuns)) {
+      next.history = { ...next.history };
+      next.history.recentRuns = next.history.recentRuns.map((rr) => {
+        if (!isProfileObject(rr)) return rr;
+        const out = { ...rr };
+        if (out.weaponCls) out.weaponCls = normalizeWeaponCls(out.weaponCls);
+        return out;
+      });
+    }
+
     next.schemaVersion = CURRENT_SCHEMA_VERSION;
     next.updatedAt = nowIso();
     return next;

@@ -3,23 +3,23 @@
 
 const DEFAULTS = Object.freeze({
   // Content validation (Phase 0+)
-  "content.useVocabularyValidationStrict": false,
+  "content.useVocabularyValidationStrict": true,
 
   // Phase 1: allow disabling Constitution rollout quickly if needed.
   "progression.constitutionEnabled": true,
 
   // Phase 2+: progression migration flags (default off; reversible)
-  "progression.phialsOnlyLevelUps": false,
-  "progression.preRunWeaponPerks": false,
-  "progression.metaMasteryEnabled": false,
+  "progression.phialsOnlyLevelUps": true,
+  "progression.preRunWeaponPerks": true,
+  "progression.metaMasteryEnabled": true,
 
   // Phase 2+: weapon identity migration (default off; reversible)
-  // NOTE: Reserved for Step 5 (Repeater rename completion). Not yet wired to any runtime behavior.
-  "content.weaponIdRepeaterEnabled": false,
+  // Stage 5: Repeater is canonical; still accepts legacy "pistol" saves/items via normalization.
+  "content.weaponIdRepeaterEnabled": true,
 
   // Phase 3: shared EffectSystem (shadow mode first)
   "progression.effectSystemShadow": false,
-  "progression.effectSystemEnabled": false,
+  "progression.effectSystemEnabled": true,
 });
 
 function readQueryFlags() {

@@ -1,5 +1,6 @@
 import { SKILLS } from "../data/Skills.js";
 import { BALANCE } from "../data/Balance.js";
+import { normalizeWeaponCls } from "../data/Weapons.js";
 
 const DEFAULT_RARITY_WEIGHTS = { common: 70, uncommon: 23, rare: 6, epic: 1 };
 const RARITIES = ["common", "uncommon", "rare", "epic"];
@@ -45,7 +46,8 @@ function isExcludedByPath(skill, player) {
 }
 
 function isEligible(skill, player, weaponCls) {
-  if (!skill || skill.cls !== weaponCls) return false;
+  if (!skill) return false;
+  if (normalizeWeaponCls(skill.cls) !== normalizeWeaponCls(weaponCls)) return false;
   const stacks = getStacks(player, skill.id);
   if (stacks >= (skill.max_stacks || 1)) return false;
   if (skill.isKeystone && stacks > 0) return false;
@@ -111,4 +113,3 @@ const SkillOfferSystem = {
 };
 
 export default SkillOfferSystem;
-

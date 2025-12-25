@@ -349,6 +349,7 @@ export const BALANCE = {
             damageMult: 1.25,
             range: 75,
             comboResetSec: 1.0,
+            harvestCooldownExtraSec: 0.12,
         },
 
         // Projectile speeds
@@ -602,12 +603,13 @@ export const BALANCE = {
         walkerVariants: {
             // Walkers use damped acceleration; `speed` is accel and `friction` controls turn tightness + terminal velocity.
             // Goal: player can barely outrun in a straight line, but circle-strafing is less safe.
-            thrall: { baseHp: 60, hpPerLevel: 3, speed: 1650, friction: 0.85, radius: 10, knockbackTakenMult: 1.0 },
-            walker: { baseHp: 200, hpPerLevel: 5, speed: 1625, friction: 0.85, radius: 12, knockbackTakenMult: 1.0 },
-            brute: { baseHp: 420, hpPerLevel: 10, speed: 1600, friction: 0.85, radius: 14, knockbackTakenMult: 0.35 },
-            cursed: { baseHp: 260, hpPerLevel: 8, speed: 1625, friction: 0.85, radius: 12, knockbackTakenMult: 0.75 },
+            // NOTE: Keep baseline speeds conservative; enemy stacking/collision and fairness depend on this.
+            thrall: { baseHp: 60, hpPerLevel: 3, speed: 900, friction: 0.92, radius: 10, knockbackTakenMult: 1.0 },
+            walker: { baseHp: 200, hpPerLevel: 5, speed: 800, friction: 0.92, radius: 12, knockbackTakenMult: 1.0 },
+            brute: { baseHp: 420, hpPerLevel: 10, speed: 720, friction: 0.92, radius: 14, knockbackTakenMult: 0.35 },
+            cursed: { baseHp: 260, hpPerLevel: 8, speed: 780, friction: 0.92, radius: 12, knockbackTakenMult: 0.75 },
         },
-        charger: { baseHp: 50, hpPerLevel: 5, speed: 2000, dashSpeed: 800 },
+        charger: { baseHp: 50, hpPerLevel: 5, speed: 900, dashSpeed: 800 },
         spitter: { baseHp: 150, hpPerLevel: 5, speed: 500, retreatDistance: 300 },
         anchor:  { baseHp: 500, hpPerLevel: 10, speed: 40, auraRadius: 150 },
         friction: 0.92,
