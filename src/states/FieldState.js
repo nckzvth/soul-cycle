@@ -24,6 +24,7 @@ import { TILED_BACKGROUNDS } from "../data/Art.js";
 import TiledBackground from "../render/TiledBackground.js";
 import { resolveColor } from "../render/Color.js";
 import { color as col } from "../data/ColorTuning.js";
+import { StatusId } from "../data/Vocabulary.js";
 
 function smooth01(dt, smoothTime) {
     const st = Math.max(0.0001, smoothTime);
@@ -88,6 +89,7 @@ class FieldState extends State {
         this.drops = [];
         this.souls = [];
         this.pickups = [];
+        this.minions = [];
         this.chains = [];
         this.dungeonPortal = null;
         this._frameId = 0;
@@ -247,6 +249,7 @@ class FieldState extends State {
             if (this.dungeonDecisionTimer <= 0) {
                 this.dungeonPortal = null;
                 if (this.fieldCleared) {
+                    this.game?.endRun?.("fieldComplete", this);
                     this.game.stateManager.switchState(new TownState(this.game));
                     return;
                 }
@@ -367,6 +370,10 @@ class FieldState extends State {
             }
             return true;
         });
+
+        // Minions (Scythe golems etc.)
+        if (!Array.isArray(this.minions)) this.minions = [];
+        this.minions = this.minions.filter(m => m && !m.dead && (m.update?.(dt, this) !== false));
 
         while (!this.fieldBoss && this.elitesToSpawn > 0 && this.enemies.length < hardCap) {
             this.spawnEnemy(null, true);
@@ -844,6 +851,7 @@ class FieldState extends State {
         this.souls.forEach(o => o.draw(ctx, s));
         this.corpses.forEach(e => { ctx.save(); e.draw(ctx, s); ctx.restore(); });
         this.enemies.forEach(e => { ctx.save(); e.draw(ctx, s); ctx.restore(); });
+        this.minions?.forEach?.(m => { if (m?.draw) { ctx.save(); m.draw(ctx, s); ctx.restore(); } });
 
         // Objectives (shrines/chests)
         this.objectives.forEach(o => {
@@ -922,6 +930,10 @@ class FieldState extends State {
     }
 
     onEnemyDeath(enemy) {
+        // Scythe: marked enemy deaths capture souls into golems (or heal them at cap).
+        if (enemy?.statuses?.has?.(StatusId.Marked)) {
+            try { this.p?.onScytheMarkedDeath?.(this, enemy); } catch { /* ignore */ }
+        }
         this.p.registerKill(enemy);
         this.killsThisFrame++;
 

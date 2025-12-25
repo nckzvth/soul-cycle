@@ -16,7 +16,7 @@ import InteractableSprite from "../entities/InteractableSprite.js";
 const CAMPFIRE_POS = Object.freeze({ x: 400, y: 180 });
 const WEAPON_ICON_ARC = Object.freeze({
     radius: 72,
-    anglesDeg: Object.freeze([-150, -90, -30]), // left, top, right (above campfire)
+    anglesDeg: Object.freeze([-165, -120, -60, -15]), // left -> right (above campfire)
 });
 
 class TownState extends State {
@@ -60,8 +60,8 @@ class TownState extends State {
         // Run progression resets on town return (roguelike run state).
         p.lvl = 1;
         p.xp = 0;
-        p.attr = { might: 0, alacrity: 0, will: 0, pts: 0 };
-        p.totalAttr = { might: 0, alacrity: 0, will: 0 };
+        p.attr = { might: 0, alacrity: 0, will: 0, constitution: 0, pts: 0 };
+        p.totalAttr = { might: 0, alacrity: 0, will: 0, constitution: 0 };
         p.perks = { might: false, alacrity: false, will: false };
         p.timers = { might: 0, alacrity: 0, will: 0 };
 
@@ -106,7 +106,10 @@ class TownState extends State {
         const imgHammer = Assets.getImage("hammerIcon");
         const imgPistol = Assets.getImage("pistolIcon");
         const imgStaff = Assets.getImage("staffIcon");
-        if (!imgHammer || !imgPistol || !imgStaff) return;
+        const imgScythe = Assets.getImage("scytheIcon");
+        // Scythe uses a placeholder icon until dedicated art is added.
+        
+        if (!imgHammer || !imgPistol || !imgStaff || !imgScythe) return;
 
         const mkIcon = (img, label, auraColor, auraStroke) => {
             const sheet = new SpriteSheet(img, {
@@ -134,11 +137,12 @@ class TownState extends State {
             });
         };
 
-        // Order matches arc angles: Hammer (left), Staff (top), Pistol (right).
+        // Order matches arc angles: Hammer, Staff, Repeater (legacy pistol), Scythe.
         this.weaponIcons = [
             mkIcon(imgHammer, "hammer", c("town.weaponIconAura.hammer") || c("fx.uiAccent", 0.18) || "ember", c("town.weaponIconAura.hammerStroke") || c("fx.uiAccent", 0.30) || "ember"),
             mkIcon(imgStaff, "staff", c("town.weaponIconAura.staff") || c("player.support", 0.16) || "p3", c("town.weaponIconAura.staffStroke") || c("player.support", 0.28) || "p3"),
-            mkIcon(imgPistol, "pistol", c("town.weaponIconAura.pistol") || c("player.core", 0.16) || "p2", c("town.weaponIconAura.pistolStroke") || c("player.core", 0.28) || "p2"),
+            mkIcon(imgPistol, "repeater", c("town.weaponIconAura.pistol") || c("player.core", 0.16) || "p2", c("town.weaponIconAura.pistolStroke") || c("player.core", 0.28) || "p2"),
+            mkIcon(imgScythe, "scythe", c("player.guard", 0.16) || "p4", c("player.guard", 0.28) || "p4"),
         ];
 
         const cx = CAMPFIRE_POS.x;
@@ -195,7 +199,9 @@ class TownState extends State {
             const icons = this.weaponIcons || [];
             for (const w of icons) {
                 if (w.tryInteract(p, true)) {
-                    if (p.gear?.weapon?.cls !== w.label) {
+                    const current = p.gear?.weapon?.cls;
+                    const normCurrent = current === "pistol" ? "repeater" : current;
+                    if (normCurrent !== w.label) {
                         this.game?.equipStartingWeapon?.(w.label);
                         UI.toast(`Equipped ${String(w.label).toUpperCase()}`);
                     }
@@ -284,7 +290,9 @@ class TownState extends State {
             const targetHeight = (p.r * 2) * 1.9;
             const fh = wpn.sheet?.frameHeight || 1;
             wpn.scale = Math.max(0.65, targetHeight / fh);
-            const equipped = p.gear?.weapon?.cls === wpn.label;
+            const current = p.gear?.weapon?.cls;
+            const normCurrent = current === "pistol" ? "repeater" : current;
+            const equipped = normCurrent === wpn.label;
             wpn.prompt = equipped ? "Equipped" : `Equip ${String(wpn.label).charAt(0).toUpperCase() + String(wpn.label).slice(1)} [F]`;
             wpn.draw(ctx, s, { showPrompt: false, drawSprite: true });
         }

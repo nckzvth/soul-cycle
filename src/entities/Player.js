@@ -17,6 +17,74 @@ import Assets from "../core/Assets.js";
 import SpriteSheet from "../render/SpriteSheet.js";
 import Animation from "../render/Animation.js";
 import { PLAYER_SPRITE_CONFIG } from "../data/PlayerSprites.js";
+import EffectSystem from "../systems/EffectSystem.js";
+import { FeatureFlags } from "../core/FeatureFlags.js";
+import { buildActivePhialEffectSources } from "../data/PhialEffectDefs.js";
+import { ProfileStore } from "../core/ProfileStore.js";
+import { getWeaponConfigByCls } from "../data/Weapons.js";
+import { LevelToSocketLevel, getUnlockedSkillIdsForSocket } from "../data/PerkSockets.js";
+import { SKILLS } from "../data/Skills.js";
+import { StatusId } from "../data/Vocabulary.js";
+import { GolemMinion } from "./Minions.js";
+
+let _skillById = null;
+function getSkillDefById(id) {
+    if (!_skillById) {
+        _skillById = new Map();
+        for (const sk of SKILLS) _skillById.set(sk.id, sk);
+    }
+    return _skillById.get(id) || null;
+}
+
+function grantSkillOnce(player, skillId) {
+    if (!player?.skills || !skillId) return false;
+    if ((player.skills.get(skillId) || 0) > 0) return false;
+    player.skills.set(skillId, 1);
+
+    const picked = getSkillDefById(skillId);
+    if (picked) {
+        player.skillMeta = player.skillMeta || { exclusive: new Map(), flags: new Set() };
+        if (picked.exclusiveGroup && picked.exclusiveKey) {
+            player.skillMeta.exclusive.set(picked.exclusiveGroup, picked.exclusiveKey);
+            player.skillMeta.flags.add(`${picked.exclusiveGroup}:${picked.exclusiveKey}`);
+        }
+        if (Array.isArray(picked.flagAdds)) {
+            picked.flagAdds.forEach(f => player.skillMeta.flags.add(f));
+        }
+    }
+    return true;
+}
+
+function applyArmoryMilestonePerkIfAny(player, level) {
+    if (!FeatureFlags.isOn("progression.preRunWeaponPerks")) return;
+    const socketKey = LevelToSocketLevel[level];
+    if (!socketKey) return;
+
+    // Ensure profile is present.
+    if (!Game.profile) {
+        try { Game.profile = ProfileStore.load(); } catch { /* ignore */ }
+    }
+    const profile = Game.profile;
+
+    const weaponCls = player?.gear?.weapon?.cls || null;
+    const cfg = getWeaponConfigByCls(weaponCls);
+    const weaponId = cfg?.weaponId || null;
+    if (!weaponId) return;
+
+    const selected = profile?.armory?.perkSocketsByWeapon?.[weaponId]?.[socketKey] || null;
+    if (!selected) return;
+
+    const metaEnabled = FeatureFlags.isOn("progression.metaMasteryEnabled");
+    const weaponMasteryLevel = metaEnabled ? (profile?.mastery?.weapons?.[weaponId]?.level || 0) : 0;
+    const eligible = getUnlockedSkillIdsForSocket(weaponId, socketKey, { weaponMasteryLevel, metaEnabled });
+    if (!eligible.includes(selected)) return;
+
+    const granted = grantSkillOnce(player, selected);
+    if (granted) {
+        const sk = getSkillDefById(selected);
+        UI.toast(sk?.name ? `PERK ONLINE: ${sk.name}` : "PERK ONLINE");
+    }
+}
 
 export default class PlayerObj {
     constructor() {
@@ -115,12 +183,13 @@ export default class PlayerObj {
         this.weaponState = {
             pistol: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
             staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
-            hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 }
+            hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 },
+            scythe: { comboStep: 0, comboTimer: 0 }
         };
         
         // Meta
-        this.attr = { might: 0, alacrity: 0, will: 0, pts: 0 };
-        this.totalAttr = { might: 0, alacrity: 0, will: 0 };
+        this.attr = { might: 0, alacrity: 0, will: 0, constitution: 0, pts: 0 };
+        this.totalAttr = { might: 0, alacrity: 0, will: 0, constitution: 0 };
         this.perks = { might: false, alacrity: false, will: false };
         this.timers = { might: 0, alacrity: 0, will: 0 };
         this.activeOrbitalWisps = 0;
@@ -186,7 +255,8 @@ export default class PlayerObj {
         this.weaponState = {
             pistol: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
             staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
-            hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 }
+            hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 },
+            scythe: { comboStep: 0, comboTimer: 0 }
         };
     }
 
@@ -211,6 +281,16 @@ export default class PlayerObj {
         if (allowCombat) {
             this.updatePerks(dt, scene);
             this.updatePhials(dt, scene);
+        }
+
+        // Phase 3: EffectSystem shadow-mode hook (no gameplay change unless enabled).
+        if (allowCombat && FeatureFlags.isOn("progression.effectSystemShadow")) {
+            try {
+                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
+                EffectSystem.trigger(EffectSystem.TRIGGERS.tick, { player: this, state: scene, dt, particles: ParticleSystem }, { shadow: true });
+            } catch {
+                // Never allow effect validation to crash gameplay.
+            }
         }
         
         // Update Phial UI Timers
@@ -696,6 +776,10 @@ export default class PlayerObj {
         const w = this.gear.weapon;
         if (!w) return;
 
+        // Scythe combo state (swipe, swipe, harvest).
+        const scytheState = this.weaponState?.scythe;
+        if (scytheState && scytheState.comboTimer > 0) scytheState.comboTimer = Math.max(0, scytheState.comboTimer - dt);
+
         // --- Pistol windup/cyclone base kit ---
         const pistolState = this.weaponState?.pistol;
         const usingPistol = w.cls === "pistol";
@@ -724,6 +808,97 @@ export default class PlayerObj {
                 pistolState.vortexBudget = 0;
                 pistolState.vortexBudgetTimer = 0;
             }
+        }
+
+        // Scythe: swipe-swipe-harvest (mark) melee combo.
+        if (w.cls === "scythe") {
+            const cfg = BALANCE.player.scythe || {};
+            const skillsCfg = BALANCE.skills?.scythe || {};
+
+            const attackSpeed = this.stats.attackSpeed || (1 + (this.stats.spd || 0));
+            const cdMult = Math.max(0.15, 1 + (this.stats.scytheCooldownMult || 0));
+            const cooldown = (cfg.cooldown ?? 0.34) / Math.max(0.05, attackSpeed) * cdMult;
+
+            if (mouse.down && this.atkCd <= 0 && this.dashTimer <= 0) {
+                // Determine aim vector.
+                let worldX, worldY;
+                if ("bounds" in scene) {
+                    worldX = mouse.x;
+                    worldY = mouse.y;
+                } else {
+                    const wp = Game.screenToWorld(mouse.x, mouse.y);
+                    worldX = wp.x;
+                    worldY = wp.y;
+                }
+
+                let dx = worldX - this.x;
+                let dy = worldY - this.y;
+                const len = Math.hypot(dx, dy) || 1;
+                dx /= len;
+                dy /= len;
+
+                const resetSec = cfg.comboResetSec ?? 1.0;
+                if (!scytheState) this.weaponState.scythe = { comboStep: 0, comboTimer: 0 };
+                const st = this.weaponState.scythe;
+                if ((st.comboTimer || 0) <= 0) st.comboStep = 0;
+                const step = st.comboStep || 0; // 0,1 = swipe; 2 = harvest
+                st.comboStep = (step + 1) % 3;
+                st.comboTimer = resetSec;
+
+                const range = (cfg.range ?? 75) * (1 + (this.stats.scytheRangeMult || 0));
+                const coneDot = step === 2 ? 0.25 : 0.05; // harvest narrower
+                const spec = step === 2 ? DamageSpecs.scytheHarvest() : DamageSpecs.scytheSwipe();
+                const coeffMult = 1 + (this.stats.scytheDamageCoeffMult || 0);
+                const spec2 = coeffMult !== 1 ? { ...spec, coeff: spec.coeff * coeffMult } : spec;
+                const snapshot = DamageSystem.snapshotOutgoing(this, spec2);
+
+                const markDuration = (skillsCfg.markDurationSec ?? 6.0) * (1 + (this.stats.scytheMarkDurationMult || 0));
+                const vfx = skillsCfg.vfx || {};
+
+                scene.enemies?.forEach((enemy) => {
+                    if (!enemy || enemy.dead) return;
+                    const ex = enemy.x - this.x;
+                    const ey = enemy.y - this.y;
+                    const d2 = ex * ex + ey * ey;
+                    if (d2 > range * range) return;
+                    const d = Math.sqrt(d2) || 1;
+                    const ndx = ex / d;
+                    const ndy = ey / d;
+                    const dot = ndx * dx + ndy * dy;
+                    if (dot < coneDot) return;
+
+                    DamageSystem.dealDamage(this, enemy, spec2, { state: scene, snapshot, particles: ParticleSystem, triggerOnHit: true });
+
+                    if (step === 2) {
+                        StatusSystem.applyStatus(enemy, StatusId.Marked, {
+                            source: this,
+                            stacks: 1,
+                            duration: markDuration,
+                            tickInterval: 9999,
+                            spec: null,
+                            snapshotPolicy: "snapshot",
+                            triggerOnHit: false,
+                            stackMode: "max",
+                            vfx: {
+                                interval: 0.35,
+                                color: vfx.markColor || { token: "p4", alpha: 0.9 },
+                                count: 1,
+                                size: 2.6,
+                                life: 0.22,
+                                applyText: "MARKED",
+                                applyBurstCount: 3,
+                                applyBurstSpeed: 120,
+                            },
+                        });
+                    }
+                });
+
+                this.atkCd = cooldown;
+                if (this._sprite) this._sprite.attackTimer = Math.max(this._sprite.attackTimer || 0, 0.22);
+                this.onAttack(scene, { weaponCls: "scythe" });
+            }
+
+            return;
         }
 
         // Hammer: spiral projectile
@@ -901,9 +1076,24 @@ export default class PlayerObj {
         while (this.xp >= req) {
             this.xp -= req;
             this.lvl++;
-            this.levelPicks.attribute++;
-            this.levelPicks.weapon++;
-            this.levelPicks.phial++;
+            const phialsOnly = FeatureFlags.isOn("progression.phialsOnlyLevelUps");
+            const preRunPerks = FeatureFlags.isOn("progression.preRunWeaponPerks");
+            if (phialsOnly) {
+                this.levelPicks.phial++;
+            } else {
+                this.levelPicks.attribute++;
+                if (!preRunPerks) this.levelPicks.weapon++;
+                this.levelPicks.phial++;
+            }
+
+            // Phase 5: pre-run perks activate automatically at milestone levels.
+            if (preRunPerks) {
+                try {
+                    applyArmoryMilestonePerkIfAny(this, this.lvl);
+                } catch {
+                    // Never allow perk activation to break leveling.
+                }
+            }
             UI.toast("LEVEL UP!");
             const prevHp = this.hp;
             this.recalc();
@@ -928,6 +1118,11 @@ export default class PlayerObj {
     }
 
     onDeath() {
+        try {
+            Game?.endRun?.("death", Game.stateManager?.currentState);
+        } catch {
+            // ignore
+        }
         document.getElementById('screen_death').classList.add('active');
         document.getElementById('deathSouls').innerText = this.souls;
         document.getElementById('deathLvl').innerText = this.lvl;
@@ -1069,9 +1264,26 @@ export default class PlayerObj {
             this.salvoProcCd = Math.max(0, cfg.procIcdSec || 8.0);
             this.salvoGlow = 2.0; // Strong glow for proc moment
         }
+
+        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
+            try {
+                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
+                EffectSystem.trigger(EffectSystem.TRIGGERS.gaugeFill, { player: this, state }, { shadow: true });
+            } catch {
+                // ignore
+            }
+        }
     }
 
     onHit(target, state, hit) {
+        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
+            try {
+                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
+                EffectSystem.trigger(EffectSystem.TRIGGERS.hit, { player: this, state, target, hit }, { shadow: true });
+            } catch {
+                // ignore
+            }
+        }
         // --- Weapon upgrade hooks (keep phials independent) ---
         const weapon = this.gear.weapon;
         if (weapon?.cls === "pistol") {
@@ -1230,6 +1442,14 @@ export default class PlayerObj {
     }
 
     onDash(state) {
+        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
+            try {
+                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
+                EffectSystem.trigger(EffectSystem.TRIGGERS.dash, { player: this, state }, { shadow: true });
+            } catch {
+                // ignore
+            }
+        }
         const blindStacks = this.getPhialStacks(Phials.blindingStep.id);
         if (blindStacks > 0) {
             const blindDuration = Phials.blindingStep.baseBlindDuration + Math.floor((blindStacks - 1) / 2) * Phials.blindingStep.blindDurationPerTwoStacks;
@@ -1264,6 +1484,14 @@ export default class PlayerObj {
     }
 
     onDamageTaken(source) {
+        if (FeatureFlags.isOn("progression.effectSystemShadow")) {
+            try {
+                EffectSystem.setActiveSources(buildActivePhialEffectSources(this));
+                EffectSystem.trigger(EffectSystem.TRIGGERS.damageTaken, { player: this, state: Game.stateManager?.currentState, source }, { shadow: true });
+            } catch {
+                // ignore
+            }
+        }
         const aegisStacks = this.getPhialStacks(Phials.witchglassAegis.id);
         if (aegisStacks > 0 && this.aegisCooldownTimer <= 0) {
             this.aegisCooldownTimer = Phials.witchglassAegis.internalCooldown;
@@ -1277,6 +1505,40 @@ export default class PlayerObj {
             const snapshot = DamageSystem.snapshotOutgoing(this, spec);
             Game.stateManager.currentState.shots.push(new AegisPulse(Game.stateManager.currentState, this, this.x, this.y, radius, aegisStacks, spec, snapshot));
         }
+    }
+
+    // --- SCYTHE (Phase 7) ---
+    onScytheMarkedDeath(state, enemy) {
+        const w = this.gear?.weapon;
+        if (!w || w.cls !== "scythe") return;
+        if (!state) return;
+
+        state.minions = Array.isArray(state.minions) ? state.minions : [];
+        const alive = state.minions.filter(m => m && m.isMinion && !m.dead);
+
+        const cfg = BALANCE.skills?.scythe || {};
+        const cap = Math.max(0, Math.floor((cfg.golemCapBase ?? 3) + (this.stats.scytheGolemCapAdd || 0)));
+
+        if (alive.length < cap) {
+            const aspect = (alive.length % 2 === 0) ? "Stone" : "Bone";
+            const golem = new GolemMinion(state, this, enemy?.x ?? this.x, enemy?.y ?? this.y, { aspect });
+
+            // Scale baseline HP modestly with Constitution to reward investment.
+            const con = this.totalAttr?.constitution || 0;
+            const bonus = Math.max(0, Math.floor(con * 0.6));
+            golem.hpMax = Math.max(10, golem.hpMax + bonus + (this.stats.scytheGolemHpAdd || 0));
+            golem.hp = golem.hpMax;
+
+            state.minions.push(golem);
+            ParticleSystem.emit(golem.x, golem.y, c("player.guard", 0.9) || { token: "p4", alpha: 0.9 }, 10, 140, 2.8, 0.3);
+            return;
+        }
+
+        const healPct = Math.max(0, (cfg.golemHealPctOverflow ?? 0.18) + (this.stats.scytheGolemHealPctAdd || 0));
+        for (const m of alive) {
+            if (m && typeof m.healPctMax === "function") m.healPctMax(healPct);
+        }
+        ParticleSystem.emit(enemy?.x ?? this.x, enemy?.y ?? this.y, c("player.guard", 0.75) || { token: "p4", alpha: 0.75 }, 8, 90, 2.4, 0.25);
     }
 
     draw(ctx, s) {

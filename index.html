@@ -681,16 +681,46 @@
 <div class="modal" id="modal_inv">
     <div class="modal-head"><span>OUTFITTER</span><button class="btn" id="btn-close-inv">X</button></div>
     <div class="modal-body">
-        <div class="col">
-            <span class="sec-title">Attributes</span>
-            <div id="attr-container-inv"></div>
-            <br><span class="sec-title">Details</span><div id="statText-inv" style="font-size:10px;line-height:1.5;color:var(--muted)"></div>
-            <div id="debug-phials-inv">
-                <span class="sec-title">Debug: Add Phials</span>
+        <div class="col" style="grid-column: 1 / -1; padding-bottom: 0">
+            <div id="armory-tabs" style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn" id="btn-armory-tab-loadout">Loadout</button>
+                <button class="btn" id="btn-armory-tab-perks">Weapon Perks</button>
+                <button class="btn" id="btn-armory-tab-weapon-mastery">Weapon Mastery</button>
+                <button class="btn" id="btn-armory-tab-attribute-mastery">Attribute Mastery</button>
+                <button class="btn" id="btn-armory-tab-workshop" disabled>Workshop (Later)</button>
             </div>
         </div>
-        <div class="col" style="background:rgba(var(--ink-rgb),0.3)"><span class="sec-title">Equipped</span><div id="equipList"></div></div>
-        <div class="col"><span class="sec-title">Stash</span><div class="inv-list" id="invList"></div></div>
+
+        <div id="armory-view-loadout" style="display:contents">
+            <div class="col">
+                <span class="sec-title">Attributes</span>
+                <div id="attr-container-inv"></div>
+                <br><span class="sec-title">Details</span><div id="statText-inv" style="font-size:10px;line-height:1.5;color:var(--muted)"></div>
+                <div id="debug-phials-inv">
+                    <span class="sec-title">Debug: Add Phials</span>
+                </div>
+            </div>
+            <div class="col" style="background:rgba(var(--ink-rgb),0.3)"><span class="sec-title">Equipped</span><div id="equipList"></div></div>
+            <div class="col"><span class="sec-title">Stash</span><div class="inv-list" id="invList"></div></div>
+        </div>
+
+        <div id="armory-view-perks" class="col" style="grid-column: 1 / -1; display:none">
+            <div id="armory-perks"></div>
+        </div>
+
+        <div id="armory-view-weapon-mastery" class="col" style="grid-column: 1 / -1; display:none">
+            <span class="sec-title">Weapon Mastery</span>
+            <div style="color:var(--muted);font-size:12px;line-height:1.5">
+                Coming in Phase 6 (meta progression). This panel is scaffolded now so activation does not require UI refactors.
+            </div>
+        </div>
+
+        <div id="armory-view-attribute-mastery" class="col" style="grid-column: 1 / -1; display:none">
+            <span class="sec-title">Attribute Mastery</span>
+            <div style="color:var(--muted);font-size:12px;line-height:1.5">
+                Coming in Phase 6 (meta progression). This panel is scaffolded now so activation does not require UI refactors.
+            </div>
+        </div>
     </div>
 </div>
 

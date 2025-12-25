@@ -1,6 +1,7 @@
 import { clamp } from "../core/Utils.js";
 import { BALANCE } from "../data/Balance.js";
 import { SKILLS } from "../data/Skills.js";
+import { FeatureFlags } from "../core/FeatureFlags.js";
 
 let SKILL_BY_ID = null;
 function getSkillById() {
@@ -108,13 +109,20 @@ const StatsSystem = {
    */
   recalcPlayer(player) {
     const skillById = getSkillById();
-    const t = { might: player.attr.might, alacrity: player.attr.alacrity, will: player.attr.will };
+    const constitutionEnabled = FeatureFlags.isOn("progression.constitutionEnabled");
+    const t = {
+      might: player.attr.might,
+      alacrity: player.attr.alacrity,
+      will: player.attr.will,
+      constitution: constitutionEnabled ? (player.attr.constitution || 0) : 0,
+    };
     for (const slot in player.gear) {
       const item = player.gear[slot];
       if (!item) continue;
       if (item.stats?.might) t.might += item.stats.might;
       if (item.stats?.alacrity) t.alacrity += item.stats.alacrity;
       if (item.stats?.will) t.will += item.stats.will;
+      if (constitutionEnabled && item.stats?.constitution) t.constitution += item.stats.constitution;
     }
     player.totalAttr = t;
 
@@ -123,6 +131,7 @@ const StatsSystem = {
 
     // Base scaling from level/attributes (legacy + canonical).
     s.hp = bp.baseHp + player.lvl * bp.hpPerLevel;
+    s.hp += t.constitution * (bp.hpPerConstitution ?? 0);
     s.dmg = bp.baseDmg;
     s.power = bp.baseDmg;
 
@@ -142,6 +151,9 @@ const StatsSystem = {
       might: t.might >= (bp.perkThreshold2 ?? (bp.perkThreshold * 2)) ? 2 : (t.might >= bp.perkThreshold ? 1 : 0),
       alacrity: t.alacrity >= (bp.perkThreshold2 ?? (bp.perkThreshold * 2)) ? 2 : (t.alacrity >= bp.perkThreshold ? 1 : 0),
       will: t.will >= (bp.perkThreshold2 ?? (bp.perkThreshold * 2)) ? 2 : (t.will >= bp.perkThreshold ? 1 : 0),
+      constitution: constitutionEnabled
+        ? (t.constitution >= (bp.perkThreshold2 ?? (bp.perkThreshold * 2)) ? 2 : (t.constitution >= bp.perkThreshold ? 1 : 0))
+        : 0,
     };
     player.perkLevel = perkLevel;
     player.perks = player.perks || { might: false, alacrity: false, will: false };
@@ -185,6 +197,22 @@ const StatsSystem = {
 
     s.critChance = clamp(s.critChance, 0, 1);
     s.critMult = Math.max(1.0, toNumber(s.critMult) || 1.5);
+
+    // --- Phase 6: meta mastery passive bonuses (flagged) ---
+    if (FeatureFlags.isOn("progression.metaMasteryEnabled") && player?.metaMasteryLevels) {
+      const lv = player.metaMasteryLevels;
+      const mightLv = toNumber(lv.Might);
+      const willLv = toNumber(lv.Will);
+      const alacLv = toNumber(lv.Alacrity);
+      const conLv = toNumber(lv.Constitution);
+
+      // Keep these small; they are intended as gentle synergies, not primary scaling.
+      s.powerMult *= (1 + mightLv * 0.01);
+      s.soulGain *= (1 + willLv * 0.015);
+      s.attackSpeed *= (1 + alacLv * 0.005);
+      s.moveSpeedMult *= (1 + alacLv * 0.003);
+      s.hp += conLv * 3;
+    }
 
     // --- Soft caps / guardrails (v1 pacing) ---
     const softCaps = BALANCE?.progression?.softCaps || {};

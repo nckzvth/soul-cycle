@@ -11,6 +11,10 @@ import DecalSystem from "../systems/DecalSystem.js";
 import Assets from "./Assets.js";
 import { IMAGE_ASSETS } from "../data/Art.js";
 import { color as c } from "../data/ColorTuning.js";
+import { ProfileStore } from "./ProfileStore.js";
+import { FeatureFlags } from "./FeatureFlags.js";
+import EffectSystem from "../systems/EffectSystem.js";
+import { computeRunResult, applyMetaProgression, appendRunHistory } from "../systems/MasterySystem.js";
 
 const Game = {
     p: null,
@@ -23,12 +27,20 @@ const Game = {
     ctx: null,
     debug: false,
     decals: null,
+    profile: null,
 
     init() {
         this.canvas = document.getElementById("game");
         this.ctx = this.canvas.getContext("2d");
         UI.init(this);
         Assets.registerAll(IMAGE_ASSETS);
+
+        // Profile: load once at boot. Phase 2 does not auto-apply gameplay-affecting data.
+        try {
+            this.profile = ProfileStore.load();
+        } catch {
+            this.profile = null;
+        }
 
         // Settings
         try {
@@ -37,6 +49,16 @@ const Game = {
             if (Number.isFinite(z)) this.cameraZoom = Math.max(0.75, Math.min(2.5, z));
         } catch {
             // Ignore storage errors
+        }
+
+        // Prefer profile-stored zoom if present (non-gameplay setting).
+        try {
+            const pz = this.profile?.settings?.cameraZoom;
+            if (typeof pz === "number" && Number.isFinite(pz)) {
+                this.cameraZoom = Math.max(0.75, Math.min(2.5, pz));
+            }
+        } catch {
+            // Ignore profile errors
         }
 
         window.addEventListener('keydown', (e) => {
@@ -50,6 +72,19 @@ const Game = {
         });
     },
 
+    syncMetaToPlayer() {
+        const p = this.p;
+        const prof = this.profile;
+        if (!p || !prof?.mastery?.attributes) return;
+        const attrs = prof.mastery.attributes;
+        p.metaMasteryLevels = {
+            Might: Number(attrs.Might?.level || 0),
+            Will: Number(attrs.Will?.level || 0),
+            Alacrity: Number(attrs.Alacrity?.level || 0),
+            Constitution: Number(attrs.Constitution?.level || 0),
+        };
+    },
+
     setCameraZoom(z) {
         const next = Math.max(0.75, Math.min(2.5, Number(z) || 1));
         this.cameraZoom = next;
@@ -57,6 +92,13 @@ const Game = {
             window.localStorage?.setItem?.("cameraZoom", String(next));
         } catch {
             // Ignore storage errors
+        }
+        // Mirror into profile for future unified saves.
+        try {
+            if (!this.profile) this.profile = ProfileStore.load();
+            if (this.profile?.settings) this.profile.settings.cameraZoom = next;
+        } catch {
+            // Ignore profile errors
         }
     },
 
@@ -73,9 +115,49 @@ const Game = {
     beginRunTracking() {
         const p = this.p;
         if (!p) return;
-        p.runId = (p.runId || 0) + 1;
-        p.runLoot = [];
-        p.runStart = { souls: p.souls, xp: p.xp };
+        // Treat Field->Dungeon as the same run; only increment when starting a fresh run.
+        const fresh = !p.runActive;
+        if (fresh) {
+            p.runId = (p.runId || 0) + 1;
+            p.runLoot = [];
+            p.runStart = { souls: p.souls, xp: p.xp };
+            p.runEnded = false;
+        }
+        p.runActive = true;
+    },
+    endRun(endReason, state) {
+        const p = this.p;
+        if (!p) return null;
+        if (!p.runActive || p.runEnded) return null;
+        p.runEnded = true;
+        p.runActive = false;
+
+        const st = state || this.stateManager?.currentState;
+        const runResult = computeRunResult(this, { endReason, state: st });
+
+        // Emit runEnd to EffectSystem for future mastery hooks (no-op unless enabled elsewhere).
+        try {
+            EffectSystem.trigger(EffectSystem.TRIGGERS.runEnd, { game: this, player: p, state: st, runResult }, { shadow: false });
+        } catch {
+            // ignore
+        }
+
+        // Always record minimal run history (tuning/telemetry). Mastery XP only applies when enabled.
+        try {
+            const profile = this.profile || ProfileStore.load();
+            if (FeatureFlags.isOn("progression.metaMasteryEnabled")) {
+                applyMetaProgression(profile, runResult);
+            } else {
+                appendRunHistory(profile, runResult, { masteryXp: null });
+            }
+            ProfileStore.save(profile, { backupPrevious: true });
+            this.profile = profile;
+            this.syncMetaToPlayer();
+        } catch (e) {
+            console.warn("Run end persistence failed:", e);
+        }
+
+        return runResult;
     },
     forfeitRunRewards() {
         const p = this.p;
@@ -94,8 +176,8 @@ const Game = {
 
         p.lvl = 1;
         p.xp = 0;
-        p.attr = { might: 0, alacrity: 0, will: 0, pts: 0 };
-        p.totalAttr = { might: 0, alacrity: 0, will: 0 };
+        p.attr = { might: 0, alacrity: 0, will: 0, constitution: 0, pts: 0 };
+        p.totalAttr = { might: 0, alacrity: 0, will: 0, constitution: 0 };
         p.perks = { might: false, alacrity: false, will: false };
         p.timers = { might: 0, alacrity: 0, will: 0 };
         p.levelPicks = { attribute: 0, weapon: 0, phial: 0 };
@@ -109,6 +191,7 @@ const Game = {
         UI.updateLevelUpPrompt();
     },
     abortRunToTown() {
+        this.endRun("forfeit", this.stateManager?.currentState);
         this.forfeitRunRewards();
         UI.closeAll();
         this.stateManager.switchState(new TownState(this));
@@ -117,6 +200,7 @@ const Game = {
     restartRunInPlace() {
         const st = this.stateManager?.currentState;
         if (!st?.isRun) return;
+        this.endRun("restart", st);
         this.forfeitRunRewards();
         this.resetRunProgression();
         UI.closeAll();
@@ -194,6 +278,7 @@ const Game = {
         // Default: no starting weapon selected yet (Town is non-combat).
         this.p.gear.weapon = { id: "starter:none", type: "weapon", name: "Bare Hands", rarity: "common", stats: { dmg: 0 }, cls: "none", identified: true };
         this.p.recalc();
+        this.syncMetaToPlayer();
 
         this.decals = new DecalSystem(this);
         this.stateManager = new GameStateManager(this);
@@ -214,12 +299,13 @@ const Game = {
     equipStartingWeapon(wepType) {
         if (!this.p) return;
         const t = String(wepType || "");
-        const bases = { hammer: "Rusty Hammer", pistol: "Old Flintlock", staff: "Worn Staff" };
+        const bases = { hammer: "Rusty Hammer", pistol: "Old Flintlock", repeater: "Old Repeater", staff: "Worn Staff", scythe: "Rusty Scythe" };
         if (!bases[t]) return;
 
         const w = this.loot("weapon");
         w.name = bases[t];
-        w.cls = t;
+        // Runtime cls remains "pistol" until a dedicated rename pass; "repeater" is a UI/identity alias.
+        w.cls = (t === "repeater") ? "pistol" : t;
         w.stats = { dmg: 6 };
         this.p.gear.weapon = w;
         this.p.recalc();
@@ -302,7 +388,50 @@ const Game = {
             for (let k in tpl.stats) stats[k] = Math.ceil(tpl.stats[k] * m);
             return { id: Math.random().toString(36), type, name: tpl.base, rarity, stats, cls: tpl.cls, identified: true };
         } catch (e) { return { id: "err", type: "trinket", name: "Scrap", rarity: "common", stats: {} }; }
-    }
+    },
+
+    /**
+     * Phase 2: explicit save button support. Stores non-run, non-combat-affecting state:
+     * - settings (camera zoom)
+     * - armory loadout snapshot (gear names/stats) for future Armory UI
+     */
+    save() {
+        try {
+            const profile = this.profile || ProfileStore.load();
+            profile.settings = profile.settings || {};
+            profile.settings.cameraZoom = this.cameraZoom;
+
+            // Snapshot loadout for Armory (Phase 5 will formalize this schema).
+            const p = this.p;
+            const gear = p?.gear || {};
+            const gearBySlot = {};
+            for (const slot in gear) {
+                const it = gear[slot];
+                if (!it) continue;
+                // Keep it minimal and JSON-safe. Items are currently randomly generated; we store a snapshot.
+                gearBySlot[slot] = {
+                    type: it.type || slot,
+                    name: it.name || null,
+                    rarity: it.rarity || null,
+                    cls: it.cls || null,
+                    stats: it.stats || {},
+                    identified: it.identified !== false,
+                };
+            }
+            profile.armory = profile.armory || {};
+            profile.armory.loadout = {
+                weaponCls: p?.gear?.weapon?.cls || null,
+                gearBySlot,
+            };
+
+            ProfileStore.save(profile, { backupPrevious: true });
+            this.profile = profile;
+            UI?.toast?.("Saved");
+        } catch (e) {
+            console.warn("Save failed:", e);
+            UI?.toast?.("Save failed");
+        }
+    },
 };
 
 export default Game;

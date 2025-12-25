@@ -7,19 +7,28 @@ import SkillOfferSystem from "./SkillOfferSystem.js";
 import PhialOfferSystem from "./PhialOfferSystem.js";
 import ProgressionSystem from "./ProgressionSystem.js";
 import { color as c } from "../data/ColorTuning.js";
+import { FeatureFlags } from "../core/FeatureFlags.js";
+import { ProfileStore } from "../core/ProfileStore.js";
+import { getWeaponConfigByCls, WeaponId } from "../data/Weapons.js";
+import { PerkSocketLevel, getSkillDef, getSocketOptions, getUnlockedSkillIdsForSocket } from "../data/PerkSockets.js";
+import { getWeaponMasteryLevel } from "./MasterySystem.js";
 
 const UI = {
     dirty: true,
     _openStack: [],
     _appraiseSession: null,
     _pauseView: "build",
+    _armoryTab: "loadout",
+    _armoryWeaponId: null,
     buildAttrUI(containerId, suffix) {
         const c = document.getElementById(containerId);
         if (!c) return;
+        const showCon = FeatureFlags.isOn("progression.constitutionEnabled");
         c.innerHTML = `
         <div class="stat-row" style="border-color:var(--red)"><div><b style="color:var(--red)">MIGHT</b><span id="perkMight-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Soul Blast • 50: Burn)</span><br><small>Dmg/Knockback</small></div><div style="display:flex;gap:4px"><b id="valMight-${suffix}">0</b></div></div>
         <div class="stat-row" style="border-color:var(--green)"><div><b style="color:var(--green)">ALACRITY</b><span id="perkAlac-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Tempest • 50: Split)</span><br><small>Spd/Dash</small></div><div style="display:flex;gap:4px"><b id="valAlac-${suffix}">0</b></div></div>
         <div class="stat-row" style="border-color:var(--blue)"><div><b style="color:var(--blue)">WILL</b><span id="perkWill-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Wisps • 50: Rod)</span><br><small>Area/Soul</small></div><div style="display:flex;gap:4px"><b id="valWill-${suffix}">0</b></div></div>
+        ${showCon ? `<div class="stat-row" style="border-color:var(--violet)"><div><b style="color:var(--violet)">CONSTITUTION</b><span id="perkCon-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(Rite: Ossuary)</span><br><small>HP/Guard</small></div><div style="display:flex;gap:4px"><b id="valCon-${suffix}">0</b></div></div>` : ""}
         `;
     },
     renderAttrAndStats(suffix) {
@@ -27,13 +36,18 @@ const UI = {
         document.getElementById(`valMight-${suffix}`).innerText = p.totalAttr.might;
         document.getElementById(`valAlac-${suffix}`).innerText = p.totalAttr.alacrity;
         document.getElementById(`valWill-${suffix}`).innerText = p.totalAttr.will;
+        const conEl = document.getElementById(`valCon-${suffix}`);
+        if (conEl) conEl.innerText = p.totalAttr.constitution || 0;
 
         const m = p.perkLevel?.might || 0;
         const a = p.perkLevel?.alacrity || 0;
         const w = p.perkLevel?.will || 0;
+        const con = p.perkLevel?.constitution || 0;
         document.getElementById(`perkMight-${suffix}`).className = m > 0 ? "perk-active" : "";
         document.getElementById(`perkAlac-${suffix}`).className = a > 0 ? "perk-active" : "";
         document.getElementById(`perkWill-${suffix}`).className = w > 0 ? "perk-active" : "";
+        const perkCon = document.getElementById(`perkCon-${suffix}`);
+        if (perkCon) perkCon.className = con > 0 ? "perk-active" : "";
 
         let txt = ""; for (let k in p.stats) if (p.stats[k]) txt += `${k}: ${Math.round(p.stats[k] * 100) / 100}, `;
         document.getElementById(`statText-${suffix}`).innerText = txt;
@@ -486,6 +500,56 @@ const UI = {
 
         this.renderAttrAndStats("inv");
 
+        // Armory tabs (Phase 5): simple panel switcher. "Weapon Perks" requires flag.
+        const perksEnabled = FeatureFlags.isOn("progression.preRunWeaponPerks");
+        const tabs = {
+            loadout: document.getElementById("btn-armory-tab-loadout"),
+            perks: document.getElementById("btn-armory-tab-perks"),
+            weaponMastery: document.getElementById("btn-armory-tab-weapon-mastery"),
+            attributeMastery: document.getElementById("btn-armory-tab-attribute-mastery"),
+        };
+
+        const setTab = (tabId) => {
+            if (tabId === "perks" && !perksEnabled) {
+                this.toast("Enable pre-run weapon perks to access sockets");
+                tabId = "loadout";
+            }
+            this._armoryTab = tabId;
+            this.renderInv();
+        };
+
+        if (tabs.loadout) tabs.loadout.onclick = () => setTab("loadout");
+        if (tabs.perks) {
+            tabs.perks.disabled = !perksEnabled;
+            tabs.perks.onclick = () => setTab("perks");
+        }
+        if (tabs.weaponMastery) tabs.weaponMastery.onclick = () => setTab("weaponMastery");
+        if (tabs.attributeMastery) tabs.attributeMastery.onclick = () => setTab("attributeMastery");
+
+        for (const [id, btn] of Object.entries(tabs)) {
+            if (!btn) continue;
+            const active = (this._armoryTab === id);
+            btn.className = active ? "btn primary" : "btn";
+        }
+
+        const viewLoadout = document.getElementById("armory-view-loadout");
+        const viewPerks = document.getElementById("armory-view-perks");
+        const viewWeaponMastery = document.getElementById("armory-view-weapon-mastery");
+        const viewAttributeMastery = document.getElementById("armory-view-attribute-mastery");
+
+        if (viewLoadout) viewLoadout.style.display = this._armoryTab === "loadout" ? "contents" : "none";
+        if (viewPerks) viewPerks.style.display = this._armoryTab === "perks" ? "block" : "none";
+        if (viewWeaponMastery) viewWeaponMastery.style.display = this._armoryTab === "weaponMastery" ? "block" : "none";
+        if (viewAttributeMastery) viewAttributeMastery.style.display = this._armoryTab === "attributeMastery" ? "block" : "none";
+
+        if (this._armoryTab === "perks") {
+            this.renderArmoryPerks();
+            return;
+        }
+        if (this._armoryTab === "weaponMastery" || this._armoryTab === "attributeMastery") {
+            return;
+        }
+
         let elEq = document.getElementById("equipList"); elEq.innerHTML = "";
         SLOTS.forEach(s => {
             let it = p.gear[s];
@@ -530,6 +594,150 @@ const UI = {
                 debugPhials.appendChild(btn);
             }
         }
+    },
+    renderArmoryPerks() {
+        const container = document.getElementById("armory-perks");
+        if (!container) return;
+        const perksEnabled = FeatureFlags.isOn("progression.preRunWeaponPerks");
+        if (!perksEnabled) {
+            container.innerHTML = `<div style="color:var(--muted);font-size:12px">Enable <code>progression.preRunWeaponPerks</code> to configure perk sockets.</div>`;
+            return;
+        }
+
+        // Ensure profile exists.
+        if (!Game.profile) {
+            try { Game.profile = ProfileStore.load(); } catch { /* ignore */ }
+        }
+        const profile = Game.profile || {};
+        profile.armory = profile.armory || {};
+        profile.armory.perkSocketsByWeapon = profile.armory.perkSocketsByWeapon || {};
+        profile.mastery = profile.mastery || { attributes: {}, weapons: {} };
+
+        const currentCls = Game.p?.gear?.weapon?.cls || null;
+        const currentCfg = getWeaponConfigByCls(currentCls);
+        const defaultWeaponId = currentCfg?.weaponId || WeaponId.Hammer;
+        if (!this._armoryWeaponId) this._armoryWeaponId = defaultWeaponId;
+
+        const selectWeaponBtn = (weaponId, label) => {
+            const active = weaponId === this._armoryWeaponId;
+            const cls = active ? "btn primary" : "btn";
+            return `<button class="${cls}" data-weapon-id="${weaponId}">${label}</button>`;
+        };
+
+        const socketLabels = {
+            [PerkSocketLevel.level2]: "Level 2 (Opener)",
+            [PerkSocketLevel.level5]: "Level 5 (Engine)",
+            [PerkSocketLevel.level10]: "Level 10 (Capstone)",
+            [PerkSocketLevel.level15]: "Level 15 (Relic, later)",
+        };
+
+        const weaponId = this._armoryWeaponId;
+        const metaEnabled = FeatureFlags.isOn("progression.metaMasteryEnabled");
+        const weaponMasteryLevel = metaEnabled ? getWeaponMasteryLevel(profile, weaponId) : 0;
+        const byWeapon = profile.armory.perkSocketsByWeapon;
+        if (!byWeapon[weaponId]) {
+            // First-time scaffold: seed meaningful defaults so milestone sockets aren't "empty by default".
+            // Users can explicitly choose "None" afterward, which we respect.
+            byWeapon[weaponId] = {
+                level2: getUnlockedSkillIdsForSocket(weaponId, PerkSocketLevel.level2, { weaponMasteryLevel, metaEnabled })[0] || null,
+                level5: getUnlockedSkillIdsForSocket(weaponId, PerkSocketLevel.level5, { weaponMasteryLevel, metaEnabled })[0] || null,
+                level10: getUnlockedSkillIdsForSocket(weaponId, PerkSocketLevel.level10, { weaponMasteryLevel, metaEnabled })[0] || null,
+                level15: null,
+            };
+            try { ProfileStore.save(profile, { backupPrevious: true }); } catch { /* ignore */ }
+        }
+        const sockets = byWeapon[weaponId] || { level2: null, level5: null, level10: null, level15: null };
+
+        const renderSocket = (socketLevel) => {
+            const opts = getSocketOptions(weaponId, socketLevel);
+            const unlocked = new Set(getUnlockedSkillIdsForSocket(weaponId, socketLevel, { weaponMasteryLevel, metaEnabled }));
+            // If meta progression is enabled and the selected perk is now locked, auto-fallback to a valid pick.
+            let current = sockets[socketLevel] || null;
+            if (metaEnabled && current && !unlocked.has(current)) {
+                const fallback = Array.from(unlocked)[0] || null;
+                sockets[socketLevel] = fallback;
+                current = fallback;
+                try { ProfileStore.save(profile, { backupPrevious: true }); } catch { /* ignore */ }
+            }
+            const rows = opts.map(({ id, unlockAtWeaponMasteryLevel }) => {
+                const sk = getSkillDef(id);
+                const title = sk?.name || id;
+                const desc = sk?.desc || "";
+                const active = id === current;
+                const isUnlocked = unlocked.has(id);
+                const cls = active ? "btn-upgrade primary" : "btn-upgrade";
+                const lockedNote = metaEnabled && !isUnlocked ? ` <span style="opacity:0.75">[Unlock WM${unlockAtWeaponMasteryLevel}]</span>` : "";
+                const disabledAttr = metaEnabled && !isUnlocked ? "disabled" : "";
+                return `<button class="${cls}" data-socket="${socketLevel}" data-skill-id="${id}" ${disabledAttr}>${title}${lockedNote}<small>${desc}</small></button>`;
+            }).join("");
+
+            const noneCls = current == null ? "btn-upgrade primary" : "btn-upgrade";
+            const noneBtn = `<button class="${noneCls}" data-socket="${socketLevel}" data-skill-id="">None<small>Leave this milestone empty</small></button>`;
+
+            return `
+                <div class="levelup-row" style="margin-top:10px">
+                    <div class="sec-title">${socketLabels[socketLevel] || socketLevel}</div>
+                    <div class="levelup-options">${noneBtn}${rows}</div>
+                </div>
+            `;
+        };
+
+        container.innerHTML = `
+            <span class="sec-title">Weapon Perk Sockets</span>
+            <div style="color:var(--muted);font-size:12px;line-height:1.5;margin-top:6px">
+                Select perks in town; they activate automatically at run levels 2/5/10. (Level 15 relic slot is reserved.)
+            </div>
+            <div style="margin-top:8px;color:var(--muted);font-size:12px">
+                Weapon Mastery: <b>${weaponMasteryLevel}</b>${metaEnabled ? "" : " (meta progression disabled)"}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                ${selectWeaponBtn(WeaponId.Hammer, "Hammer")}
+                ${selectWeaponBtn(WeaponId.Staff, "Staff")}
+                ${selectWeaponBtn(WeaponId.Repeater, "Repeater")}
+                ${selectWeaponBtn(WeaponId.Scythe, "Scythe")}
+            </div>
+            ${renderSocket(PerkSocketLevel.level2)}
+            ${renderSocket(PerkSocketLevel.level5)}
+            ${renderSocket(PerkSocketLevel.level10)}
+            ${renderSocket(PerkSocketLevel.level15)}
+            <div style="margin-top:10px;color:var(--muted);font-size:11px">
+                Note: Level 15 relic behavior is deferred, but the slot schema/UI is shipped now.
+            </div>
+        `;
+
+        container.querySelectorAll("[data-weapon-id]").forEach((btn) => {
+            btn.onclick = (e) => {
+                const id = e.currentTarget.getAttribute("data-weapon-id");
+                if (!id) return;
+                this._armoryWeaponId = id;
+                this.renderArmoryPerks();
+            };
+        });
+
+        const saveProfile = () => {
+            try {
+                Game.profile = profile;
+                ProfileStore.save(profile, { backupPrevious: true });
+            } catch {
+                // ignore save errors
+            }
+        };
+
+        container.querySelectorAll("[data-socket][data-skill-id]").forEach((btn) => {
+            btn.onclick = (e) => {
+                const socket = e.currentTarget.getAttribute("data-socket");
+                const skillIdRaw = e.currentTarget.getAttribute("data-skill-id");
+                if (!socket) return;
+                const skillId = skillIdRaw && skillIdRaw.length ? skillIdRaw : null;
+
+                const w = this._armoryWeaponId;
+                profile.armory.perkSocketsByWeapon[w] = profile.armory.perkSocketsByWeapon[w] || { level2: null, level5: null, level10: null, level15: null };
+                profile.armory.perkSocketsByWeapon[w][socket] = skillId;
+                saveProfile();
+                this.playChoiceConfirm(e.currentTarget, c("player.core", 0.75) || "p2");
+                this.renderArmoryPerks();
+            };
+        });
     },
     identifyItem(item) {
         if (!item || item.identified !== false) return;
@@ -669,6 +877,7 @@ const UI = {
         `;
 
         const attrTier = p.perkLevel || {};
+        const showCon = FeatureFlags.isOn("progression.constitutionEnabled");
         if (this._pauseView === "settings") {
             const presets = [0.9, 1.0, 1.15, 1.25, 1.35];
             const current = Number(Game.cameraZoom) || 1;
@@ -694,6 +903,7 @@ const UI = {
                     <div>${perkLine("might", "--red", "Might", attrTier.might, "Soul Blast", "Burn")}</div>
                     <div>${perkLine("alacrity", "--green", "Alacrity", attrTier.alacrity, "Tempest", "Split")}</div>
                     <div>${perkLine("will", "--blue", "Will", attrTier.will, "Wisps", "Rod")}</div>
+                    ${showCon ? `<div>${perkLine("constitution", "--violet", "Constitution", attrTier.constitution, "Tier I", "Tier II")}</div>` : ""}
                 </div>
                 <div style="margin-top:12px">
                     <span class="sec-title">Loadout</span>
@@ -770,21 +980,52 @@ const UI = {
     renderLevelUp() {
         const p = Game.p;
         const body = document.querySelector('#modal_levelup .modal-body');
+        const showCon = FeatureFlags.isOn("progression.constitutionEnabled");
+        const phialsOnly = FeatureFlags.isOn("progression.phialsOnlyLevelUps");
+        const preRunPerks = FeatureFlags.isOn("progression.preRunWeaponPerks");
+        const hideWeaponRow = phialsOnly || preRunPerks;
+
+        // Safety: if the flag is toggled mid-run, convert legacy picks into phial picks
+        // so the player can't get stuck with hidden rows.
+        if (p?.levelPicks) {
+            // If phials-only, collapse both attribute+weapon into phials.
+            if (phialsOnly) {
+                const carry = (p.levelPicks.attribute || 0) + (p.levelPicks.weapon || 0);
+                if (carry > 0) {
+                    p.levelPicks.phial = (p.levelPicks.phial || 0) + carry;
+                    p.levelPicks.attribute = 0;
+                    p.levelPicks.weapon = 0;
+                    p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+                }
+            } else if (hideWeaponRow) {
+                // If only the weapon row is hidden (pre-run perks), collapse weapon picks into phials.
+                const carry = (p.levelPicks.weapon || 0);
+                if (carry > 0) {
+                    p.levelPicks.phial = (p.levelPicks.phial || 0) + carry;
+                    p.levelPicks.weapon = 0;
+                    p.levelUpOffers = { weapon: null, weaponMeta: { weaponCls: null }, phial: null };
+                }
+            }
+        }
         
-        const weaponOptions = this.ensureWeaponOffers();
+        const weaponOptions = hideWeaponRow ? [] : this.ensureWeaponOffers();
         const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
         const phialOptions = this.ensurePhialOffers();
         const phialRerollCost = this.getPhialRerollCost();
 
-        body.innerHTML = `
+        const attrRowHtml = phialsOnly ? "" : `
             <div class="levelup-row" id="levelup-attributes">
                 <div class="sec-title">Attributes (x${p.levelPicks.attribute})</div>
                 <div class="levelup-options">
                     <button class="btn-attr" id="btn-might">Might</button>
                     <button class="btn-attr" id="btn-alacrity">Alacrity</button>
                     <button class="btn-attr" id="btn-will">Will</button>
+                    ${showCon ? `<button class="btn-attr" id="btn-constitution">Constitution</button>` : ""}
                 </div>
             </div>
+        `;
+
+        const weaponRowHtml = hideWeaponRow ? "" : `
             <div class="levelup-row" id="levelup-weapon">
                 <div class="sec-title-container">
                     <div class="sec-title">Weapon Upgrade (x${p.levelPicks.weapon})</div>
@@ -794,6 +1035,9 @@ const UI = {
                     ${weaponOptions.map(skill => `<button class="btn-upgrade" data-skill-id="${skill.id}">${skill.name}<small>${skill.desc}</small></button>`).join('')}
                 </div>
             </div>
+        `;
+
+        const phialRowHtml = `
             <div class="levelup-row" id="levelup-phial">
                 <div class="sec-title-container">
                     <div class="sec-title">Phial (x${p.levelPicks.phial})</div>
@@ -812,18 +1056,25 @@ const UI = {
             </div>
         `;
 
+        body.innerHTML = `${attrRowHtml}${weaponRowHtml}${phialRowHtml}`;
+
         this.updateRowCompletion();
 
-        document.getElementById('btn-might').onclick = (e) => this.selectAttribute('might', e.currentTarget);
-        document.getElementById('btn-alacrity').onclick = (e) => this.selectAttribute('alacrity', e.currentTarget);
-        document.getElementById('btn-will').onclick = (e) => this.selectAttribute('will', e.currentTarget);
+        if (!phialsOnly) {
+            document.getElementById('btn-might').onclick = (e) => this.selectAttribute('might', e.currentTarget);
+            document.getElementById('btn-alacrity').onclick = (e) => this.selectAttribute('alacrity', e.currentTarget);
+            document.getElementById('btn-will').onclick = (e) => this.selectAttribute('will', e.currentTarget);
+            const conBtn = document.getElementById('btn-constitution');
+            if (conBtn) conBtn.onclick = (e) => this.selectAttribute('constitution', e.currentTarget);
+        }
 
         document.querySelectorAll('.btn-upgrade').forEach(btn => {
             if (btn.dataset.skillId) btn.onclick = (e) => this.selectWeaponUpgrade(btn.dataset.skillId, e.currentTarget);
             if (btn.dataset.phialId) btn.onclick = (e) => this.selectPhial(btn.dataset.phialId, e.currentTarget);
         });
         
-        document.getElementById('btn-reroll-weapon').onclick = () => this.rerollWeaponOptions();
+        const rerollWeaponBtn = document.getElementById('btn-reroll-weapon');
+        if (rerollWeaponBtn) rerollWeaponBtn.onclick = () => this.rerollWeaponOptions();
         document.getElementById('btn-reroll-phial').onclick = () => this.rerollPhialOptions();
     },
     selectAttribute(attr, sourceBtn) {
@@ -1004,6 +1255,9 @@ const UI = {
     },
     updateRowCompletion() {
         const p = Game.p;
+        const phialsOnly = FeatureFlags.isOn("progression.phialsOnlyLevelUps");
+        const preRunPerks = FeatureFlags.isOn("progression.preRunWeaponPerks");
+        const hideWeaponRow = phialsOnly || preRunPerks;
         const attrRow = document.getElementById('levelup-attributes');
         const weaponRow = document.getElementById('levelup-weapon');
         const phialRow = document.getElementById('levelup-phial');
@@ -1023,22 +1277,24 @@ const UI = {
             if (overlay) overlay.remove();
         };
 
-        if (p.levelPicks.attribute > 0) clearComplete(attrRow);
-        if (p.levelPicks.weapon > 0) clearComplete(weaponRow);
+        if (!phialsOnly && p.levelPicks.attribute > 0) clearComplete(attrRow);
+        if (!hideWeaponRow && p.levelPicks.weapon > 0) clearComplete(weaponRow);
         if (p.levelPicks.phial > 0) clearComplete(phialRow);
 
-        if (p.levelPicks.attribute === 0) {
+        if (!phialsOnly && attrRow && p.levelPicks.attribute === 0) {
             attrRow.classList.add('complete');
             addOverlay(attrRow, 'NO PENDING ATTRIBUTES');
         }
-        if (p.levelPicks.weapon === 0) {
-            weaponRow.classList.add('complete');
-            const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
-            if(rerollBtn) rerollBtn.style.display = 'none';
-            addOverlay(weaponRow, 'NO PENDING SKILLS');
-        } else {
-            const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
-            if (rerollBtn) rerollBtn.style.display = '';
+        if (!hideWeaponRow && weaponRow) {
+            if (p.levelPicks.weapon === 0) {
+                weaponRow.classList.add('complete');
+                const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
+                if (rerollBtn) rerollBtn.style.display = 'none';
+                addOverlay(weaponRow, 'NO PENDING SKILLS');
+            } else {
+                const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
+                if (rerollBtn) rerollBtn.style.display = '';
+            }
         }
         if (p.levelPicks.phial === 0) {
             phialRow.classList.add('complete');
@@ -1050,13 +1306,15 @@ const UI = {
             if (rerollBtn) rerollBtn.style.display = '';
         }
         
-        const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
-        if (rerollBtn) {
-            const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
-            if (p.souls < rerollCost) {
-                rerollBtn.classList.add('disabled');
-            } else {
-                rerollBtn.classList.remove('disabled');
+        if (!hideWeaponRow && weaponRow) {
+            const rerollBtn = weaponRow.querySelector('#btn-reroll-weapon');
+            if (rerollBtn) {
+                const rerollCost = Math.floor(BALANCE.player.baseRerollCost * Math.pow(BALANCE.player.rerollCostMultiplier, p.weaponRerollsUsed));
+                if (p.souls < rerollCost) {
+                    rerollBtn.classList.add('disabled');
+                } else {
+                    rerollBtn.classList.remove('disabled');
+                }
             }
         }
 

@@ -3,10 +3,18 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint:colors": "python3 scripts/lint_colors.py",
-    "lint:colors:strict": "python3 scripts/lint_colors.py --strict"
+    "lint:colors:strict": "python3 scripts/lint_colors.py --strict",
+    "validate:vocab": "node scripts/validate_vocab.mjs",
+    "validate:tags": "node scripts/validate_tag_validation.mjs",
+    "validate:content": "node scripts/validate_content.mjs",
+    "validate:profile": "node scripts/validate_profile_store.mjs",
+    "validate:effects": "node scripts/validate_effect_system.mjs",
+    "validate:sockets": "node scripts/validate_perk_sockets.mjs",
+    "validate:mastery": "node scripts/validate_mastery_distribution.mjs"
   },
   "private": true
 }

@@ -1,3 +1,5 @@
+import { AttributeId } from "./Vocabulary.js";
+
 export const Phials = {
     ashenHalo: {
         id: "ashenHalo",
@@ -5,6 +7,7 @@ export const Phials = {
         name: "Ashen Halo",
         category: "aura",
         description: "Radiate an occult fire field that lightly scorches nearby enemies.",
+        tags: { attributeTag: AttributeId.Might },
         baseDamagePerSecond: 4,
         damagePerStack: 2,
         baseRadius: 60,
@@ -16,6 +19,7 @@ export const Phials = {
         name: "Soul Salvo",
         category: "gauge",
         description: "On Soul Gauge fill, gain a short-lived burst of charges that add extra spectral attacks.",
+        tags: { attributeTag: AttributeId.Will },
         baseChargesPerFill: 5,
         chargesPerStack: 2,
         // Tuning knobs (best-practice anti-infinite controls):
@@ -35,6 +39,7 @@ export const Phials = {
         name: "Witchglass Aegis",
         category: "defensive",
         description: "Taking damage triggers a brief ward and a short-range soul pulse.",
+        tags: { attributeTag: AttributeId.Constitution },
         baseDamageReduction: 0.25,
         damageReductionPerStack: 0.05,
         baseDuration: 1.0,
@@ -51,6 +56,7 @@ export const Phials = {
         name: "Blinding Step",
         category: "movement",
         description: "Dashing through enemies blinds them and eventually burns them over time.",
+        tags: { attributeTag: AttributeId.Alacrity },
         baseBlindDuration: 1.0,
         blindDurationPerTwoStacks: 0.2,
         baseBurnDuration: 2.0,
@@ -67,6 +73,7 @@ export const Phials = {
         name: "Tithe Engine",
         category: "killRhythm",
         description: "Every few kills grants a charge. The next hit creates a soul explosion; enemies struck return a brief tithe (heal-over-time + short power).",
+        tags: { attributeTag: AttributeId.Constitution },
         baseKillsRequired: 6,
         killsReductionPerStack: 1,
         minKillsRequired: 3,

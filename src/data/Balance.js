@@ -146,6 +146,27 @@ export const BALANCE = {
             maxStacks: 6,
         },
 
+        // Phase 6: meta progression (masteries). Intentionally simple + tunable.
+        // XP is earned on run end and distributed 70/30 (weapon primary attribute / phial attributeTags).
+        mastery: {
+            // Award control
+            grantOnForfeit: false,
+            recentRunsMax: 20,
+
+            // Performance->XP
+            xpBase: 0,
+            xpPerKill: 1,
+            xpPerReachedLevel: 6,
+            xpPerSoulDelta: 0.5,
+            fieldCompleteBonus: 40,
+            dungeonCompleteBonus: 70,
+            dungeonFailedBonus: 10,
+
+            // Level curves (xp required increases per level)
+            attributeCurve: { reqBase: 120, reqGrowth: 1.25 },
+            weaponCurve: { reqBase: 160, reqGrowth: 1.28 },
+        },
+
         // Tier scaling: data-driven modifiers you can attach to any spawn spec.
         // Current usage: thrall tiers (fodder pressure) via `BALANCE.spawns.*.tier`.
         enemyTiers: {
@@ -254,6 +275,9 @@ export const BALANCE = {
         // Core stats
         baseHp: 80,
         hpPerLevel: 5,
+        // Constitution scaling (Phase 1): modest max-HP gain per point.
+        // Attribute picks grant +5 points, so this is tuned as "per point" (not per pick).
+        hpPerConstitution: 0.8,
         baseDmg: 5,
         baseCrit: 0.05,
         baseCritMult: 1.5,
@@ -318,6 +342,13 @@ export const BALANCE = {
         },
         staff: {
             damageMult: 1.6
+        },
+
+        scythe: {
+            cooldown: 0.34,
+            damageMult: 1.25,
+            range: 75,
+            comboResetSec: 1.0,
         },
 
         // Projectile speeds
@@ -827,6 +858,16 @@ export const BALANCE = {
 	                voltageSize: 2.0,
                 voltageLife: 0.16,
                 voltageRadius: 18,
+            },
+        }
+        ,
+        scythe: {
+            markDurationSec: 6.0,
+            golemCapBase: 3,
+            golemHealPctOverflow: 0.18,
+            golemSlamCoeff: 0.65,
+            vfx: {
+                markColor: { token: "p4", alpha: 0.9 },
             },
         }
     }

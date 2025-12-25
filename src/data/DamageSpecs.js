@@ -157,6 +157,42 @@ const DamageSpecs = {
     };
   },
 
+  scytheSwipe() {
+    return {
+      id: "player:scytheSwipe",
+      base: 0,
+      coeff: BALANCE.player.scythe.damageMult,
+      canCrit: false,
+      tags: ["weapon", "scythe", "melee"],
+      element: ELEMENT.physical,
+      snapshot: true,
+    };
+  },
+
+  scytheHarvest() {
+    return {
+      id: "player:scytheHarvest",
+      base: 0,
+      coeff: BALANCE.player.scythe.damageMult * 1.15,
+      canCrit: false,
+      tags: ["weapon", "scythe", "melee"],
+      element: ELEMENT.physical,
+      snapshot: true,
+    };
+  },
+
+  scytheGolemSlam() {
+    return {
+      id: "player:scytheGolemSlam",
+      base: 0,
+      coeff: BALANCE.skills?.scythe?.golemSlamCoeff ?? (BALANCE.player.scythe.damageMult * 0.7),
+      canCrit: false,
+      tags: ["weapon", "scythe", "summon", "melee"],
+      element: ELEMENT.physical,
+      snapshot: true,
+    };
+  },
+
   // --- Perks ---
   shockwave() {
     return {

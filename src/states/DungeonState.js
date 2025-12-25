@@ -16,6 +16,7 @@ import SpawnSystem from "../systems/SpawnSystem.js";
 import SoulOrbMergeSystem from "../systems/SoulOrbMergeSystem.js";
 import { resolveColor } from "../render/Color.js";
 import { color as col } from "../data/ColorTuning.js";
+import { StatusId } from "../data/Vocabulary.js";
 
 class DungeonState extends State {
     constructor(game) {
@@ -27,6 +28,7 @@ class DungeonState extends State {
         this.shots = []; 
         this.drops = [];
         this.souls = [];
+        this.minions = [];
         this.townPortal = null;
         this.chains = [];
         // Room bounds
@@ -71,6 +73,7 @@ class DungeonState extends State {
         this.shots = [];
         this.drops = [];
         this.souls = [];
+        this.minions = [];
         this.townPortal = null;
         this.showKillCounter = true;
         this.timerMax = ProgressionSystem.getDungeonDurationSec();
@@ -99,6 +102,7 @@ class DungeonState extends State {
         this.drops = [];
         this.souls = [];
         this.chains = [];
+        this.minions = [];
         this.townPortal = null;
 
         const w = this.bounds.w;
@@ -126,6 +130,7 @@ class DungeonState extends State {
         // Dungeon timer expiry: fail if you haven't completed.
         if (this.timer <= 0 && !this.townPortal) {
             UI.toast("DUNGEON FAILED");
+            this.game?.endRun?.("dungeonFailed", this);
             this.game.stateManager.switchState(new TownState(this.game));
             return;
         }
@@ -194,6 +199,10 @@ class DungeonState extends State {
             }
             return true;
         });
+
+        // Minions (Scythe golems etc.)
+        if (!Array.isArray(this.minions)) this.minions = [];
+        this.minions = this.minions.filter(m => m && !m.dead && (m.update?.(dt, this) !== false));
         
         // 4. PROJECTILES
         // Use a standard for loop to handle projectiles spawning other projectiles (like TitheExplosion)
@@ -222,6 +231,11 @@ class DungeonState extends State {
     onEnemyDeath(enemy) {
         const p = this.game.p;
 
+        // Scythe: marked enemy deaths capture souls into golems (or heal them at cap).
+        if (enemy?.statuses?.has?.(StatusId.Marked)) {
+            try { p?.onScytheMarkedDeath?.(this, enemy); } catch { /* ignore */ }
+        }
+
         // Always record the kill
         p.registerKill(enemy);
 
@@ -233,6 +247,7 @@ class DungeonState extends State {
             }
 
             this.townPortal = new Interactable(this.boss.x, this.boss.y, 50, 50, () => {
+                this.game?.endRun?.("dungeonComplete", this);
                 this.game.stateManager.switchState(new TownState(this.game));
             });
             CombatSystem.onRoomOrWaveClear(this);
@@ -414,6 +429,7 @@ class DungeonState extends State {
 
         this.corpses.forEach(e => { e.draw?.(ctx, s); });
         this.enemies.forEach(e => { if (!e.dead) e.draw?.(ctx, s); });
+        this.minions?.forEach?.(m => { if (m?.draw) m.draw(ctx, s); });
         this.shots.filter(shot => shot?.layer !== "ground").forEach(shot => shot.draw(ctx, s));
         this.drops.forEach(d => d.draw(ctx, s));
         this.souls.forEach(o => o.draw(ctx, s));
