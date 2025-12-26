@@ -25,6 +25,7 @@ import TiledBackground from "../render/TiledBackground.js";
 import { resolveColor } from "../render/Color.js";
 import { color as col } from "../data/ColorTuning.js";
 import { StatusId } from "../data/Vocabulary.js";
+import { applySharedGolemTaunt } from "../entities/Minions.js";
 
 function smooth01(dt, smoothTime) {
     const st = Math.max(0.0001, smoothTime);
@@ -360,6 +361,9 @@ class FieldState extends State {
                 e.stats.damageTakenMult = 1.0;
             }
         });
+
+        // Scythe golems: shared taunt pulse (runs before enemy AI so it can redirect this frame).
+        applySharedGolemTaunt(this, dt);
         
         this.enemies.forEach(e => e.update(dt, this.p, this));
         this.enemies = this.enemies.filter(e => {

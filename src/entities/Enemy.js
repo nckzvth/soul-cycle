@@ -88,6 +88,11 @@ export class Enemy {
         this.damageAccumulator = 0;
         StatusSystem.init(this);
 
+        // Minion aggro (e.g., Scythe golem taunt).
+        this.aggroTarget = null;
+        this.aggroUntil = 0;
+        this.tauntFxTimer = 0;
+
         // Death presentation (corpse): plays die animation then fades/dissolves out.
         this.deathTimer = 0;
         this.deathAnimSec = 0;
@@ -347,7 +352,7 @@ export class Enemy {
 
         // Only run AI movement if NOT blinded
         if (this.blinded <= 0) {
-            this.performAI(dt, player, fieldState);
+            this.performAI(dt, this._getAggroTarget(player, fieldState), fieldState);
         }
 
         this.x += this.vx * dt;
@@ -357,13 +362,66 @@ export class Enemy {
         if (circleIntersectsAABB(this.x, this.y, this.r + 5, hb.x, hb.y, hb.w, hb.h)) this.handlePlayerCollision(player, fieldState, dt);
 
         this.applySeparation(player, fieldState.enemies, fieldState);
+        this._handleMinionContact(fieldState, dt);
+        this._updateTauntVfx(dt, fieldState);
 
-        this._updateSprite(dt, player);
+        this._updateSprite(dt, this._getAggroTarget(player, fieldState));
+    }
+
+    _getAggroTarget(player, state) {
+        const now = Number(state?.game?.time) || 0;
+        const t = this.aggroTarget;
+        if (t && !t.dead && (this.aggroUntil || 0) > now) return t;
+        this.aggroTarget = null;
+        this.aggroUntil = 0;
+        return player;
+    }
+
+    _updateTauntVfx(dt, state) {
+        const now = Number(state?.game?.time) || 0;
+        if ((this.aggroUntil || 0) <= now) return;
+
+        this.tauntFxTimer = (this.tauntFxTimer || 0) - dt;
+        if (this.tauntFxTimer > 0) return;
+        this.tauntFxTimer = 0.28;
+
+        ParticleSystem.emit(
+            this.x,
+            this.y - (this.r || 12) * 0.6,
+            c("fx.bloodBright", 0.75) || { token: "bloodBright", alpha: 0.75 },
+            1,
+            35,
+            2.0,
+            0.18,
+            null,
+            { rim: true, rimColor: c("fx.ink", 0.35) || "ink", rimWidth: 1 }
+        );
+    }
+
+    _handleMinionContact(state, dt) {
+        const minions = state?.minions;
+        if (!Array.isArray(minions) || minions.length === 0) return;
+
+        const pad = 4; // allow "melee contact" without requiring overlap (separation may keep them barely apart)
+        const spec = DamageSpecs.enemyContact(this.spriteType || "enemy", this.isBuffed);
+        for (const m of minions) {
+            if (!m || m.dead || !m.isMinion) continue;
+            const mr = Math.max(6, Number(m.r) || 12);
+            const rr = this.r + mr + pad;
+            const dx = m.x - this.x;
+            const dy = m.y - this.y;
+            if (dx * dx + dy * dy <= rr * rr) {
+                DamageSystem.dealMinionDamage(this, m, spec, { state, context: { dt } });
+            }
+        }
     }
     
     applySeparation(player, allEnemies, state) {
         const enemyForce = 0.5;
         const playerForce = 1.0;
+        // Minions should body-block without bulldozing enemies across the map.
+        // We keep this low and instead let minions yield on their own movement pass.
+        const minionForce = 0.18;
 
         const pushAwayFrom = (ox, oy, combinedR, force) => {
             let dx = this.x - ox;
@@ -444,6 +502,16 @@ export class Enemy {
             const pr = Math.max(6, Number(player.r || 12));
             pushAwayFrom(player.x, player.y, (this.r + pr + 2), playerForce);
         }
+
+        // Prevent enemies from stacking on minions (golems etc.). We only move the enemy.
+        const minions = state?.minions;
+        if (Array.isArray(minions) && minions.length) {
+            for (const m of minions) {
+                if (!m || m.dead || !m.isMinion) continue;
+                const mr = Math.max(6, Number(m.r) || 12);
+                pushAwayFrom(m.x, m.y, (this.r + mr + 1), minionForce);
+            }
+        }
     }
 
     handlePlayerCollision(player, fieldState, dt) {
@@ -477,6 +545,24 @@ export class Enemy {
             ctx.beginPath();
             ctx.arc(p.x, p.y, this.r, 0, 6.28);
             ctx.fill();
+        }
+
+        // Taunt marker: subtle blood-bright ring (actual particle cadence is handled in update()).
+        if (this.aggroTarget) {
+            ctx.save();
+            const a = Math.max(0.15, Math.min(0.65, prevAlpha));
+            ctx.globalAlpha = a;
+            ctx.strokeStyle = c("fx.ink", 0.35) || "ink";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, (this.r || 12) + 6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = c("fx.bloodBright", 0.75) || "bloodBright";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, (this.r || 12) + 6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
         }
 
         ctx.globalAlpha = prevAlpha;

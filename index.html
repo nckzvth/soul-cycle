@@ -73,15 +73,101 @@
             align-items: end;
             gap: 14px;
         }
-        #hud-top-left {
+        #hud-top-right {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            display: flex;
+            gap: 8px;
+            padding: 8px 10px;
+            pointer-events: auto;
+            z-index: 12;
+        }
+
+        /* Top-right menu: single icon button */
+        .btn-menu {
+            width: 44px;
+            height: 38px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-menu .icon {
+            position: relative;
+            width: 18px;
+            height: 14px;
+        }
+        .btn-menu .icon::before,
+        .btn-menu .icon::after,
+        .btn-menu .icon span {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            border-radius: 99px;
+            background: rgba(var(--parchment-rgb),0.85);
+            box-shadow: 0 0 0 1px rgba(var(--ink-rgb),0.35);
+        }
+        .btn-menu .icon::before { top: 0; }
+        .btn-menu .icon span { top: 6px; }
+        .btn-menu .icon::after { top: 12px; }
+
+        /* Minion tracker (top-left) */
+        #hud-minions {
             position: absolute;
             top: 14px;
             left: 14px;
-            display: flex;
-            gap: 8px;
+            display: none;
+            gap: 10px;
             padding: 10px 12px;
             pointer-events: auto;
             z-index: 12;
+            max-width: min(420px, 48vw);
+        }
+        #hud-minion-list { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+        .minion-card { display: grid; grid-template-rows: 34px 7px; gap: 6px; }
+        .minion-portrait {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            border: 1px solid rgba(var(--parchment-rgb),0.18);
+            box-shadow: inset 0 0 0 2px rgba(var(--ink-rgb),0.55);
+            background:
+                radial-gradient(circle at 30% 25%, rgba(var(--parchment-rgb),0.14), transparent 55%),
+                radial-gradient(circle at 55% 80%, rgba(var(--ink-rgb),0.85), rgba(var(--ink-rgb),0.25) 60%, rgba(var(--ink-rgb),0.9)),
+                linear-gradient(135deg, rgba(var(--p4-rgb),0.55), rgba(var(--p2-rgb),0.35));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            color: rgba(var(--parchment-rgb),0.9);
+            text-transform: uppercase;
+        }
+        .minion-portrait.bone {
+            background:
+                radial-gradient(circle at 30% 25%, rgba(var(--parchment-rgb),0.18), transparent 60%),
+                radial-gradient(circle at 55% 80%, rgba(var(--ink-rgb),0.9), rgba(var(--ink-rgb),0.35) 60%, rgba(var(--ink-rgb),0.95)),
+                linear-gradient(135deg, rgba(var(--parchment-rgb),0.30), rgba(var(--dust-rgb),0.18));
+        }
+        .minion-hp {
+            width: 34px;
+            height: 7px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(var(--parchment-rgb),0.10);
+            border: 1px solid rgba(var(--parchment-rgb),0.12);
+        }
+        .minion-hp .fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, rgba(var(--p4-rgb),0.65), rgba(var(--p4-rgb),0.95));
+        }
+        .minion-card.low .minion-hp .fill {
+            background: linear-gradient(90deg, rgba(var(--blood-bright-rgb),0.65), rgba(var(--blood-bright-rgb),0.95));
         }
         @media (max-width: 1100px) {
             #hud-bottom { grid-template-columns: 360px 1fr 360px; }
@@ -617,10 +703,13 @@
 </div>
 
 <div id="hud">
-    <div class="hud-panel" id="hud-top-left">
-        <button class="btn" id="btn-inv">MENU (ESC)</button>
-        <button class="btn" id="btn-save">SAVE</button>
-        <button class="btn danger" onclick="location.reload()">ABANDON</button>
+    <div class="hud-panel" id="hud-minions">
+        <div id="hud-minion-list"></div>
+    </div>
+    <div class="hud-panel" id="hud-top-right">
+        <button class="btn btn-menu" id="btn-inv" aria-label="Menu" title="Menu (Esc)">
+            <div class="icon" aria-hidden="true"><span></span></div>
+        </button>
     </div>
     <div id="hud-bottom">
         <div class="hud-left">

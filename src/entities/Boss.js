@@ -108,6 +108,21 @@ class Boss {
                     this.y += this.vy * dt;
                     this.life -= dt;
 
+                    // Minions can body-block boss shots.
+                    const minions = state?.minions;
+                    if (Array.isArray(minions) && minions.length) {
+                        for (const m of minions) {
+                            if (!m || m.dead || !m.isMinion) continue;
+                            const mr = Math.max(6, Number(m.r) || 12);
+                            const dx = m.x - this.x;
+                            const dy = m.y - this.y;
+                            if (dx * dx + dy * dy <= (5 + mr) * (5 + mr)) {
+                                DamageSystem.dealMinionDamage(source, m, this.spec, { state });
+                                return false;
+                            }
+                        }
+                    }
+
                     // Check collision with player (AABB hitbox derived from sprite).
                     const hb = p?.getCollisionAABB?.(5) || { x: p.x - (p.r || 12), y: p.y - (p.r || 12), w: (p.r || 12) * 2, h: (p.r || 12) * 2 };
                     if (circleIntersectsAABB(this.x, this.y, 5, hb.x, hb.y, hb.w, hb.h)) {

@@ -868,6 +868,21 @@ export const BALANCE = {
             golemCapBase: 3,
             golemHealPctOverflow: 0.18,
             golemSlamCoeff: 0.65,
+            // Incoming damage scaling (1.0 = same as player takes for identical specs).
+            golemDamageTakenMult: 0.5,
+            // Defensive utility: shared taunt across all golems (not always up).
+            golemTauntRadius: 75,
+            golemTauntDurationSec: 5.0,
+            golemTauntPeriodSec: 10.0,
+            golemTauntBossesEnabled: false,
+            // Minion AI tuning: keep golems near the player (defensive screen) and avoid chasing across the map.
+            golemAcquireRange: 360,
+            golemLeashRange: 440,
+            golemOrbitRadius: 78,
+            golemOrbitWobble: 16,
+            golemOrbitAngularSpeed: 1.3,
+            golemMoveSpeed: 180,
+            golemReturnSpeedMult: 1.35,
             vfx: {
                 markColor: { token: "p4", alpha: 0.9 },
             },

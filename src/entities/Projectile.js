@@ -731,6 +731,21 @@ export class EnemyProjectile {
         this.y += this.vy * dt;
         this.life -= dt;
 
+        // Minions can body-block projectiles (defensive utility).
+        const minions = state?.minions;
+        if (Array.isArray(minions) && minions.length) {
+            for (const m of minions) {
+                if (!m || m.dead || !m.isMinion) continue;
+                const mr = Math.max(6, Number(m.r) || 12);
+                const dx = m.x - this.x;
+                const dy = m.y - this.y;
+                if (dx * dx + dy * dy <= (5 + mr) * (5 + mr)) {
+                    DamageSystem.dealMinionDamage(this, m, this.spec, { state });
+                    return false;
+                }
+            }
+        }
+
         const pl = state.game.p;
         const hb = pl?.getCollisionAABB?.(5) || { x: pl.x - (pl.r || 12), y: pl.y - (pl.r || 12), w: (pl.r || 12) * 2, h: (pl.r || 12) * 2 };
         if (circleIntersectsAABB(this.x, this.y, 5, hb.x, hb.y, hb.w, hb.h)) {
@@ -1114,6 +1129,19 @@ export class Hazard {
         if (circleIntersectsAABB(this.x, this.y, 12, hb.x, hb.y, hb.w, hb.h)) {
             this.state.combatSystem.onPlayerHit(this, this.state);
             DamageSystem.dealPlayerDamage(this, p, this.spec, { state: this.state, context: { dt } });
+        }
+
+        const minions = this.state?.minions;
+        if (Array.isArray(minions) && minions.length) {
+            for (const m of minions) {
+                if (!m || m.dead || !m.isMinion) continue;
+                const mr = Math.max(6, Number(m.r) || 12);
+                const dx = m.x - this.x;
+                const dy = m.y - this.y;
+                if (dx * dx + dy * dy <= (12 + mr) * (12 + mr)) {
+                    DamageSystem.dealMinionDamage(this, m, this.spec, { state: this.state, context: { dt } });
+                }
+            }
         }
         return this.life > 0;
     }

@@ -253,6 +253,7 @@ const Game = {
                 "hammerIcon",
                 "pistolIcon",
                 "staffIcon",
+                "scytheIcon",
                 "fieldForestGroundDraft",
 
                 // Player spritesheets (directional 8x15 @ 64x64)

@@ -21,6 +21,7 @@ const UI = {
     _pauseView: "build",
     _armoryTab: "loadout",
     _armoryWeaponId: null,
+    _minionHudKey: null,
     buildAttrUI(containerId, suffix) {
         const c = document.getElementById(containerId);
         if (!c) return;
@@ -77,12 +78,14 @@ const UI = {
     },
     init() {
         this.buildAttrUI("attr-container-inv", "inv");
-        document.getElementById("btn-inv").onclick = () => this.toggle('pause');
+        const menuBtn = document.getElementById("btn-inv");
+        if (menuBtn) menuBtn.onclick = () => this.toggle('pause');
         document.getElementById("btn-close-inv").onclick = () => this.toggle('inv');
         document.getElementById("btn-close-appraise").onclick = () => this.toggle('appraise');
         document.getElementById("btn-identify-all").onclick = () => this.identifyAll();
         document.getElementById("btn-close-pause").onclick = () => this.toggle('pause');
-        document.getElementById("btn-save").onclick = () => Game.save();
+        const saveBtn = document.getElementById("btn-save");
+        if (saveBtn) saveBtn.onclick = () => Game.save();
 
         // Small-window HUD: allow collapsing the run panel so it doesn't obscure gameplay.
         const runPanel = document.getElementById("hud-run");
@@ -489,7 +492,43 @@ const UI = {
             }
         }
 
+        this.renderMinions();
         this.updateLevelUpPrompt();
+    },
+    renderMinions() {
+        const panel = document.getElementById("hud-minions");
+        const list = document.getElementById("hud-minion-list");
+        if (!panel || !list) return;
+
+        const st = Game?.stateManager?.currentState;
+        const minions = Array.isArray(st?.minions) ? st.minions : [];
+        const alive = minions.filter((m) => m && m.isMinion && !m.dead);
+        if (alive.length === 0) {
+            panel.style.display = "none";
+            this._minionHudKey = null;
+            return;
+        }
+
+        panel.style.display = "flex";
+        const key = alive.map((m) => `${m.kind || "minion"}:${m.aspect || ""}:${Math.round((Number(m.hp) || 0) * 10)}:${Math.round((Number(m.hpMax) || 0) * 10)}`).join("|");
+        if (key === this._minionHudKey) return;
+        this._minionHudKey = key;
+
+        list.innerHTML = alive.map((m, idx) => {
+            const hp = Math.max(0, Number(m.hp) || 0);
+            const hpMax = Math.max(1e-6, Number(m.hpMax) || 1);
+            const pct = Math.max(0, Math.min(1, hp / hpMax));
+            const low = pct <= 0.30;
+            const isBone = String(m.aspect || "").toLowerCase() === "bone";
+            const label = (m.kind === "golem") ? "G" : "M";
+            const title = `${m.kind || "Minion"} ${idx + 1} • ${Math.ceil(hp)}/${Math.ceil(hpMax)}`;
+            return `
+                <div class="minion-card ${low ? "low" : ""}" title="${title}">
+                    <div class="minion-portrait ${isBone ? "bone" : ""}">${label}</div>
+                    <div class="minion-hp"><div class="fill" style="width:${Math.round(pct * 100)}%"></div></div>
+                </div>
+            `;
+        }).join("");
     },
     toggle(id) {
         if (this.isOpen(id)) this.close(id);
@@ -1018,7 +1057,8 @@ const UI = {
                 ${inRun ? `<button class="btn danger" id="btn-pause-restart">Restart Run</button>` : ""}
                 ${inRun ? `<button class="btn danger" id="btn-pause-town">Return to Town</button>` : ""}
                 <button class="btn" id="btn-pause-settings">${this._pauseView === "settings" ? "Back" : "Settings"}</button>
-                <button class="btn danger" id="btn-pause-quit">Quit Game</button>
+                <button class="btn" id="btn-pause-save">Save</button>
+                <button class="btn danger" id="btn-pause-abandon">Abandon</button>
             </div>
             <div style="margin-top:14px;color:var(--muted);font-size:11px">Press Esc to close this menu.</div>
         `;
@@ -1086,8 +1126,18 @@ const UI = {
             G.restartRunInPlace();
         };
         const quitBtn = document.getElementById("btn-pause-quit");
-        if (quitBtn) quitBtn.onclick = () => {
-            if (!window.confirm("Quit the game?")) return;
+        if (quitBtn) quitBtn.onclick = null;
+
+        const saveBtn = document.getElementById("btn-pause-save");
+        if (saveBtn) saveBtn.onclick = () => {
+            try { G.save?.(); } catch { /* ignore */ }
+            this.toast("Saved");
+            this.renderPause();
+        };
+
+        const abandonBtn = document.getElementById("btn-pause-abandon");
+        if (abandonBtn) abandonBtn.onclick = () => {
+            if (!window.confirm("Abandon and reload the game?")) return;
             G.quitToTitle();
         };
 

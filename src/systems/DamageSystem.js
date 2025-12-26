@@ -267,6 +267,49 @@ const DamageSystem = {
 
     return { amount, prevented: false };
   },
+
+  computeIncomingToMinion(source, minion, spec, context = {}) {
+    const sourceStats = source?.stats || {};
+    const base = spec.base || 0;
+    const coeff = spec.coeff || 0;
+    const flat = spec.flat || 0;
+    const power = sourceStats.power || 0;
+
+    let amount = base + power * coeff + flat;
+    if (typeof context.dt === "number") amount *= context.dt;
+
+    // Minion-side mitigation knob.
+    const taken = minion?.stats?.damageTakenMult ?? 1.0;
+    amount *= taken;
+
+    if (typeof context.dt === "number") {
+      return { amount, prevented: amount <= 0 };
+    }
+
+    const rounded = roundDamage(amount);
+    return { amount: rounded, prevented: rounded <= 0 };
+  },
+
+  dealMinionDamage(source, minion, spec, meta = {}) {
+    if (!minion || minion.dead) return { amount: 0, prevented: true };
+    const { amount, prevented } = this.computeIncomingToMinion(source, minion, spec, meta.context || {});
+    if (prevented || amount <= 0) return { amount: 0, prevented: true };
+
+    const wasDead = !!minion.dead || (typeof minion.hp === "number" && minion.hp <= 0);
+    if (typeof minion.takeDamage === "function") {
+      minion.takeDamage(amount, meta.state);
+    } else {
+      minion.hp -= amount;
+      if (minion.hp <= 0) minion.dead = true;
+    }
+
+    const nowDead = !!minion.dead || (typeof minion.hp === "number" && minion.hp <= 0);
+    if (!wasDead && nowDead) {
+      minion.lastHitSpecId = spec?.id || null;
+    }
+
+    return { amount, prevented: false };
+  },
 };
 
 export default DamageSystem;

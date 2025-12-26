@@ -17,6 +17,7 @@ import SoulOrbMergeSystem from "../systems/SoulOrbMergeSystem.js";
 import { resolveColor } from "../render/Color.js";
 import { color as col } from "../data/ColorTuning.js";
 import { StatusId } from "../data/Vocabulary.js";
+import { applySharedGolemTaunt } from "../entities/Minions.js";
 
 class DungeonState extends State {
     constructor(game) {
@@ -177,6 +178,9 @@ class DungeonState extends State {
             e.isBuffed = false;
             if (e.stats) e.stats.damageTakenMult = 1.0;
         });
+
+        // Scythe golems: shared taunt pulse (runs before enemy AI so it can redirect this frame).
+        applySharedGolemTaunt(this, dt);
 
         // Spawn dungeon mobs only in the entry room (progress farming area).
         if (this.room === "entry") this.spawnMobs(dt);
