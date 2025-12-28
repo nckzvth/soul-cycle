@@ -15,6 +15,7 @@
     "validate:effects": "node scripts/validate_effect_system.mjs",
     "validate:sockets": "node scripts/validate_perk_sockets.mjs",
     "validate:mastery": "node scripts/validate_mastery_distribution.mjs",
+    "validate:trees": "node scripts/validate_attribute_mastery_trees.mjs",
     "validate:syntax": "node --check src/systems/UI.js && node --check src/core/Game.js && node --check src/entities/Player.js"
   },
   "private": true

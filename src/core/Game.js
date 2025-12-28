@@ -17,6 +17,7 @@ import EffectSystem from "../systems/EffectSystem.js";
 import { computeRunResult, applyMetaProgression, appendRunHistory } from "../systems/MasterySystem.js";
 import { validateAllContent } from "../data/ValidateAllContent.js";
 import { normalizeWeaponCls } from "../data/Weapons.js";
+import { buildAttributeMasteryEffectSources } from "../systems/AttributeMasterySystem.js";
 
 const Game = {
     p: null,
@@ -114,6 +115,7 @@ const Game = {
             Alacrity: Number(attrs.Alacrity?.level || 0),
             Constitution: Number(attrs.Constitution?.level || 0),
         };
+        p.metaAttunement = prof?.armory?.attunement || null;
     },
 
     setCameraZoom(z) {
@@ -155,6 +157,26 @@ const Game = {
             p.runEnded = false;
         }
         p.runActive = true;
+
+        // Rebuild meta mirrors and mastery sources once per run start.
+        try {
+            this.syncMetaToPlayer();
+            p._attributeMasteryEffectSources = buildAttributeMasteryEffectSources(p, this.profile);
+        } catch {
+            p._attributeMasteryEffectSources = [];
+        }
+
+        // Phase 6: apply run-start mastery effects via EffectSystem (no per-frame scanning).
+        try {
+            const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
+            const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
+            if (enabled || shadow) {
+                EffectSystem.setActiveSources(p._attributeMasteryEffectSources || []);
+                EffectSystem.trigger(EffectSystem.TRIGGERS.runStart, { game: this, player: p, state: this.stateManager?.currentState }, { shadow: !!shadow });
+            }
+        } catch {
+            // ignore
+        }
     },
     endRun(endReason, state) {
         const p = this.p;

@@ -13,6 +13,10 @@ import { getWeaponConfigByCls, WeaponId, normalizeWeaponCls } from "../data/Weap
 import { PerkSocketLevel, getSkillDef, getSocketOptions, getUnlockedSkillIdsForSocket } from "../data/PerkSockets.js";
 import { getWeaponMasteryLevel } from "./MasterySystem.js";
 import { AttributeId } from "../data/Vocabulary.js";
+import { ATTRIBUTE_MASTERY_TREES } from "../data/AttributeMasteryTrees.js";
+import { formatMetaMasteryTierTooltip, getAttributeTier } from "./MasteryHelpers.js";
+import WardSystem from "./WardSystem.js";
+import { getAttunementLabel, getMasteryPaletteByAttribute } from "../vfx/MasteryVfx.js";
 
 const UI = {
     dirty: true,
@@ -21,35 +25,42 @@ const UI = {
     _pauseView: "build",
     _armoryTab: "loadout",
     _armoryWeaponId: null,
+    _armoryAttributeMasteryDraft: null,
+    _armoryAttributeMasteryDraftRequiredGroups: null,
     _minionHudKey: null,
     buildAttrUI(containerId, suffix) {
         const c = document.getElementById(containerId);
         if (!c) return;
         const showCon = FeatureFlags.isOn("progression.constitutionEnabled");
         c.innerHTML = `
-        <div class="stat-row" style="border-color:var(--red)"><div><b style="color:var(--red)">MIGHT</b><span id="perkMight-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Soul Blast • 50: Burn)</span><br><small>Dmg/Knockback</small></div><div style="display:flex;gap:4px"><b id="valMight-${suffix}">0</b></div></div>
-        <div class="stat-row" style="border-color:var(--green)"><div><b style="color:var(--green)">ALACRITY</b><span id="perkAlac-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Tempest • 50: Split)</span><br><small>Spd/Dash</small></div><div style="display:flex;gap:4px"><b id="valAlac-${suffix}">0</b></div></div>
-        <div class="stat-row" style="border-color:var(--blue)"><div><b style="color:var(--blue)">WILL</b><span id="perkWill-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(25: Wisps • 50: Rod)</span><br><small>Area/Soul</small></div><div style="display:flex;gap:4px"><b id="valWill-${suffix}">0</b></div></div>
-        ${showCon ? `<div class="stat-row" style="border-color:var(--violet)"><div><b style="color:var(--violet)">CONSTITUTION</b><span id="perkCon-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5">(Rite: Ossuary)</span><br><small>HP/Guard</small></div><div style="display:flex;gap:4px"><b id="valCon-${suffix}">0</b></div></div>` : ""}
+        <div class="stat-row" style="border-color:var(--red)"><div><b style="color:var(--red)">MIGHT</b><span id="perkMight-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5"></span><br><small>Meta Tier</small></div><div style="display:flex;gap:4px"><b id="valMight-${suffix}">0</b></div></div>
+        <div class="stat-row" style="border-color:var(--green)"><div><b style="color:var(--green)">ALACRITY</b><span id="perkAlac-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5"></span><br><small>Meta Tier</small></div><div style="display:flex;gap:4px"><b id="valAlac-${suffix}">0</b></div></div>
+        <div class="stat-row" style="border-color:var(--blue)"><div><b style="color:var(--blue)">WILL</b><span id="perkWill-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5"></span><br><small>Meta Tier</small></div><div style="display:flex;gap:4px"><b id="valWill-${suffix}">0</b></div></div>
+        ${showCon ? `<div class="stat-row" style="border-color:var(--violet)"><div><b style="color:var(--violet)">CONSTITUTION</b><span id="perkCon-${suffix}" style="font-size:9px;margin-left:4px;opacity:0.5"></span><br><small>Meta Tier</small></div><div style="display:flex;gap:4px"><b id="valCon-${suffix}">0</b></div></div>` : ""}
         `;
     },
     renderAttrAndStats(suffix) {
         const p = Game.p;
-        document.getElementById(`valMight-${suffix}`).innerText = p.totalAttr.might;
-        document.getElementById(`valAlac-${suffix}`).innerText = p.totalAttr.alacrity;
-        document.getElementById(`valWill-${suffix}`).innerText = p.totalAttr.will;
-        const conEl = document.getElementById(`valCon-${suffix}`);
-        if (conEl) conEl.innerText = p.totalAttr.constitution || 0;
+        const setTierUI = (attrId, valId, perkId) => {
+            const tier = getAttributeTier(p, attrId);
+            const valEl = document.getElementById(valId);
+            const perkEl = document.getElementById(perkId);
+            if (valEl) {
+                valEl.innerText = tier;
+                valEl.title = formatMetaMasteryTierTooltip(attrId, tier);
+            }
+            if (perkEl) {
+                perkEl.innerText = tier > 0 ? `(${formatMetaMasteryTierTooltip(attrId, tier).replace(`Meta tier ${tier}: `, "")})` : "";
+                perkEl.title = formatMetaMasteryTierTooltip(attrId, tier);
+                perkEl.className = tier > 0 ? "perk-active" : "";
+            }
+        };
 
-        const m = p.perkLevel?.might || 0;
-        const a = p.perkLevel?.alacrity || 0;
-        const w = p.perkLevel?.will || 0;
-        const con = p.perkLevel?.constitution || 0;
-        document.getElementById(`perkMight-${suffix}`).className = m > 0 ? "perk-active" : "";
-        document.getElementById(`perkAlac-${suffix}`).className = a > 0 ? "perk-active" : "";
-        document.getElementById(`perkWill-${suffix}`).className = w > 0 ? "perk-active" : "";
-        const perkCon = document.getElementById(`perkCon-${suffix}`);
-        if (perkCon) perkCon.className = con > 0 ? "perk-active" : "";
+        setTierUI(AttributeId.Might, `valMight-${suffix}`, `perkMight-${suffix}`);
+        setTierUI(AttributeId.Alacrity, `valAlac-${suffix}`, `perkAlac-${suffix}`);
+        setTierUI(AttributeId.Will, `valWill-${suffix}`, `perkWill-${suffix}`);
+        const conValEl = document.getElementById(`valCon-${suffix}`);
+        if (conValEl) setTierUI(AttributeId.Constitution, `valCon-${suffix}`, `perkCon-${suffix}`);
 
         let txt = ""; for (let k in p.stats) if (p.stats[k]) txt += `${k}: ${Math.round(p.stats[k] * 100) / 100}, `;
         document.getElementById(`statText-${suffix}`).innerText = txt;
@@ -326,6 +337,40 @@ const UI = {
             const hpPct = p.hpMax > 0 ? Math.max(0, Math.min(1, p.hp / p.hpMax)) : 0;
             hpFill.style.setProperty("--fill", `${Math.round(hpPct * 100)}%`);
         }
+
+        // Ward ring (separate HUD element)
+        const wardOrbTrack = document.getElementById("hud-hp-ward-orb-track");
+        const wardOrbFill = document.getElementById("hud-hp-ward-orb-fill");
+        if (wardOrbFill || wardOrbTrack) {
+            const enabled = WardSystem.isEnabled(p);
+            const max = WardSystem.getMax(p);
+            const cur = WardSystem.getCurrent(p);
+            // Robustness: if ward is absorbing but wardMax wasn't initialized, still show a sensible ring.
+            const displayMax = max > 0 ? max : (cur > 0 ? cur : 0);
+            const pct = enabled && displayMax > 0 ? Math.max(0, Math.min(1, cur / displayMax)) : 0;
+            if (wardOrbTrack) {
+                wardOrbTrack.style.opacity = enabled && displayMax > 0 ? "0.9" : "0";
+            }
+            if (wardOrbFill) {
+                wardOrbFill.style.setProperty("--fill", `${Math.round(pct * 100)}%`);
+                wardOrbFill.style.opacity = enabled && displayMax > 0 ? "1" : "0";
+            }
+        }
+
+        // Attunement label
+        const attEl = document.getElementById("hud-attunement");
+        if (attEl) {
+            const att = p.metaAttunement || null;
+            if (!att) {
+                attEl.innerText = "—";
+                attEl.style.color = c("fx.uiMuted", 0.85) || "dust";
+            } else {
+                const pal = getMasteryPaletteByAttribute(att);
+                attEl.innerText = getAttunementLabel(att);
+                attEl.style.color = c(pal.text, 0.95) || (c("fx.uiText", 0.9) || "parchment");
+                attEl.style.textShadow = `0 1px 2px ${c("fx.ink", 0.9) || "ink"}`;
+            }
+        }
         
         const dashContainer = document.getElementById("dash-charges");
         if (dashContainer) {
@@ -581,6 +626,11 @@ const UI = {
         if (viewPerks) viewPerks.style.display = this._armoryTab === "perks" ? "block" : "none";
         if (viewWeaponMastery) viewWeaponMastery.style.display = this._armoryTab === "weaponMastery" ? "block" : "none";
         if (viewAttributeMastery) viewAttributeMastery.style.display = this._armoryTab === "attributeMastery" ? "block" : "none";
+
+        if (this._armoryTab !== "attributeMastery") {
+            this._armoryAttributeMasteryDraft = null;
+            this._armoryAttributeMasteryDraftRequiredGroups = null;
+        }
 
         if (this._armoryTab === "perks") {
             this.renderArmoryPerks();
@@ -891,39 +941,407 @@ const UI = {
         if (!container) return;
 
         const metaEnabled = FeatureFlags.isOn("progression.metaMasteryEnabled");
+
+        profile.mastery = profile.mastery || {};
+        profile.mastery.attributeTrees = profile.mastery.attributeTrees || {};
+        profile.armory = profile.armory || {};
+
         const curve = BALANCE?.progression?.mastery?.attributeCurve || { reqBase: 120, reqGrowth: 1.25 };
-        const reqForLevel = (lvl) => Math.floor(Math.max(1, Number(curve.reqBase || 120)) * Math.pow(Math.max(1.01, Number(curve.reqGrowth || 1.25)), Math.max(0, lvl)));
+        const reqForLevel = (lvl) =>
+            Math.floor(
+                Math.max(1, Number(curve.reqBase || 120)) *
+                    Math.pow(Math.max(1.01, Number(curve.reqGrowth || 1.25)), Math.max(0, lvl))
+            );
 
         const attrs = Object.values(AttributeId);
-        const rows = attrs.map((attrId) => {
+
+        const primaryFromWeapon = () => {
+            const weaponCls = Game?.p?.gear?.weapon?.cls || profile?.armory?.loadout?.weaponCls || null;
+            const cfg = getWeaponConfigByCls(weaponCls);
+            return cfg?.primaryAttribute || null;
+        };
+        const weaponPrimaryAttr = primaryFromWeapon();
+        const weaponPrimaryText = weaponPrimaryAttr ? `Weapon primary: ${weaponPrimaryAttr}` : "Weapon primary: —";
+
+        const saveProfile = () => {
+            try {
+                Game.profile = profile;
+                ProfileStore.save(profile, { backupPrevious: true });
+            } catch {
+                // ignore save errors
+            }
+        };
+
+        const deepClone = (x) => {
+            try {
+                return structuredClone(x);
+            } catch {
+                try {
+                    return JSON.parse(JSON.stringify(x));
+                } catch {
+                    return null;
+                }
+            }
+        };
+
+        const draftActive = !!this._armoryAttributeMasteryDraft;
+        const trees = draftActive ? this._armoryAttributeMasteryDraft : (profile.mastery.attributeTrees || {});
+        const requiredGroups = draftActive ? (this._armoryAttributeMasteryDraftRequiredGroups || []) : [];
+
+        const countUnlocked = (arr) => {
+            if (!Array.isArray(arr)) return 0;
+            const s = new Set();
+            for (const v of arr) {
+                if (typeof v !== "string") continue;
+                const t = v.trim();
+                if (!t) continue;
+                s.add(t);
+            }
+            return s.size;
+        };
+
+        const getTreeState = (attrId) => {
+            const st = trees?.[attrId] || { unlocked: [], selectedExclusive: {} };
+            const unlocked = Array.isArray(st.unlocked) ? st.unlocked : [];
+            const selectedExclusive = (st.selectedExclusive && typeof st.selectedExclusive === "object") ? st.selectedExclusive : {};
+            return { unlocked, selectedExclusive };
+        };
+
+        const setTreeState = (attrId, next) => {
+            if (!trees) return;
+            trees[attrId] = next;
+        };
+
+        const isExclusiveRespecGroup = (groupId) => {
+            const g = String(groupId || "");
+            return g.startsWith("t5_") || g.startsWith("t10_");
+        };
+
+        const canApplyDraft = () => {
+            if (!draftActive) return true;
+            for (const groupId of requiredGroups) {
+                const g = String(groupId || "");
+                if (!g) return false;
+                let selected = null;
+                for (const attrId of attrs) {
+                    const st = getTreeState(attrId);
+                    if (st.selectedExclusive && st.selectedExclusive[g]) selected = st.selectedExclusive[g];
+                }
+                if (!selected) return false;
+            }
+            return true;
+        };
+
+        const applyDraft = () => {
+            if (!draftActive) return;
+            if (!canApplyDraft()) return;
+            profile.mastery.attributeTrees = trees;
+            saveProfile();
+            this._armoryAttributeMasteryDraft = null;
+            this._armoryAttributeMasteryDraftRequiredGroups = null;
+            this.toast("Mastery changes applied");
+            this.renderArmoryAttributeMastery();
+        };
+
+        const cancelDraft = () => {
+            this._armoryAttributeMasteryDraft = null;
+            this._armoryAttributeMasteryDraftRequiredGroups = null;
+            this.toast("Mastery changes discarded");
+            this.renderArmoryAttributeMastery();
+        };
+
+        const beginExclusiveRespecDraft = () => {
+            if (!metaEnabled) return;
+            const base = profile?.mastery?.attributeTrees || {};
+            const draft = deepClone(base);
+            if (!draft) return;
+
+            const required = new Set();
+
+            for (const attrId of attrs) {
+                const treeDef = ATTRIBUTE_MASTERY_TREES?.[attrId];
+                const nodeDefs = Array.isArray(treeDef?.nodes) ? treeDef.nodes : [];
+
+                const current = base?.[attrId] || {};
+                const curUnlocked = Array.isArray(current.unlocked) ? current.unlocked : [];
+                const curSel = (current.selectedExclusive && typeof current.selectedExclusive === "object") ? current.selectedExclusive : {};
+
+                for (const [groupId, nodeId] of Object.entries(curSel)) {
+                    if (!isExclusiveRespecGroup(groupId)) continue;
+                    if (typeof nodeId === "string" && nodeId.trim()) required.add(groupId);
+                }
+                for (const n of nodeDefs) {
+                    if (!n?.exclusiveGroup || !isExclusiveRespecGroup(n.exclusiveGroup)) continue;
+                    if (curUnlocked.includes(n.id)) required.add(n.exclusiveGroup);
+                }
+
+                const nextTree = draft[attrId] || { unlocked: [], selectedExclusive: {} };
+                const nextUnlocked = Array.isArray(nextTree.unlocked) ? nextTree.unlocked.slice() : [];
+                const nextSel = (nextTree.selectedExclusive && typeof nextTree.selectedExclusive === "object") ? { ...nextTree.selectedExclusive } : {};
+
+                const removeIds = new Set(
+                    nodeDefs
+                        .filter((n) => (n?.tier === 5 || n?.tier === 10) && n?.exclusiveGroup && isExclusiveRespecGroup(n.exclusiveGroup))
+                        .map((n) => n.id)
+                );
+
+                const filtered = nextUnlocked.filter((id) => !removeIds.has(id));
+                for (const groupId of Object.keys(nextSel)) {
+                    if (isExclusiveRespecGroup(groupId)) delete nextSel[groupId];
+                }
+                draft[attrId] = { unlocked: filtered, selectedExclusive: nextSel };
+            }
+
+            this._armoryAttributeMasteryDraft = draft;
+            this._armoryAttributeMasteryDraftRequiredGroups = Array.from(required);
+        };
+
+        const ensureTreeScaffold = () => {
+            for (const attrId of attrs) {
+                if (!trees[attrId]) trees[attrId] = { unlocked: [], selectedExclusive: {} };
+                if (!Array.isArray(trees[attrId].unlocked)) trees[attrId].unlocked = [];
+                if (!(trees[attrId].selectedExclusive && typeof trees[attrId].selectedExclusive === "object")) trees[attrId].selectedExclusive = {};
+            }
+        };
+        ensureTreeScaffold();
+
+        const setAttunement = (attrId) => {
+            if (!metaEnabled) return;
+            profile.armory.attunement = attrId;
+            saveProfile();
+            this.playChoiceConfirm(container.querySelector(`[data-attune="${attrId}"]`), c("player.core", 0.75) || "p2");
+            this.renderArmoryAttributeMastery();
+        };
+
+        const attunement = typeof profile?.armory?.attunement === "string" ? profile.armory.attunement : null;
+
+        const prettyId = (id) => {
+            const s = String(id || "");
+            return s.replace(/^[a-z]+_[0-9]+_/, "").replaceAll("_", " ");
+        };
+
+        const unlockNode = (attrId, nodeId) => {
+            const treeDef = ATTRIBUTE_MASTERY_TREES?.[attrId];
+            const nodeDefs = Array.isArray(treeDef?.nodes) ? treeDef.nodes : [];
+            const node = nodeDefs.find((n) => n.id === nodeId);
+            if (!node) return;
+
+            const track = profile?.mastery?.attributes?.[attrId] || { level: 0 };
+            const tier = metaEnabled ? Math.max(0, Math.floor(Number(track.level || 0))) : 0;
+
+            const st = getTreeState(attrId);
+            const unlockedSet = new Set(st.unlocked.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean));
+            const isUnlocked = unlockedSet.has(nodeId);
+            if (isUnlocked) return;
+
+            const prereqsMet = (node.prereqs || []).every((pre) => unlockedSet.has(pre));
+            if (!prereqsMet) return;
+            if (node.tier > tier) return;
+
+            const spent = countUnlocked(Array.from(unlockedSet));
+            const available = Math.max(0, tier - spent);
+
+            const groupId = node.exclusiveGroup;
+            const groupMembers = groupId ? nodeDefs.filter((n) => n.exclusiveGroup === groupId).map((n) => n.id) : [];
+            const hasOtherInGroup = groupId ? groupMembers.some((id) => unlockedSet.has(id)) : false;
+
+            if (available <= 0 && !hasOtherInGroup) return;
+
+            if (groupId) {
+                for (const otherId of groupMembers) unlockedSet.delete(otherId);
+                unlockedSet.add(nodeId);
+                const nextSelected = { ...(st.selectedExclusive || {}) };
+                nextSelected[groupId] = nodeId;
+                setTreeState(attrId, { unlocked: Array.from(unlockedSet), selectedExclusive: nextSelected });
+            } else {
+                unlockedSet.add(nodeId);
+                setTreeState(attrId, { unlocked: Array.from(unlockedSet), selectedExclusive: { ...(st.selectedExclusive || {}) } });
+            }
+
+            if (!draftActive) {
+                profile.mastery.attributeTrees = trees;
+                saveProfile();
+                this.playChoiceConfirm(container.querySelector(`[data-node-id="${nodeId}"]`), c("player.core", 0.75) || "p2");
+            }
+
+            this.renderArmoryAttributeMastery();
+        };
+
+        const respecAll = () => {
+            if (!metaEnabled) return;
+            if (!window.confirm("Reset ALL attribute mastery nodes? This refunds all spent points.")) return;
+            for (const attrId of attrs) {
+                profile.mastery.attributeTrees[attrId] = { unlocked: [], selectedExclusive: {} };
+            }
+            this._armoryAttributeMasteryDraft = null;
+            this._armoryAttributeMasteryDraftRequiredGroups = null;
+            saveProfile();
+            this.toast("Attribute mastery reset");
+            this.renderArmoryAttributeMastery();
+        };
+
+        const respecExclusives = () => {
+            if (!metaEnabled) return;
+            if (
+                !window.confirm(
+                    "Respec tier 5/10 exclusive choices? You must re-select your exclusive picks and then click Apply, or changes will be discarded."
+                )
+            ) {
+                return;
+            }
+            beginExclusiveRespecDraft();
+            this.renderArmoryAttributeMastery();
+        };
+
+        const renderTreeColumn = (attrId) => {
             const track = profile?.mastery?.attributes?.[attrId] || { level: 0, xp: 0 };
-            const level = Math.max(0, Math.floor(Number(track.level || 0)));
+            const tier = metaEnabled ? Math.max(0, Math.floor(Number(track.level || 0))) : 0;
             const xp = Math.max(0, Math.floor(Number(track.xp || 0)));
-            const req = reqForLevel(level);
+            const req = reqForLevel(tier);
             const pct = req > 0 ? Math.max(0, Math.min(1, xp / req)) : 0;
-            return `
-                <div class="stat-row" style="border-color:rgba(var(--parchment-rgb),0.14);flex-direction:column;align-items:stretch;gap:8px">
+
+            const st = getTreeState(attrId);
+            const unlockedSet = new Set(st.unlocked.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean));
+            const spent = unlockedSet.size;
+            const available = Math.max(0, tier - spent);
+
+            const def = ATTRIBUTE_MASTERY_TREES?.[attrId] || { nodes: [] };
+            const nodes = Array.isArray(def.nodes) ? def.nodes.slice() : [];
+            nodes.sort((a, b) => (a.tier - b.tier) || String(a.id).localeCompare(String(b.id)));
+
+            const nodeButtons = nodes.map((n) => {
+                const isUnlocked = unlockedSet.has(n.id);
+                const prereqs = Array.isArray(n.prereqs) ? n.prereqs : [];
+                const prereqsMet = prereqs.every((pre) => unlockedSet.has(pre));
+                const tierMet = n.tier <= tier;
+
+                const groupId = n.exclusiveGroup;
+                const groupMembers = groupId ? nodes.filter((x) => x.exclusiveGroup === groupId).map((x) => x.id) : [];
+                const hasOtherInGroup = groupId ? groupMembers.some((id) => unlockedSet.has(id)) : false;
+                const canSpend = available > 0 || hasOtherInGroup;
+
+                const canUnlock = metaEnabled && !isUnlocked && prereqsMet && tierMet && canSpend;
+                const disabledAttr = canUnlock ? "" : "disabled";
+
+                const reason = !metaEnabled
+                    ? "Meta progression disabled"
+                    : isUnlocked
+                      ? "Unlocked"
+                      : !tierMet
+                        ? `Requires tier ${n.tier}`
+                        : !prereqsMet
+                          ? `Requires: ${prereqs.join(", ")}`
+                          : !canSpend
+                            ? "No points available"
+                            : "Locked";
+
+                const mode = n.activationMode || "—";
+                const ex = groupId ? ` • Exclusive (${groupId})` : "";
+                const title = `${prettyId(n.id)}`;
+                const small = `Tier ${n.tier} • ${mode}${ex}`;
+
+                const cls = isUnlocked ? "btn-upgrade selected" : "btn-upgrade";
+                const activeText = isUnlocked ? "Unlocked" : (canUnlock ? "Unlock" : "Locked");
+                return `<button class="${cls}" data-node-id="${n.id}" data-attr-id="${attrId}" title="${reason}" ${disabledAttr}>${title}<small>${small} • ${activeText}</small></button>`;
+            }).join("");
+
+            const attuned = attunement === attrId;
+            const isPrimary = weaponPrimaryAttr === attrId;
+            const header = `
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+                    <div style="font-weight:900">${attrId}</div>
+                    <div style="color:var(--muted);font-size:11px">${isPrimary ? "Weapon primary" : ""}${attuned ? (isPrimary ? " • " : "") + "Attuned" : ""}</div>
+                </div>
+            `;
+
+            const summary = `
+                <div style="margin-top:8px;color:var(--muted);font-size:12px;line-height:1.4">
+                    Tier: <b>${tier}</b> • Points: <b>${available}</b> avail / <b>${spent}</b> spent
+                </div>
+            `;
+
+            const progress = `
+                <div style="margin-top:10px">
                     <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
-                        <div style="font-weight:900">${attrId}</div>
-                        <div style="color:var(--muted);font-size:12px">Level <b>${level}</b> • XP ${xp} / ${req}</div>
+                        <div style="color:var(--muted);font-size:11px">XP ${xp} / ${req}</div>
+                        <div style="color:var(--muted);font-size:11px" title="${formatMetaMasteryTierTooltip(attrId, tier)}">Passive</div>
                     </div>
-                    <div class="hud-progress-bar">
+                    <div class="hud-progress-bar" style="margin-top:6px">
                         <div class="fill-progress" style="width:${Math.round(pct * 100)}%"></div>
                     </div>
                 </div>
             `;
-        }).join("");
+
+            return `
+                <div class="stat-row" style="border-color:rgba(var(--parchment-rgb),0.14);flex-direction:column;align-items:stretch;gap:8px">
+                    ${header}
+                    ${summary}
+                    ${progress}
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                        <button class="${attuned ? "btn primary" : "btn"}" data-attune="${attrId}" ${metaEnabled ? "" : "disabled"}>Attune</button>
+                    </div>
+                    <div class="levelup-options" style="margin-top:10px">${nodeButtons || `<div style="color:var(--muted);font-size:12px">No nodes yet.</div>`}</div>
+                </div>
+            `;
+        };
+
+        const draftBar = draftActive
+            ? `
+                <div class="stat-row" style="border-color:rgba(var(--parchment-rgb),0.22);margin-top:10px;display:flex;justify-content:space-between;gap:10px;align-items:center">
+                    <div style="font-size:12px">
+                        <b>Pending changes</b>
+                        <span style="color:var(--muted)">(${requiredGroups.length ? `${requiredGroups.length} exclusive pick(s) required` : "apply to save"})</span>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn" id="btn-mastery-cancel">Cancel</button>
+                        <button class="btn primary" id="btn-mastery-apply" ${canApplyDraft() ? "" : "disabled"}>Apply</button>
+                    </div>
+                </div>
+            `
+            : "";
 
         container.innerHTML = `
             <span class="sec-title">Attribute Mastery</span>
             <div style="margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5">
-                Attribute mastery advances at run end when meta progression is enabled. XP is distributed 70% to your weapon’s primary attribute and 30% across picked phials (weighted by stacks).
-                ${metaEnabled ? "" : "<br><b>Meta progression is currently disabled.</b>"}
+                Spend attribute tiers as points to unlock mastery nodes. Attunement controls which Attuned/Hybrid riders are active (gameplay hooks come later).
+                <br>${weaponPrimaryText}${metaEnabled ? "" : "<br><b>Meta progression is currently disabled.</b>"}
             </div>
-            <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
-                ${rows}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                <button class="btn danger" id="btn-mastery-respec-all" ${metaEnabled ? "" : "disabled"}>Respec All</button>
+                <button class="btn" id="btn-mastery-respec-exclusives" ${metaEnabled ? "" : "disabled"}>Respec Tier 5/10 Exclusives</button>
+            </div>
+            ${draftBar}
+            <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
+                ${attrs.map(renderTreeColumn).join("")}
             </div>
         `;
+
+        const btnAll = container.querySelector("#btn-mastery-respec-all");
+        if (btnAll) btnAll.onclick = () => respecAll();
+        const btnEx = container.querySelector("#btn-mastery-respec-exclusives");
+        if (btnEx) btnEx.onclick = () => respecExclusives();
+
+        const btnApply = container.querySelector("#btn-mastery-apply");
+        if (btnApply) btnApply.onclick = () => applyDraft();
+        const btnCancel = container.querySelector("#btn-mastery-cancel");
+        if (btnCancel) btnCancel.onclick = () => cancelDraft();
+
+        container.querySelectorAll("[data-attune]").forEach((btn) => {
+            btn.onclick = (e) => {
+                const attrId = e.currentTarget.getAttribute("data-attune");
+                if (!attrId) return;
+                setAttunement(attrId);
+            };
+        });
+
+        container.querySelectorAll("[data-node-id][data-attr-id]").forEach((btn) => {
+            btn.onclick = (e) => {
+                const nodeId = e.currentTarget.getAttribute("data-node-id");
+                const attrId = e.currentTarget.getAttribute("data-attr-id");
+                if (!nodeId || !attrId) return;
+                unlockNode(attrId, nodeId);
+            };
+        });
     },
     identifyItem(item) {
         if (!item || item.identified !== false) return;
@@ -995,13 +1413,11 @@ const UI = {
         const elBuild = document.getElementById("pauseBuild");
         if (!elOptions || !elBuild) return;
 
-        const perkLine = (attrKey, colorVar, label, tier, tier1, tier2) => {
-            const base = `<span style="color:var(${colorVar});font-weight:800">${label}</span>: ${p.totalAttr[attrKey] || 0}`;
-            const perks = [];
-            if ((tier || 0) >= 1) perks.push(tier1);
-            if ((tier || 0) >= 2) perks.push(tier2);
-            if (perks.length === 0) return base;
-            return `${base} <span style="color:var(${colorVar});opacity:0.9">(${perks.join(", ")} unlocked)</span>`;
+        const metaTierLine = (attrId, colorVar, label) => {
+            const tier = getAttributeTier(p, attrId);
+            const tip = formatMetaMasteryTierTooltip(attrId, tier);
+            const short = tier > 0 ? tip.replace(`Meta tier ${tier}: `, "") : "Meta tier 0";
+            return `<span title="${tip}"><span style="color:var(${colorVar});font-weight:800">${label}</span>: Tier ${tier} <span style="color:var(${colorVar});opacity:0.85">(${short})</span></span>`;
         };
 
         const weaponCls = p?.gear?.weapon?.cls || null;
@@ -1063,7 +1479,6 @@ const UI = {
             <div style="margin-top:14px;color:var(--muted);font-size:11px">Press Esc to close this menu.</div>
         `;
 
-        const attrTier = p.perkLevel || {};
         const showCon = FeatureFlags.isOn("progression.constitutionEnabled");
         if (this._pauseView === "settings") {
             const presets = [0.9, 1.0, 1.15, 1.25, 1.35];
@@ -1087,10 +1502,10 @@ const UI = {
             elBuild.innerHTML = `
                 <span class="sec-title">Build</span>
                 <div style="display:flex;flex-direction:column;gap:8px">
-                    <div>${perkLine("might", "--red", "Might", attrTier.might, "Soul Blast", "Burn")}</div>
-                    <div>${perkLine("alacrity", "--green", "Alacrity", attrTier.alacrity, "Tempest", "Split")}</div>
-                    <div>${perkLine("will", "--blue", "Will", attrTier.will, "Wisps", "Rod")}</div>
-                    ${showCon ? `<div>${perkLine("constitution", "--violet", "Constitution", attrTier.constitution, "Tier I", "Tier II")}</div>` : ""}
+                    <div>${metaTierLine(AttributeId.Might, "--red", "Might")}</div>
+                    <div>${metaTierLine(AttributeId.Alacrity, "--green", "Alacrity")}</div>
+                    <div>${metaTierLine(AttributeId.Will, "--blue", "Will")}</div>
+                    ${showCon ? `<div>${metaTierLine(AttributeId.Constitution, "--violet", "Constitution")}</div>` : ""}
                 </div>
                 <div style="margin-top:12px">
                     <span class="sec-title">Loadout</span>

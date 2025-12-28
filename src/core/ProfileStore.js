@@ -3,7 +3,7 @@
 
 const PROFILE_STORAGE_KEY = "soulcycle:profile";
 const PROFILE_BACKUP_KEY = "soulcycle:profile:backup";
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 function normalizeWeaponCls(cls) {
   const c = String(cls || "").toLowerCase();
@@ -54,6 +54,10 @@ export function createDefaultProfile() {
         gearBySlot: {},
       },
 
+      // Phase 3: global attunement selection for attribute mastery activation modes.
+      // Stored as AttributeId string or null when unset.
+      attunement: null,
+
       // Pre-run perk sockets (Phase 5): reserve schema now.
       // Level 15 relic slot is reserved; behavior may be deferred.
       perkSocketsByWeapon: {},
@@ -67,6 +71,16 @@ export function createDefaultProfile() {
         Alacrity: { xp: 0, level: 0, unlocks: [] },
         Constitution: { xp: 0, level: 0, unlocks: [] },
       },
+
+      // Phase 3+: attribute mastery tree unlocks (data-driven).
+      // `selectedExclusive` is reserved for exclusiveGroup resolution; unlock UX will define exact semantics.
+      attributeTrees: {
+        Might: { unlocked: [], selectedExclusive: {} },
+        Will: { unlocked: [], selectedExclusive: {} },
+        Alacrity: { unlocked: [], selectedExclusive: {} },
+        Constitution: { unlocked: [], selectedExclusive: {} },
+      },
+
       weapons: {
         // Keyed by WeaponId; storing as object keeps JSON friendly.
         Hammer: { xp: 0, level: 0, unlocks: [] },
@@ -83,58 +97,128 @@ export function createDefaultProfile() {
   };
 }
 
+function deriveDefaultAttunementFromWeaponCls(weaponCls) {
+  const w = normalizeWeaponCls(weaponCls);
+  if (w === "hammer") return "Might";
+  if (w === "staff") return "Will";
+  if (w === "repeater") return "Alacrity";
+  if (w === "scythe") return "Constitution";
+  return null;
+}
+
+function sanitizeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const v of value) {
+    if (typeof v !== "string") continue;
+    const s = v.trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function sanitizeStringMap(value) {
+  if (!isProfileObject(value)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof k !== "string" || !k.trim()) continue;
+    if (typeof v !== "string" || !v.trim()) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function migrate0to1(raw) {
+  const next = createDefaultProfile();
+  if (raw && typeof raw === "object") {
+    // Preserve any legacy keys without depending on them.
+    next.settings = { ...next.settings, ...(raw.settings || {}) };
+    next.armory = { ...next.armory, ...(raw.armory || {}) };
+    next.mastery = { ...next.mastery, ...(raw.mastery || {}) };
+    next.history = { ...next.history, ...(raw.history || {}) };
+  }
+  next.schemaVersion = 1;
+  next.updatedAt = nowIso();
+  return next;
+}
+
+function migrate1to2(raw) {
+  const next = isProfileObject(raw) ? { ...raw } : migrate0to1(raw);
+
+  next.armory = isProfileObject(next.armory) ? { ...next.armory } : {};
+  next.armory.loadout = isProfileObject(next.armory.loadout) ? { ...next.armory.loadout } : {};
+
+  if (next.armory.loadout.weaponCls) {
+    next.armory.loadout.weaponCls = normalizeWeaponCls(next.armory.loadout.weaponCls);
+  }
+
+  const gearBySlot = next.armory.loadout.gearBySlot;
+  if (isProfileObject(gearBySlot) && isProfileObject(gearBySlot.weapon)) {
+    const weaponSnap = { ...gearBySlot.weapon };
+    if (weaponSnap.cls) weaponSnap.cls = normalizeWeaponCls(weaponSnap.cls);
+    next.armory.loadout.gearBySlot = { ...gearBySlot, weapon: weaponSnap };
+  }
+
+  // Normalize recent run snapshots for UI/telemetry consistency.
+  if (next.history && Array.isArray(next.history.recentRuns)) {
+    next.history = { ...next.history };
+    next.history.recentRuns = next.history.recentRuns.map((rr) => {
+      if (!isProfileObject(rr)) return rr;
+      const out = { ...rr };
+      if (out.weaponCls) out.weaponCls = normalizeWeaponCls(out.weaponCls);
+      return out;
+    });
+  }
+
+  next.schemaVersion = 2;
+  next.updatedAt = nowIso();
+  return next;
+}
+
+function migrate2to3(raw) {
+  const next = isProfileObject(raw) ? { ...raw } : migrate1to2(raw);
+
+  next.armory = isProfileObject(next.armory) ? { ...next.armory } : {};
+  next.armory.loadout = isProfileObject(next.armory.loadout) ? { ...next.armory.loadout } : {};
+
+  // Default attunement when absent: weapon primary attribute (or null if no weapon snapshot).
+  const att = next.armory.attunement;
+  if (typeof att !== "string" || !att.trim()) {
+    const weaponCls =
+      next.armory.loadout.weaponCls ||
+      (isProfileObject(next.armory.loadout.gearBySlot) && isProfileObject(next.armory.loadout.gearBySlot.weapon)
+        ? next.armory.loadout.gearBySlot.weapon.cls
+        : null);
+    next.armory.attunement = deriveDefaultAttunementFromWeaponCls(weaponCls);
+  }
+
+  next.mastery = isProfileObject(next.mastery) ? { ...next.mastery } : {};
+  const trees = isProfileObject(next.mastery.attributeTrees) ? { ...next.mastery.attributeTrees } : {};
+
+  for (const attrId of ["Might", "Will", "Alacrity", "Constitution"]) {
+    const tree = isProfileObject(trees[attrId]) ? { ...trees[attrId] } : {};
+    tree.unlocked = sanitizeStringArray(tree.unlocked);
+    tree.selectedExclusive = sanitizeStringMap(tree.selectedExclusive);
+    trees[attrId] = tree;
+  }
+
+  next.mastery.attributeTrees = trees;
+
+  next.schemaVersion = 3;
+  next.updatedAt = nowIso();
+  return next;
+}
+
 function migrateProfile(raw) {
   const v = Number(raw?.schemaVersion || 0);
   if (v === CURRENT_SCHEMA_VERSION) return raw;
 
-  // v0 -> v1: adopt default shape and merge shallowly.
-  if (v <= 0) {
-    const next = createDefaultProfile();
-    if (raw && typeof raw === "object") {
-      // Preserve any legacy keys without depending on them.
-      next.settings = { ...next.settings, ...(raw.settings || {}) };
-      next.armory = { ...next.armory, ...(raw.armory || {}) };
-      next.mastery = { ...next.mastery, ...(raw.mastery || {}) };
-      next.history = { ...next.history, ...(raw.history || {}) };
-    }
-    next.schemaVersion = CURRENT_SCHEMA_VERSION;
-    next.updatedAt = nowIso();
-    return next;
-  }
-
-  // v1 -> v2: migrate legacy pistol cls to repeater in persisted loadout snapshots + run history.
-  if (v === 1) {
-    const next = isProfileObject(raw) ? { ...raw } : createDefaultProfile();
-
-    next.armory = isProfileObject(next.armory) ? { ...next.armory } : {};
-    next.armory.loadout = isProfileObject(next.armory.loadout) ? { ...next.armory.loadout } : {};
-
-    if (next.armory.loadout.weaponCls) {
-      next.armory.loadout.weaponCls = normalizeWeaponCls(next.armory.loadout.weaponCls);
-    }
-
-    const gearBySlot = next.armory.loadout.gearBySlot;
-    if (isProfileObject(gearBySlot) && isProfileObject(gearBySlot.weapon)) {
-      const weaponSnap = { ...gearBySlot.weapon };
-      if (weaponSnap.cls) weaponSnap.cls = normalizeWeaponCls(weaponSnap.cls);
-      next.armory.loadout.gearBySlot = { ...gearBySlot, weapon: weaponSnap };
-    }
-
-    // Normalize recent run snapshots for UI/telemetry consistency.
-    if (next.history && Array.isArray(next.history.recentRuns)) {
-      next.history = { ...next.history };
-      next.history.recentRuns = next.history.recentRuns.map((rr) => {
-        if (!isProfileObject(rr)) return rr;
-        const out = { ...rr };
-        if (out.weaponCls) out.weaponCls = normalizeWeaponCls(out.weaponCls);
-        return out;
-      });
-    }
-
-    next.schemaVersion = CURRENT_SCHEMA_VERSION;
-    next.updatedAt = nowIso();
-    return next;
-  }
+  if (v <= 0) return migrate2to3(migrate1to2(migrate0to1(raw)));
+  if (v === 1) return migrate2to3(migrate1to2(raw));
+  if (v === 2) return migrate2to3(raw);
 
   // Unknown future version: do not attempt destructive migration.
   return raw;

@@ -29,7 +29,8 @@ import { GolemMinion } from "./Minions.js";
 
 function triggerActivePhialEffects(player, trigger, ctx, { shadow } = {}) {
     try {
-        EffectSystem.setActiveSources(buildActivePhialEffectSources(player));
+        const mastery = Array.isArray(player?._attributeMasteryEffectSources) ? player._attributeMasteryEffectSources : [];
+        EffectSystem.setActiveSources([...buildActivePhialEffectSources(player), ...mastery]);
         EffectSystem.trigger(trigger, ctx, { shadow: !!shadow });
     } catch {
         // Never allow effect validation to crash gameplay.
@@ -143,8 +144,10 @@ export default class PlayerObj {
         };
 
         // Dash
+        this.maxDashCharges = BALANCE.player.baseDashCharges;
         this.dashCharges = BALANCE.player.baseDashCharges;
         this.dashRechargeTimer = 0;
+        this._masteryDashRechargeMult = 1.0;
         this.dashKeyPressed = false; // Track if space was pressed last frame
         this.dashRechargeFlash = 0;  // Timer for the UI flash
 
@@ -185,8 +188,9 @@ export default class PlayerObj {
 
         // Temporary buffs
         this.soulMagnetTimer = 0;
-        this.combatBuffs = { powerMult: 1.0 };
+        this.combatBuffs = { powerMult: 1.0, moveSpeedMult: 1.0, attackSpeedMult: 1.0 };
         this.combatBuffTimers = { powerMult: 0 };
+        this._masteryDamageTakenMultFactor = 1.0;
 
         // Weapon state (run-reset). Used for "class" mechanics like pistol windup/cyclone.
         this.weaponState = {
@@ -319,8 +323,13 @@ export default class PlayerObj {
             this.combatBuffTimers.powerMult = Math.max(0, this.combatBuffTimers.powerMult - dt);
             if (this.combatBuffTimers.powerMult <= 0) this.combatBuffs.powerMult = 1.0;
         }
-        if (this.dashCharges < BALANCE.player.baseDashCharges) {
-            this.dashRechargeTimer += dt;
+        const maxDash = this.maxDashCharges || BALANCE.player.baseDashCharges;
+        const rechargeMult =
+            (typeof this._masteryDashRechargeMult === "number" && Number.isFinite(this._masteryDashRechargeMult))
+                ? this._masteryDashRechargeMult
+                : 1.0;
+        if (this.dashCharges < maxDash) {
+            this.dashRechargeTimer += dt * Math.max(0.05, rechargeMult);
             if (this.dashRechargeTimer >= BALANCE.player.dashRechargeTime) {
                 this.dashRechargeTimer = 0;
                 this.dashCharges++;
@@ -753,6 +762,7 @@ export default class PlayerObj {
                 this.dashHitList = []; // Clear hit list on new dash
                 this.rooted = 0; // Break root
                 this.rootImmunity = BALANCE.player.rootImmunityDuration;
+                this.onDash(scene, { phase: "start" });
             }
             this.dashKeyPressed = true;
         } else {
@@ -762,6 +772,8 @@ export default class PlayerObj {
         if (this.dashTimer <= 0 && this.rooted <= 0) {
             // Standard Walk
             let spd = BALANCE.player.walkBaseSpeed * (this.stats.moveSpeedMult || (1 + this.stats.move));
+            const moveMult = this.combatBuffs?.moveSpeedMult;
+            if (typeof moveMult === "number" && Number.isFinite(moveMult)) spd *= moveMult;
             this.x += mx * spd * dt; 
             this.y += my * spd * dt;
         }
@@ -769,6 +781,7 @@ export default class PlayerObj {
 
     processDash(dt, scene) {
         const startPos = { x: this.x, y: this.y };
+        const prevDashTimer = this.dashTimer;
         this.dashTimer -= dt;
         // Dash speed is fixed high velocity
         this.x += this.dashVec.x * BALANCE.player.dashSpeed * dt; 
@@ -778,7 +791,11 @@ export default class PlayerObj {
         const blindStacks = this.getPhialStacks(Phials.blindingStep.id);
         if (blindStacks > 0) {
             scene.shots.push(new DashTrail(startPos, endPos, blindStacks));
-            this.onDash(scene); // Call onDash continuously
+        }
+
+        this.onDash(scene, { phase: "tick", startPos, endPos });
+        if (prevDashTimer > 0 && this.dashTimer <= 0) {
+            this.onDash(scene, { phase: "end", startPos, endPos });
         }
     }
 
@@ -826,7 +843,9 @@ export default class PlayerObj {
             const cfg = BALANCE.player.scythe || {};
             const skillsCfg = BALANCE.skills?.scythe || {};
 
-            const attackSpeed = this.stats.attackSpeed || (1 + (this.stats.spd || 0));
+            const baseAttackSpeed = this.stats.attackSpeed || (1 + (this.stats.spd || 0));
+            const atkBuff = this.combatBuffs?.attackSpeedMult;
+            const attackSpeed = baseAttackSpeed * ((typeof atkBuff === "number" && Number.isFinite(atkBuff)) ? atkBuff : 1.0);
             const cdMult = Math.max(0.15, 1 + (this.stats.scytheCooldownMult || 0));
             const cooldown = (cfg.cooldown ?? 0.34) / Math.max(0.05, attackSpeed) * cdMult;
 
@@ -959,6 +978,8 @@ export default class PlayerObj {
         // Shooting (Pistol/Staff) - Don't shoot while dashing
         if (mouse.down && this.atkCd <= 0 && this.dashTimer <= 0) {
             let attackSpeed = this.stats.attackSpeed || (1 + this.stats.spd);
+            const atkBuff = this.combatBuffs?.attackSpeedMult;
+            if (typeof atkBuff === "number" && Number.isFinite(atkBuff)) attackSpeed *= atkBuff;
             if (usingRepeater && pistolState) {
                 const skillsCfg = BALANCE.skills?.pistol || {};
                 const windupBonus = skillsCfg.windupAttackSpeedBonus ?? 2.0; // at full windup: +200%
@@ -1441,13 +1462,14 @@ export default class PlayerObj {
         }
     }
 
-    onDash(state) {
+    onDash(state, dash = null) {
         const enabled = FeatureFlags.isOn("progression.effectSystemEnabled");
         const shadow = FeatureFlags.isOn("progression.effectSystemShadow") && !enabled;
         if (enabled || shadow) {
-            triggerActivePhialEffects(this, EffectSystem.TRIGGERS.dash, { player: this, state, particles: ParticleSystem }, { shadow });
+            triggerActivePhialEffects(this, EffectSystem.TRIGGERS.dash, { player: this, state, dash, particles: ParticleSystem }, { shadow });
             if (enabled) return;
         }
+        if (dash?.phase && dash.phase !== "tick") return;
         const blindStacks = this.getPhialStacks(Phials.blindingStep.id);
         if (blindStacks > 0) {
             const blindDuration = Phials.blindingStep.baseBlindDuration + Math.floor((blindStacks - 1) / 2) * Phials.blindingStep.blindDurationPerTwoStacks;

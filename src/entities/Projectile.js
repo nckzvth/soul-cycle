@@ -675,6 +675,27 @@ export class Projectile {
         this.hitMeta = hitMeta;
     }
     update(dt) {
+        // Mastery (Gale): mild projectile guidance (subtle, not full homing).
+        const guide = this.player?.stats?.masteryProjectileGuidance || 0;
+        if (guide > 0 && this.state?.findTarget) {
+            const t = this.state.findTarget(null, this.x, this.y);
+            if (t && !t.dead) {
+                const dx = t.x - this.x;
+                const dy = t.y - this.y;
+                const d2 = dx * dx + dy * dy;
+                const maxR = 220;
+                if (d2 > 1 && d2 < maxR * maxR) {
+                    const spd = Math.hypot(this.vx, this.vy) || 1;
+                    const ang = Math.atan2(dy, dx);
+                    const desiredVx = Math.cos(ang) * spd;
+                    const desiredVy = Math.sin(ang) * spd;
+                    const turn = Math.max(0, Math.min(1, 0.08 * guide)) * Math.max(0, Math.min(1, dt * 8));
+                    this.vx += (desiredVx - this.vx) * turn;
+                    this.vy += (desiredVy - this.vy) * turn;
+                }
+            }
+        }
+
         this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt;
         // Collision
         for (let e of this.state.enemies) {
@@ -1163,9 +1184,211 @@ export class Hazard {
     }
 }
 
-export class AegisPulse {
-    constructor(state, player, x, y, radius, stacks, spec, snapshot) {
+export class MasteryWhirlpool {
+    constructor(state, player, x, y, meta = {}) {
         this.state = state;
+        this.player = player;
+        this.x = x;
+        this.y = y;
+        this.meta = meta;
+        this.life = Math.max(0.1, Number(meta.life || 2.6));
+        this.radius = Math.max(10, Number(meta.radius || 95));
+        this.pullStrength = Math.max(0, Number(meta.pullStrength || 42));
+        this.creationTime = Game.time;
+        this.isMasteryWhirlpool = true;
+        this._vfxTimer = 0;
+    }
+
+    update(dt) {
+        this.life -= dt;
+        this._vfxTimer -= dt;
+
+        const enemies = this.state?.enemies || [];
+        for (const e of enemies) {
+            if (!e || e.dead) continue;
+            const d2 = dist2(this.x, this.y, e.x, e.y);
+            if (d2 > this.radius * this.radius) continue;
+
+            const dx = this.x - e.x;
+            const dy = this.y - e.y;
+            const d = Math.hypot(dx, dy) || 1;
+            const resist = (StatusSystem.hasStatus(e, StatusId.Soaked) ? 0.85 : 1.0) * (e.isElite || e.isBoss ? 1.35 : 1.0);
+            const s = (this.pullStrength / resist) * dt;
+            e.vx += (dx / d) * s * 60;
+            e.vy += (dy / d) * s * 60;
+        }
+
+        if (this._vfxTimer <= 0) {
+            this._vfxTimer = 0.12;
+            ParticleSystem.emit(this.x, this.y, tc("fx.uiAccent", 0.22) || { token: "p1", alpha: 0.22 }, 1, 0, 2.2, 0.25);
+        }
+
+        return this.life > 0;
+    }
+
+    draw(ctx, s) {
+        const p = s(this.x, this.y);
+        const alpha = Math.max(0, Math.min(1, this.life / 1.5));
+        ctx.save();
+        ctx.globalAlpha = 0.55 * alpha;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, this.radius);
+        g.addColorStop(0, tc("fx.uiAccent", 0.2 * alpha) || "rgba(108,237,237,0.2)");
+        g.addColorStop(1, "transparent");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = tc("fx.ink", 0.25 * alpha) || "rgba(12,13,18,0.25)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.radius * 0.85, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+export class MasteryTentacleSlam {
+    constructor(state, player, x, y, meta = {}) {
+        this.state = state;
+        this.player = player;
+        this.x = x;
+        this.y = y;
+        this.meta = meta;
+        this.life = Math.max(0.05, Number(meta.life || 0.65));
+        this.radius = Math.max(20, Number(meta.radius || 95));
+        this.upgraded = !!meta.upgraded;
+        this._didHit = false;
+    }
+
+    update(dt) {
+        this.life -= dt;
+        if (!this._didHit && this.life <= 0.45) {
+            this._didHit = true;
+            const enemies = this.state?.enemies || [];
+            for (const e of enemies) {
+                if (!e || e.dead) continue;
+                if (dist2(this.x, this.y, e.x, e.y) > this.radius * this.radius) continue;
+
+                // Root-lite: freeze by dropping speed; restore via StatusSystem expire hook.
+                const baseSpeed = typeof e._masteryBaseSpeed === "number" ? e._masteryBaseSpeed : e.speed;
+                if (typeof e._masteryBaseSpeed !== "number") e._masteryBaseSpeed = baseSpeed;
+                const dur = e.isElite || e.isBoss ? 0.35 : 0.65;
+                e.speed = 0;
+                StatusSystem.applyStatus(e, "mastery:tentacleRoot", {
+                    source: this.player,
+                    stacks: 1,
+                    duration: dur,
+                    tickInterval: 9999,
+                    spec: null,
+                    snapshotPolicy: "snapshot",
+                    stackMode: "max",
+                    maxStacks: 1,
+                    onExpire: (tgt) => {
+                        if (!tgt) return;
+                        const b = typeof tgt._masteryBaseSpeed === "number" ? tgt._masteryBaseSpeed : null;
+                        if (b != null) tgt.speed = b;
+                    },
+                    onExpireData: { baseSpeed },
+                });
+
+                if (this.upgraded) {
+                    StatusSystem.applyStatus(e, StatusId.Soaked, {
+                        source: this.player,
+                        stacks: 1,
+                        duration: 2.2,
+                        tickInterval: 9999,
+                        spec: null,
+                        snapshotPolicy: "snapshot",
+                        stackMode: "max",
+                        maxStacks: 1,
+                    });
+                }
+            }
+        }
+        return this.life > 0;
+    }
+
+    draw(ctx, s) {
+        const p = s(this.x, this.y);
+        const alpha = Math.max(0, Math.min(1, this.life / 0.65));
+        ctx.save();
+        ctx.globalAlpha = 0.65 * alpha;
+        ctx.fillStyle = tc("fx.uiAccent", 0.22) || "rgba(108,237,237,0.22)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = tc("fx.ink", 0.3) || "rgba(12,13,18,0.3)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.radius * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+export class MasteryConsecrateZone {
+    constructor(state, player, x, y, meta = {}) {
+        this.state = state;
+        this.player = player;
+        this.x = x;
+        this.y = y;
+        this.meta = meta;
+        this.life = Math.max(0.1, Number(meta.life || 1.8));
+        this.radius = Math.max(10, Number(meta.radius || 70));
+        this.igniteCoeff = Math.max(0, Number(meta.igniteCoeff || 0.035));
+        this._tickTimer = 0;
+    }
+
+    update(dt) {
+        this.life -= dt;
+        this._tickTimer -= dt;
+        if (this._tickTimer <= 0) {
+            this._tickTimer = 0.35;
+            const enemies = this.state?.enemies || [];
+            for (const e of enemies) {
+                if (!e || e.dead) continue;
+                if (dist2(this.x, this.y, e.x, e.y) > this.radius * this.radius) continue;
+                StatusSystem.applyStatus(e, StatusId.Ignited, {
+                    source: this.player,
+                    stacks: 1,
+                    duration: 1.8,
+                    tickInterval: 1.0,
+                    spec: { id: "mastery:consecrateIgnite", base: 0, coeff: this.igniteCoeff, flat: 0, canCrit: false, tags: ["dot"], snapshot: true },
+                    snapshotPolicy: "snapshot",
+                    stackMode: "add",
+                    maxStacks: 12,
+                    triggerOnHit: false,
+                    dotTextMode: "aggregate",
+                });
+            }
+        }
+        return this.life > 0;
+    }
+
+    draw(ctx, s) {
+        const p = s(this.x, this.y);
+        const alpha = Math.max(0, Math.min(1, this.life / 1.8));
+        ctx.save();
+        ctx.globalAlpha = 0.55 * alpha;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, this.radius);
+        g.addColorStop(0, tc("fx.ember", 0.16) || "rgba(192,106,58,0.16)");
+        g.addColorStop(1, "transparent");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = tc("fx.ink", 0.22) || "rgba(12,13,18,0.22)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, this.radius * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+export class AegisPulse {
+    constructor(state, player, x, y, radius, stacks, spec, snapshot) { 
+        this.state = state; 
         this.player = player;
         this.x = x;
         this.y = y;

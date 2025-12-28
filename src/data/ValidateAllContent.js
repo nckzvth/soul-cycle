@@ -2,6 +2,7 @@ import { Phials } from "./Phials.js";
 import { SKILLS } from "./Skills.js";
 import { validateTaggedDef, validateWeaponDef } from "./ContentValidation.js";
 import { getWeaponConfigByCls } from "./Weapons.js";
+import { validateAttributeMasteryTrees } from "./ValidateAttributeMasteryTrees.js";
 
 function safeId(def) {
   return def?.id || def?.weaponId || null;
@@ -34,6 +35,9 @@ export function validateAllContent({ strict = false } = {}) {
     seen.add(id);
   }
 
+  // Attribute mastery trees (Phase 2): validate structure + tags at boot when strict is enabled.
+  // (Currently empty; validator keeps the integration ship-safe as trees are populated.)
+  validateAttributeMasteryTrees();
+
   return true;
 }
-

@@ -2,6 +2,7 @@ import { clamp } from "../core/Utils.js";
 import { BALANCE } from "../data/Balance.js";
 import { SKILLS } from "../data/Skills.js";
 import { FeatureFlags } from "../core/FeatureFlags.js";
+import { applyMetaMasteryPassiveBonuses } from "./MasteryHelpers.js";
 
 let SKILL_BY_ID = null;
 function getSkillById() {
@@ -200,18 +201,7 @@ const StatsSystem = {
 
     // --- Phase 6: meta mastery passive bonuses (flagged) ---
     if (FeatureFlags.isOn("progression.metaMasteryEnabled") && player?.metaMasteryLevels) {
-      const lv = player.metaMasteryLevels;
-      const mightLv = toNumber(lv.Might);
-      const willLv = toNumber(lv.Will);
-      const alacLv = toNumber(lv.Alacrity);
-      const conLv = toNumber(lv.Constitution);
-
-      // Keep these small; they are intended as gentle synergies, not primary scaling.
-      s.powerMult *= (1 + mightLv * 0.01);
-      s.soulGain *= (1 + willLv * 0.015);
-      s.attackSpeed *= (1 + alacLv * 0.005);
-      s.moveSpeedMult *= (1 + alacLv * 0.003);
-      s.hp += conLv * 3;
+      applyMetaMasteryPassiveBonuses(s, player.metaMasteryLevels);
     }
 
     // --- Soft caps / guardrails (v1 pacing) ---

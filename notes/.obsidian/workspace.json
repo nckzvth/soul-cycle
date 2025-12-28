@@ -20,8 +20,21 @@
               "icon": "lucide-file",
               "title": "Damage"
             }
+          },
+          {
+            "id": "5ed716a478e5eb3f",
+            "type": "leaf",
+            "state": {
+              "type": "release-notes",
+              "state": {
+                "currentVersion": "1.10.6"
+              },
+              "icon": "lucide-book-up",
+              "title": "Release Notes 1.10.6"
+            }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -169,7 +182,7 @@
       "bases:Create new base": false
     }
   },
-  "active": "22a4ad481dd15e67",
+  "active": "5ed716a478e5eb3f",
   "lastOpenFiles": [
     "progression/step-1-shipping-posture.md",
     "references/scythe_icon.png",

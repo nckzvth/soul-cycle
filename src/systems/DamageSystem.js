@@ -1,5 +1,7 @@
 import { BALANCE } from "../data/Balance.js";
 import DamageSpecs from "../data/DamageSpecs.js";
+import WardSystem from "./WardSystem.js";
+import { emitMasteryBurst, emitMasteryProcText, emitMasteryRing, shouldProc } from "../vfx/MasteryVfx.js";
 
 function hasTag(spec, tag) {
   return Array.isArray(spec.tags) && spec.tags.includes(tag);
@@ -235,8 +237,8 @@ const DamageSystem = {
     // Dash invulnerability (migrated from Player.takeDamage()).
     if (player?.dashTimer > 0) return { amount: 0, prevented: true };
 
-    // Player-side mitigation multiplier (Aegis etc).
-    const taken = player?.stats?.damageTakenMult ?? 1.0;
+    // Player-side mitigation multiplier (Aegis etc) + mastery-wide mitigation factor.
+    const taken = (player?.stats?.damageTakenMult ?? 1.0) * (player?._masteryDamageTakenMultFactor ?? 1.0);
     amount *= taken;
 
     // For continuous damage (dt-scaled), preserve fractional damage. This matches prior behavior
@@ -254,7 +256,10 @@ const DamageSystem = {
     const { amount, prevented } = this.computeIncoming(source, player, spec, meta.context || {});
     if (prevented || amount <= 0) return { amount: 0, prevented: true };
 
-    player.hp -= amount;
+    const wardBefore = WardSystem.getCurrent(player);
+    const warded = WardSystem.absorbDamage(player, amount);
+    const toHp = warded.toHp;
+    player.hp -= toHp;
     if (player.onDamageTaken) player.onDamageTaken(source, meta.state);
 
     if (meta.updateUI !== false && meta.ui?.render) meta.ui.render();
@@ -265,7 +270,25 @@ const DamageSystem = {
       if (typeof player.onDeath === "function") player.onDeath(meta.state);
     }
 
-    return { amount, prevented: false };
+    // Ward feedback (rate-limited): break cue only (avoid spam).
+    const absorbedByWard = warded.absorbed;
+    const wardAfter = WardSystem.getCurrent(player);
+    const now = (meta.state?.game && typeof meta.state.game.time === "number") ? meta.state.game.time : (Date.now() / 1000);
+    if (wardBefore > 0 && wardAfter <= 0 && shouldProc(player, "wardBreakCue", 0.6, now)) {
+      emitMasteryBurst({ x: player.x, y: player.y, colorToken: { token: "player.guard", alpha: 0.95 }, count: 18, speed: 210, size: 3.1, life: 0.35, layer: "default" });
+      emitMasteryRing({ x: player.x, y: player.y, radius: (player.r || 12) + 16, colorToken: { token: "player.guard", alpha: 0.85 }, alpha: 0.85, life: 0.28, count: 22, size: 2.4, layer: "default" });
+      emitMasteryProcText({
+        x: player.x,
+        y: player.y - (player.r || 12) - 26,
+        text: "WARD BREAK",
+        colorToken: { token: "player.guard", alpha: 0.95 },
+        size: 14,
+        life: 0.7,
+        layer: "default",
+      });
+    }
+
+    return { amount, prevented: false, absorbedByWard: warded.absorbed };
   },
 
   computeIncomingToMinion(source, minion, spec, context = {}) {

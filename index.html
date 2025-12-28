@@ -196,11 +196,16 @@
             backdrop-filter: blur(6px);
         }
 
+        :root{
+            --hud-orb-size: clamp(92px, 9vw, 128px);
+        }
+
         .orb {
-            width: clamp(92px, 9vw, 128px);
-            height: clamp(92px, 9vw, 128px);
+            width: var(--hud-orb-size);
+            height: var(--hud-orb-size);
             border-radius: 999px;
             position: relative;
+            isolation: isolate;
             overflow: hidden;
             border: 1px solid rgba(var(--parchment-rgb),0.12);
             box-shadow: inset 0 0 0 2px rgba(var(--ink-rgb),0.5), 0 16px 40px rgba(var(--ink-rgb),0.6);
@@ -217,6 +222,7 @@
             content: "";
             position: absolute;
             inset: -8px;
+            z-index: 0;
             background:
                 radial-gradient(circle at 30% 25%, rgba(var(--parchment-rgb),0.25), transparent 45%),
                 radial-gradient(circle at 50% 70%, rgba(var(--ink-rgb),0.85), rgba(var(--ink-rgb),0.35) 55%, rgba(var(--ink-rgb),0.85) 90%);
@@ -225,6 +231,7 @@
         .orb-fill {
             position: absolute;
             inset: 0;
+            z-index: 1;
             --fill: 0%;
             background: conic-gradient(var(--orb-color) 0 var(--fill), rgba(var(--ink-rgb),0.0) 0 100%);
             -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 44%, #000 52%);
@@ -243,6 +250,7 @@
         .orb-inner {
             position: absolute;
             inset: 14%;
+            z-index: 4;
             border-radius: 999px;
             background: radial-gradient(circle at 50% 35%, rgba(var(--parchment-rgb),0.10), rgba(var(--ink-rgb),0.75));
             border: 1px solid rgba(var(--parchment-rgb),0.10);
@@ -257,9 +265,47 @@
         .orb-value { font-size: 12px; color:var(--parchment); font-weight: 800; }
 
         .hud-left-stack { display:flex; gap: 10px; align-items: end; }
+        .hud-left-orbcol { display:flex; flex-direction: column; gap: 10px; align-items: stretch; }
         .hud-left-meta { display:flex; flex-direction: column; gap: 8px; align-items: flex-start; }
         .hud-row { display:flex; gap: 10px; align-items: center; }
         .hud-caption { font-size:10px; font-weight:800; letter-spacing:1px; color:var(--bone); opacity:0.85; text-transform: uppercase; }
+
+        /* Ward ring (separate HUD element; positioned around the HP orb) */
+        .hud-left-orbcol { position: relative; overflow: visible; }
+        #hud-hp-orb { position: relative; z-index: 1; }
+        #hud-hp-ward-ring {
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            width: calc(var(--hud-orb-size) + 20px);
+            height: calc(var(--hud-orb-size) + 20px);
+            z-index: 2;
+            pointer-events: none;
+        }
+        .orb-ward-track {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            border-radius: 999px;
+            background: conic-gradient(rgba(var(--p4-rgb),0.28) 0 100%);
+            -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 72%, #fff 78% 92%, transparent 96% 100%);
+            mask: radial-gradient(circle at 50% 50%, transparent 0 72%, #fff 78% 92%, transparent 96% 100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+        .orb-ward-fill {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            border-radius: 999px;
+            --fill: 0%;
+            background: conic-gradient(var(--ward-color) 0 var(--fill), rgba(var(--ink-rgb),0.0) 0 100%);
+            -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 72%, #fff 78% 92%, transparent 96% 100%);
+            mask: radial-gradient(circle at 50% 50%, transparent 0 72%, #fff 78% 92%, transparent 96% 100%);
+            opacity: 1.0;
+            filter: drop-shadow(0 0 8px rgba(var(--p4-rgb),0.35));
+            pointer-events: none;
+        }
 
         /* Run/Dungeon tracker (race bar: gold timer + purple progress) */
         #hud-tracker { display:none; width: 100%; }
@@ -711,21 +757,31 @@
             <div class="icon" aria-hidden="true"><span></span></div>
         </button>
     </div>
-    <div id="hud-bottom">
-        <div class="hud-left">
-            <div class="hud-left-stack">
-                <div class="orb hud-panel" id="hud-hp-orb" style="--orb-color: rgba(var(--blood-bright-rgb),0.95);">
-                    <div class="orb-fill" id="hud-hp-orb-fill" style="--fill:0%"></div>
-                    <div class="orb-inner">
-                        <div class="orb-label">Health</div>
-                        <div class="orb-value" id="txtHp">100/100</div>
+        <div id="hud-bottom">
+            <div class="hud-left">
+                <div class="hud-left-stack">
+                    <div class="hud-left-orbcol">
+                        <div id="hud-hp-ward-ring" style="--ward-color: rgba(var(--p4-rgb),0.95);">
+                            <div class="orb-ward-track" id="hud-hp-ward-orb-track"></div>
+                            <div class="orb-ward-fill" id="hud-hp-ward-orb-fill" style="--fill:0%"></div>
+                        </div>
+                        <div class="orb hud-panel" id="hud-hp-orb" style="--orb-color: rgba(var(--blood-bright-rgb),0.95);">
+                            <div class="orb-fill" id="hud-hp-orb-fill" style="--fill:0%"></div>
+                            <div class="orb-inner">
+                                <div class="orb-label">Health</div>
+                                <div class="orb-value" id="txtHp">100/100</div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="hud-left-meta hud-panel" style="padding:10px 12px">
-                    <div class="hud-row">
-                        <div class="hud-caption">Dash</div>
-                        <div id="dash-charges"></div>
-                    </div>
+                    <div class="hud-left-meta hud-panel" style="padding:10px 12px">
+                        <div class="hud-row">
+                            <div class="hud-caption">Attuned</div>
+                            <div id="hud-attunement" style="font-size:11px;font-weight:900;letter-spacing:0.5px;color:rgba(var(--parchment-rgb),0.85)">—</div>
+                        </div>
+                        <div class="hud-row">
+                            <div class="hud-caption">Dash</div>
+                            <div id="dash-charges"></div>
+                        </div>
                     <div class="hud-row" style="align-items:center">
                         <div class="hud-caption">Phials</div>
                         <div id="hud-phials"></div>

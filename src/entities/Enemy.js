@@ -12,11 +12,105 @@ import Assets from "../core/Assets.js";
 import SpriteSheet from "../render/SpriteSheet.js";
 import Animation from "../render/Animation.js";
 import { ENEMY_SPRITE_CONFIG, ENEMY_SPRITE_STATES, getEnemySpriteDef } from "../data/EnemySprites.js";
+import { StatusId } from "../data/Vocabulary.js";
 
 const _spriteCache = new Map();
 
 const DEATH_FADE_SEC = 0.28;
 const DEATH_DISSOLVE_INTERVAL = 0.05;
+
+function _statusAlpha(st) {
+    const dur = typeof st?.duration === "number" ? st.duration : 0;
+    const el = typeof st?.elapsed === "number" ? st.elapsed : 0;
+    if (dur <= 0) return 0.85;
+    const rem = Math.max(0, dur - el);
+    const t = Math.max(0, Math.min(1, rem / Math.max(0.001, dur)));
+    return 0.25 + 0.65 * t;
+}
+
+function drawStatusBadges(ctx, screenPos, enemy) {
+    if (!enemy || enemy.dead) return;
+    if (!enemy.statuses || enemy.statuses.size === 0) return;
+
+    const defs = [
+        { id: StatusId.Soaked, kind: "soaked", fill: c("fx.uiAccent", 0.9) || c("player.core", 0.85) || "p2" },
+        { id: StatusId.Conductive, kind: "conductive", fill: c("fx.uiText", 0.95) || c("fx.uiAccent", 0.95) || "parchment" },
+        { id: StatusId.Ignited, kind: "ignited", fill: c("fx.ember", 0.95) || "ember" },
+    ];
+
+    const active = [];
+    for (const d of defs) {
+        const st = StatusSystem.getStatus(enemy, d.id);
+        if (!st || (st.stacks || 0) <= 0) continue;
+        active.push({ ...d, st });
+        if (active.length >= 3) break;
+    }
+    if (active.length === 0) return;
+
+    const baseY = screenPos.y - (enemy.r || 12) - 14;
+    const size = Math.max(5, Math.min(8, (enemy.r || 12) * 0.22));
+    const gap = size * 2.4;
+    const startX = screenPos.x - ((active.length - 1) * gap) / 2;
+
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    for (let i = 0; i < active.length; i++) {
+        const a = active[i];
+        const x = startX + i * gap;
+        const y = baseY;
+        const alpha = _statusAlpha(a.st);
+
+        // Ink rim disk
+        ctx.globalAlpha = Math.min(1, alpha);
+        ctx.fillStyle = c("fx.ink", 0.55) || "ink";
+        ctx.beginPath();
+        ctx.arc(x, y, size + 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Fill disk
+        ctx.fillStyle = a.fill;
+        ctx.beginPath();
+        ctx.arc(x, y, size + 0.25, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glyph
+        ctx.globalAlpha = Math.min(1, alpha * 0.95);
+        ctx.strokeStyle = c("fx.ink", 0.8) || "ink";
+        ctx.lineWidth = 2;
+        ctx.fillStyle = c("fx.uiText", 0.9) || "parchment";
+
+        if (a.kind === "soaked") {
+            ctx.beginPath();
+            ctx.moveTo(x, y - size * 0.85);
+            ctx.quadraticCurveTo(x + size * 0.8, y - size * 0.15, x, y + size * 0.9);
+            ctx.quadraticCurveTo(x - size * 0.8, y - size * 0.15, x, y - size * 0.85);
+            ctx.closePath();
+            ctx.stroke();
+        } else if (a.kind === "conductive") {
+            ctx.beginPath();
+            ctx.moveTo(x - size * 0.35, y - size * 0.9);
+            ctx.lineTo(x + size * 0.15, y - size * 0.2);
+            ctx.lineTo(x - size * 0.1, y - size * 0.2);
+            ctx.lineTo(x + size * 0.35, y + size * 0.9);
+            ctx.lineTo(x - size * 0.15, y + size * 0.2);
+            ctx.lineTo(x + size * 0.1, y + size * 0.2);
+            ctx.closePath();
+            ctx.stroke();
+        } else if (a.kind === "ignited") {
+            ctx.beginPath();
+            ctx.moveTo(x, y + size * 0.95);
+            ctx.quadraticCurveTo(x + size * 0.85, y + size * 0.25, x + size * 0.15, y - size * 0.9);
+            ctx.quadraticCurveTo(x - size * 0.25, y - size * 0.55, x - size * 0.15, y - size * 0.05);
+            ctx.quadraticCurveTo(x - size * 0.85, y + size * 0.25, x, y + size * 0.95);
+            ctx.closePath();
+            ctx.stroke();
+        }
+    }
+
+    ctx.restore();
+}
 
 function _makeFlashCanvas(img, alphaThreshold = 18) {
     if (!img) return null;
@@ -564,6 +658,8 @@ export class Enemy {
             ctx.stroke();
             ctx.restore();
         }
+
+        drawStatusBadges(ctx, p, this);
 
         ctx.globalAlpha = prevAlpha;
     }
