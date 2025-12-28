@@ -339,21 +339,61 @@ const UI = {
         }
 
         // Ward ring (separate HUD element)
-        const wardOrbTrack = document.getElementById("hud-hp-ward-orb-track");
         const wardOrbFill = document.getElementById("hud-hp-ward-orb-fill");
-        if (wardOrbFill || wardOrbTrack) {
-            const enabled = WardSystem.isEnabled(p);
+        if (wardOrbFill) {
             const max = WardSystem.getMax(p);
             const cur = WardSystem.getCurrent(p);
-            // Robustness: if ward is absorbing but wardMax wasn't initialized, still show a sensible ring.
-            const displayMax = max > 0 ? max : (cur > 0 ? cur : 0);
-            const pct = enabled && displayMax > 0 ? Math.max(0, Math.min(1, cur / displayMax)) : 0;
-            if (wardOrbTrack) {
-                wardOrbTrack.style.opacity = enabled && displayMax > 0 ? "0.9" : "0";
-            }
-            if (wardOrbFill) {
+            const displayMax = max > 0 ? max : cur;
+            const pct = displayMax > 0 ? Math.max(0, Math.min(1, cur / displayMax)) : 0;
+
+            const tag = wardOrbFill?.tagName ? String(wardOrbFill.tagName).toLowerCase() : "";
+            const isSvgPath = tag === "path";
+
+            if (isSvgPath) {
+                const cx = 50;
+                const cy = 50;
+                const r = 44;
+                const t = pct;
+
+                const polarToCartesian = (centerX, centerY, radius, angleDeg) => {
+                    const a = (angleDeg * Math.PI) / 180;
+                    return { x: centerX + radius * Math.cos(a), y: centerY + radius * Math.sin(a) };
+                };
+
+                const arcPath = (centerX, centerY, radius, startDeg, endDeg) => {
+                    const start = polarToCartesian(centerX, centerY, radius, startDeg);
+                    const end = polarToCartesian(centerX, centerY, radius, endDeg);
+                    const sweep = ((endDeg - startDeg) % 360 + 360) % 360;
+                    const largeArc = sweep > 180 ? 1 : 0;
+                    const sweepFlag = 1; // clockwise
+                    return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweepFlag} ${end.x} ${end.y}`;
+                };
+
+                const fullCirclePath = (centerX, centerY, radius) => {
+                    // Full circle requires two arcs.
+                    const top = polarToCartesian(centerX, centerY, radius, -90);
+                    const bottom = polarToCartesian(centerX, centerY, radius, 90);
+                    return `M ${top.x} ${top.y} A ${radius} ${radius} 0 1 1 ${bottom.x} ${bottom.y} A ${radius} ${radius} 0 1 1 ${top.x} ${top.y}`;
+                };
+
+                const show = displayMax > 0 && cur > 0;
+                wardOrbFill.style.opacity = show ? "1" : "0";
+                if (!show) {
+                    wardOrbFill.setAttribute("d", "");
+                } else if (t >= 0.9999) {
+                    wardOrbFill.setAttribute("d", fullCirclePath(cx, cy, r));
+                } else if (t <= 0.0001) {
+                    wardOrbFill.setAttribute("d", "");
+                } else {
+                    // Start at 12 o'clock.
+                    const startDeg = -90;
+                    const endDeg = startDeg + 360 * t;
+                    wardOrbFill.setAttribute("d", arcPath(cx, cy, r, startDeg, endDeg));
+                }
+            } else {
+                // Legacy CSS-conic implementation (kept for compatibility).
                 wardOrbFill.style.setProperty("--fill", `${Math.round(pct * 100)}%`);
-                wardOrbFill.style.opacity = enabled && displayMax > 0 ? "1" : "0";
+                wardOrbFill.style.opacity = (displayMax > 0 && cur > 0) ? "1" : "0";
             }
         }
 
