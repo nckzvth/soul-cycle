@@ -531,6 +531,131 @@
         .node.unlocked { border-color:var(--gold); background:rgba(var(--p3-rgb),0.05); }
         .node-top { display:flex; justify-content:space-between; margin-bottom:4px; font-weight:600; font-size:13px; }
         .node-top span:last-child { text-align: right; }
+
+        /* Attribute Mastery: full-screen tree modal */
+        #modal_mastery_tree {
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            top: 0;
+            left: 0;
+            transform: none;
+            border-radius: 0;
+            border-color: rgba(var(--parchment-rgb),0.10);
+            background: rgba(var(--near-black-rgb),0.92);
+            backdrop-filter: blur(8px);
+            z-index: 200;
+        }
+        #modal_mastery_tree .modal-head { gap: 12px; align-items: center; }
+        #modal_mastery_tree .mastery-head-left { display:flex; flex-direction: column; gap: 2px; min-width: 180px; }
+        #modal_mastery_tree .mastery-head-title {
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-size: 12px;
+            color: rgba(var(--parchment-rgb),0.88);
+        }
+        #modal_mastery_tree .mastery-head-sub { font-size: 11px; color: rgba(var(--parchment-rgb),0.65); font-weight: 800; }
+        #modal_mastery_tree .mastery-head-mid {
+            display:flex;
+            gap: 10px;
+            align-items: center;
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+        }
+        #modal_mastery_tree .mastery-chip {
+            display:flex;
+            gap: 8px;
+            align-items: baseline;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(var(--parchment-rgb),0.06);
+            border: 1px solid rgba(var(--parchment-rgb),0.10);
+            font-size: 11px;
+            color: rgba(var(--parchment-rgb),0.75);
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            white-space: nowrap;
+        }
+        #modal_mastery_tree .mastery-chip b { color: var(--gold); }
+        #modal_mastery_tree .mastery-head-right { display:flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+        #modal_mastery_tree .modal-body { display: grid; grid-template-columns: 420px 1fr; overflow: hidden; }
+        #modal_mastery_tree .mastery-side {
+            overflow: hidden;
+            border-right: 1px solid rgba(var(--parchment-rgb),0.10);
+            background: rgba(var(--ink-rgb),0.28);
+            display:flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        #modal_mastery_tree .mastery-side-scroll { padding: 16px; overflow: auto; }
+        #modal_mastery_tree .mastery-canvas {
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 30% 25%, rgba(var(--parchment-rgb),0.06), transparent 55%),
+                radial-gradient(circle at 65% 80%, rgba(var(--ink-rgb),0.70), rgba(var(--ink-rgb),0.35) 60%, rgba(var(--ink-rgb),0.85));
+        }
+        #modal_mastery_tree canvas#mastery-tree-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
+        #modal_mastery_tree canvas#mastery-tree-canvas.dragging { cursor: grabbing; }
+        #modal_mastery_tree .mastery-canvas-hint {
+            position: absolute;
+            left: 14px;
+            bottom: 14px;
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: rgba(var(--near-black-rgb),0.55);
+            border: 1px solid rgba(var(--parchment-rgb),0.10);
+            color: rgba(var(--parchment-rgb),0.70);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+        #modal_mastery_tree .mastery-tooltip {
+            position: fixed;
+            z-index: 300;
+            max-width: min(420px, 92vw);
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(var(--near-black-rgb),0.82);
+            border: 1px solid rgba(var(--parchment-rgb),0.14);
+            box-shadow: 0 30px 70px rgba(var(--ink-rgb),0.65);
+            backdrop-filter: blur(8px);
+            pointer-events: none;
+            color: rgba(var(--parchment-rgb),0.92);
+        }
+        #modal_mastery_tree .mastery-tooltip .title {
+            font-weight: 900;
+            font-size: 12px;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+        }
+        #modal_mastery_tree .mastery-tooltip .meta {
+            margin-top: 3px;
+            color: rgba(var(--parchment-rgb),0.70);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        #modal_mastery_tree .mastery-tooltip .desc {
+            margin-top: 6px;
+            color: rgba(var(--parchment-rgb),0.70);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        @media (max-width: 980px) {
+            #modal_mastery_tree .modal-body { grid-template-columns: 1fr; }
+            #modal_mastery_tree .mastery-side {
+                height: 44vh;
+                border-right: none;
+                border-bottom: 1px solid rgba(var(--parchment-rgb),0.10);
+            }
+        }
         .screen-overlay { position:fixed; inset:0; background:var(--bg); z-index:500; display:none; flex-direction:column; align-items:center; justify-content:center; }
         .screen-overlay.active { display:flex; }
         .wep-select-container { display:flex; gap:20px; margin-top:40px; }
@@ -885,8 +1010,39 @@
         <div id="armory-view-attribute-mastery" class="col" style="grid-column: 1 / -1; display:none">
             <span class="sec-title">Attribute Mastery</span>
             <div style="color:var(--muted);font-size:12px;line-height:1.5">
-                Coming in Phase 6 (meta progression). This panel is scaffolded now so activation does not require UI refactors.
+                Attribute Mastery is now shown in a full-screen tree view.
+                <div style="margin-top:10px"><button class="btn primary" id="btn-open-mastery-tree">Open Mastery Tree</button></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="modal_mastery_tree" role="dialog" aria-modal="true" tabindex="-1">
+    <div class="modal-head">
+        <div class="mastery-head-left">
+            <div class="mastery-head-title">ATTRIBUTE MASTERY</div>
+            <div class="mastery-head-sub" id="mastery-tree-attunement">Attunement: —</div>
+        </div>
+        <div class="mastery-head-mid">
+            <div class="mastery-chip" id="mastery-tree-budget">Wallet: <b>0</b> souls</div>
+            <div class="mastery-chip" id="mastery-tree-weapon-primary">Weapon primary: —</div>
+        </div>
+        <div class="mastery-head-right">
+            <button class="btn danger" id="btn-mastery-tree-respec-all">Respec All</button>
+            <button class="btn" id="btn-mastery-tree-respec-exclusives">Respec T5/T10 Exclusives</button>
+            <button class="btn" id="btn-mastery-tree-cancel" style="display:none">Cancel</button>
+            <button class="btn primary" id="btn-mastery-tree-apply" style="display:none">Apply</button>
+            <button class="btn" id="btn-close-mastery_tree">X</button>
+        </div>
+    </div>
+    <div class="modal-body">
+        <div class="mastery-side">
+            <div class="mastery-side-scroll" id="mastery-tree-panel"></div>
+        </div>
+        <div class="mastery-canvas">
+            <canvas id="mastery-tree-canvas"></canvas>
+            <div class="mastery-canvas-hint">Drag to pan • Wheel to zoom • Hover for details • Click to buy • Right-click to refund</div>
+            <div class="mastery-tooltip" id="mastery-tree-tooltip" style="display:none"></div>
         </div>
     </div>
 </div>

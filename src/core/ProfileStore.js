@@ -5,7 +5,7 @@ import { ATTRIBUTE_MASTERY_TREES } from "../data/AttributeMasteryTrees.js";
 
 const PROFILE_STORAGE_KEY = "soulcycle:profile";
 const PROFILE_BACKUP_KEY = "soulcycle:profile:backup";
-const CURRENT_SCHEMA_VERSION = 4;
+const CURRENT_SCHEMA_VERSION = 5;
 
 function normalizeWeaponCls(cls) {
   const c = String(cls || "").toLowerCase();
@@ -65,6 +65,10 @@ export function createDefaultProfile() {
       perkSocketsByWeapon: {},
     },
 
+    wallet: {
+      souls: 0,
+    },
+
     mastery: {
       // Phase 6 will implement progression rules; schema lives now.
       attributes: {
@@ -78,10 +82,10 @@ export function createDefaultProfile() {
       // `selectedExclusive` is legacy and is kept only for forward/backward compatibility;
       // the authoritative representation is `unlocked`.
       attributeTrees: {
-        Might: { unlocked: [], selectedExclusive: {} },
-        Will: { unlocked: [], selectedExclusive: {} },
-        Alacrity: { unlocked: [], selectedExclusive: {} },
-        Constitution: { unlocked: [], selectedExclusive: {} },
+        Might: { unlocked: [], selectedExclusive: {}, spentByNodeId: {} },
+        Will: { unlocked: [], selectedExclusive: {}, spentByNodeId: {} },
+        Alacrity: { unlocked: [], selectedExclusive: {}, spentByNodeId: {} },
+        Constitution: { unlocked: [], selectedExclusive: {}, spentByNodeId: {} },
       },
 
       weapons: {
@@ -134,6 +138,18 @@ function sanitizeStringMap(value) {
   return out;
 }
 
+function sanitizeFiniteNumberMap(value) {
+  if (!isProfileObject(value)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof k !== "string" || !k.trim()) continue;
+    const n = typeof v === "number" && Number.isFinite(v) ? v : Number(v);
+    if (!Number.isFinite(n)) continue;
+    out[k] = Math.max(0, n);
+  }
+  return out;
+}
+
 function normalizeAttributeTreeExclusives(attributeId, tree) {
   const def = ATTRIBUTE_MASTERY_TREES?.[attributeId];
   const nodes = Array.isArray(def?.nodes) ? def.nodes : [];
@@ -141,6 +157,7 @@ function normalizeAttributeTreeExclusives(attributeId, tree) {
   const next = isProfileObject(tree) ? { ...tree } : {};
   const unlocked = sanitizeStringArray(next.unlocked);
   const selectedExclusive = sanitizeStringMap(next.selectedExclusive);
+  const spentByNodeId = sanitizeFiniteNumberMap(next.spentByNodeId);
 
   const unlockedSet = new Set(unlocked);
 
@@ -177,6 +194,7 @@ function normalizeAttributeTreeExclusives(attributeId, tree) {
   // Preserve original unlocked ordering where possible.
   next.unlocked = unlocked.filter((id) => unlockedSet.has(id));
   next.selectedExclusive = selectedExclusive;
+  next.spentByNodeId = spentByNodeId;
   return next;
 }
 
@@ -251,6 +269,7 @@ function migrate2to3(raw) {
     const tree = isProfileObject(trees[attrId]) ? { ...trees[attrId] } : {};
     tree.unlocked = sanitizeStringArray(tree.unlocked);
     tree.selectedExclusive = sanitizeStringMap(tree.selectedExclusive);
+    tree.spentByNodeId = sanitizeFiniteNumberMap(tree.spentByNodeId);
     trees[attrId] = tree;
   }
 
@@ -278,14 +297,36 @@ function migrate3to4(raw) {
   return next;
 }
 
+function migrate4to5(raw) {
+  const next = isProfileObject(raw) ? { ...raw } : migrate3to4(raw);
+
+  next.wallet = isProfileObject(next.wallet) ? { ...next.wallet } : {};
+  next.wallet.souls = Math.max(0, Number(next.wallet.souls || 0) || 0);
+
+  next.mastery = isProfileObject(next.mastery) ? { ...next.mastery } : {};
+  const trees = isProfileObject(next.mastery.attributeTrees) ? { ...next.mastery.attributeTrees } : {};
+
+  for (const attrId of ["Might", "Will", "Alacrity", "Constitution"]) {
+    const tree = isProfileObject(trees[attrId]) ? { ...trees[attrId] } : {};
+    tree.spentByNodeId = sanitizeFiniteNumberMap(tree.spentByNodeId);
+    trees[attrId] = tree;
+  }
+  next.mastery.attributeTrees = trees;
+
+  next.schemaVersion = 5;
+  next.updatedAt = nowIso();
+  return next;
+}
+
 function migrateProfile(raw) {
   const v = Number(raw?.schemaVersion || 0);
   if (v === CURRENT_SCHEMA_VERSION) return raw;
 
-  if (v <= 0) return migrate3to4(migrate2to3(migrate1to2(migrate0to1(raw))));
-  if (v === 1) return migrate3to4(migrate2to3(migrate1to2(raw)));
-  if (v === 2) return migrate3to4(migrate2to3(raw));
-  if (v === 3) return migrate3to4(raw);
+  if (v <= 0) return migrate4to5(migrate3to4(migrate2to3(migrate1to2(migrate0to1(raw)))));
+  if (v === 1) return migrate4to5(migrate3to4(migrate2to3(migrate1to2(raw))));
+  if (v === 2) return migrate4to5(migrate3to4(migrate2to3(raw)));
+  if (v === 3) return migrate4to5(migrate3to4(raw));
+  if (v === 4) return migrate4to5(raw);
 
   // Unknown future version: do not attempt destructive migration.
   return raw;

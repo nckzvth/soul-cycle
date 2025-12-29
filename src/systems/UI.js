@@ -14,6 +14,7 @@ import { PerkSocketLevel, getSkillDef, getSocketOptions, getUnlockedSkillIdsForS
 import { getWeaponMasteryLevel } from "./MasterySystem.js";
 import { AttributeId } from "../data/Vocabulary.js";
 import { ATTRIBUTE_MASTERY_TREES } from "../data/AttributeMasteryTrees.js";
+import { ATTRIBUTE_MASTERY_LAYOUT } from "../data/AttributeMasteryLayout.js";
 import { formatMetaMasteryTierTooltip, getAttributeTier } from "./MasteryHelpers.js";
 import WardSystem from "./WardSystem.js";
 import { getAttunementLabel, getMasteryPaletteByAttribute } from "../vfx/MasteryVfx.js";
@@ -28,6 +29,8 @@ const UI = {
     _armoryWeaponId: null,
     _armoryAttributeMasteryDraft: null,
     _armoryAttributeMasteryDraftRequiredGroups: null,
+    _modalFocusState: new Map(),
+    _masteryTreeView: null,
     _minionHudKey: null,
     buildAttrUI(containerId, suffix) {
         const c = document.getElementById(containerId);
@@ -93,6 +96,8 @@ const UI = {
         const menuBtn = document.getElementById("btn-inv");
         if (menuBtn) menuBtn.onclick = () => this.toggle('pause');
         document.getElementById("btn-close-inv").onclick = () => this.toggle('inv');
+        const closeMasteryTree = document.getElementById("btn-close-mastery_tree");
+        if (closeMasteryTree) closeMasteryTree.onclick = () => this.toggle("mastery_tree");
         document.getElementById("btn-close-appraise").onclick = () => this.toggle('appraise');
         document.getElementById("btn-identify-all").onclick = () => this.identifyAll();
         document.getElementById("btn-close-pause").onclick = () => this.toggle('pause');
@@ -144,6 +149,75 @@ const UI = {
         const death = document.getElementById("screen_death")?.classList.contains("active");
         Game.paused = anyModalOpen || !!death;
     },
+    _getModalFocusables(el) {
+        if (!el) return [];
+        const nodes = Array.from(
+            el.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            )
+        );
+        return nodes.filter((n) => {
+            if (!n) return false;
+            if (n.disabled) return false;
+            const style = window.getComputedStyle(n);
+            return style.display !== "none" && style.visibility !== "hidden";
+        });
+    },
+    _setupModalFocusTrap(id, el) {
+        if (!el || !id) return;
+        if (this._modalFocusState.has(id)) return;
+
+        if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+        if (!el.hasAttribute("role")) el.setAttribute("role", "dialog");
+        if (!el.hasAttribute("aria-modal")) el.setAttribute("aria-modal", "true");
+
+        const prev = document.activeElement;
+        const onKeyDown = (e) => {
+            if (e.key !== "Tab") return;
+            const focusables = this._getModalFocusables(el);
+            if (focusables.length === 0) {
+                e.preventDefault();
+                el.focus?.();
+                return;
+            }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            const active = document.activeElement;
+            if (e.shiftKey) {
+                if (active === first || active === el) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (active === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+        };
+
+        el.addEventListener("keydown", onKeyDown);
+        this._modalFocusState.set(id, { prev, onKeyDown });
+
+        window.setTimeout(() => {
+            const focusables = this._getModalFocusables(el);
+            (focusables[0] || el).focus?.();
+        }, 0);
+    },
+    _teardownModalFocusTrap(id, el) {
+        const st = this._modalFocusState.get(id);
+        if (!st) return;
+        try {
+            el?.removeEventListener?.("keydown", st.onKeyDown);
+        } catch {
+            // ignore
+        }
+        this._modalFocusState.delete(id);
+        const prev = st.prev;
+        if (prev && typeof prev.focus === "function" && document.contains(prev)) {
+            window.setTimeout(() => prev.focus(), 0);
+        }
+    },
     open(id) {
         const el = document.getElementById("modal_" + id);
         if (!el) return;
@@ -186,7 +260,9 @@ const UI = {
             this.renderPause();
         }
         if (id === "levelup") this.renderLevelUp();
+        if (id === "mastery_tree") this.renderMasteryTreeModal();
 
+        this._setupModalFocusTrap(id, el);
         this.syncPauseState();
         this.updateLevelUpPrompt();
     },
@@ -196,11 +272,16 @@ const UI = {
         el.classList.remove("show");
         this._openStack = this._openStack.filter(openId => openId !== id);
         if (id === "appraise") this._appraiseSession = null;
+        this._teardownModalFocusTrap(id, el);
         this.syncPauseState();
         this.updateLevelUpPrompt();
     },
     closeAll() {
-        document.querySelectorAll(".modal.show").forEach(el => el.classList.remove("show"));
+        document.querySelectorAll(".modal.show").forEach((el) => {
+            const id = el.id?.startsWith("modal_") ? el.id.slice("modal_".length) : null;
+            if (id) this._teardownModalFocusTrap(id, el);
+            el.classList.remove("show");
+        });
         this._openStack = [];
         this._appraiseSession = null;
         this.syncPauseState();
@@ -401,7 +482,9 @@ const UI = {
         // Attunement label
         const attEl = document.getElementById("hud-attunement");
         if (attEl) {
-            const att = p.metaAttunement || null;
+            // Town/UI flows can change attunement without restarting a run; fall back to the profile value.
+            // Prefer profile (source of truth) over the player mirror, since the mirror may be stale in town.
+            const att = Game?.profile?.armory?.attunement || p.metaAttunement || null;
             if (!att) {
                 attEl.innerText = "—";
                 attEl.style.color = c("fx.uiMuted", 0.85) || "dust";
@@ -650,7 +733,13 @@ const UI = {
             tabs.perks.onclick = () => setTab("perks");
         }
         if (tabs.weaponMastery) tabs.weaponMastery.onclick = () => setTab("weaponMastery");
-        if (tabs.attributeMastery) tabs.attributeMastery.onclick = () => setTab("attributeMastery");
+        if (tabs.attributeMastery) {
+            tabs.attributeMastery.onclick = () => {
+                this._armoryTab = "attributeMastery";
+                this.renderInv();
+                this.open("mastery_tree");
+            };
+        }
 
         for (const [id, btn] of Object.entries(tabs)) {
             if (!btn) continue;
@@ -682,7 +771,8 @@ const UI = {
             return;
         }
         if (this._armoryTab === "attributeMastery") {
-            this.renderArmoryAttributeMastery();
+            const btnOpen = document.getElementById("btn-open-mastery-tree");
+            if (btnOpen) btnOpen.onclick = () => this.open("mastery_tree");
             return;
         }
 
@@ -1193,6 +1283,14 @@ const UI = {
             if (!metaEnabled) return;
             profile.armory.attunement = attrId;
             saveProfile();
+            try {
+                Game.profile = profile;
+                if (Game.p) Game.p.metaAttunement = attrId;
+                Game.syncMetaToPlayer?.();
+            } catch {
+                // ignore
+            }
+            this.dirty = true;
             this.playChoiceConfirm(container.querySelector(`[data-attune="${attrId}"]`), c("player.core", 0.75) || "p2");
             this.renderArmoryAttributeMastery();
         };
@@ -1448,6 +1546,759 @@ const UI = {
                 unlockNode(attrId, nodeId);
             };
         });
+    },
+    renderMasteryTreeModal() {
+        let profile = Game.profile;
+        if (!profile) {
+            try { profile = ProfileStore.load(); Game.profile = profile; } catch { /* ignore */ }
+        }
+        if (!profile) return;
+
+        const panel = document.getElementById("mastery-tree-panel");
+        if (!panel) return;
+
+        const metaEnabled = FeatureFlags.isOn("progression.metaMasteryEnabled");
+
+        profile.wallet = (profile.wallet && typeof profile.wallet === "object") ? profile.wallet : {};
+        profile.wallet.souls = Math.max(0, Number(profile.wallet.souls || 0) || 0);
+
+        profile.mastery = profile.mastery || {};
+        profile.mastery.attributes = profile.mastery.attributes || {};
+        profile.mastery.attributeTrees = profile.mastery.attributeTrees || {};
+        profile.armory = profile.armory || {};
+
+        const attrs = Object.values(AttributeId);
+
+        const costCfg = BALANCE?.progression?.mastery?.attributeNodeSoulCost || { base: 40, growth: 1.75 };
+        const nodeCostForTier = (tier) => {
+            const base = Math.max(0, Number(costCfg.base || 0) || 0);
+            const growth = Math.max(1.0, Number(costCfg.growth || 1.0) || 1.0);
+            const t = Math.max(1, Math.floor(Number(tier || 1)));
+            return Math.floor(base * Math.pow(growth, Math.max(0, t - 1)));
+        };
+
+        const primaryFromWeapon = () => {
+            const weaponCls = Game?.p?.gear?.weapon?.cls || profile?.armory?.loadout?.weaponCls || null;
+            const cfg = getWeaponConfigByCls(weaponCls);
+            return cfg?.primaryAttribute || null;
+        };
+        const weaponPrimaryAttr = primaryFromWeapon();
+        const weaponPrimaryText = weaponPrimaryAttr ? `Weapon primary: ${weaponPrimaryAttr}` : "Weapon primary: —";
+
+        const masteryLevel = (attrId) => {
+            const track = profile?.mastery?.attributes?.[attrId] || { level: 0 };
+            return metaEnabled ? Math.max(0, Math.floor(Number(track.level || 0))) : 0;
+        };
+
+        const saveProfile = () => {
+            try {
+                Game.profile = profile;
+                ProfileStore.save(profile, { backupPrevious: true });
+            } catch {
+                // ignore save errors
+            }
+        };
+
+        const ensureTreeScaffold = () => {
+            for (const attrId of attrs) {
+                if (!profile.mastery.attributeTrees[attrId]) profile.mastery.attributeTrees[attrId] = { unlocked: [], selectedExclusive: {}, spentByNodeId: {} };
+                const st = profile.mastery.attributeTrees[attrId];
+                if (!Array.isArray(st.unlocked)) st.unlocked = [];
+                if (!(st.selectedExclusive && typeof st.selectedExclusive === "object")) st.selectedExclusive = {};
+                if (!(st.spentByNodeId && typeof st.spentByNodeId === "object")) st.spentByNodeId = {};
+            }
+        };
+        ensureTreeScaffold();
+
+        const getTreeState = (attrId) => {
+            const st = profile.mastery.attributeTrees[attrId] || { unlocked: [], selectedExclusive: {}, spentByNodeId: {} };
+            const unlocked = Array.isArray(st.unlocked) ? st.unlocked : [];
+            const selectedExclusive = (st.selectedExclusive && typeof st.selectedExclusive === "object") ? st.selectedExclusive : {};
+            const spentByNodeId = (st.spentByNodeId && typeof st.spentByNodeId === "object") ? st.spentByNodeId : {};
+            return { unlocked, selectedExclusive, spentByNodeId };
+        };
+
+        const setTreeState = (attrId, next) => {
+            profile.mastery.attributeTrees[attrId] = next;
+        };
+
+        const buildDependentsIndex = (nodeDefs) => {
+            const byPre = new Map();
+            for (const n of nodeDefs || []) {
+                const prereqs = Array.isArray(n?.prereqs) ? n.prereqs : [];
+                for (const pre of prereqs) {
+                    const p = typeof pre === "string" ? pre.trim() : "";
+                    if (!p) continue;
+                    if (!byPre.has(p)) byPre.set(p, new Set());
+                    byPre.get(p).add(n.id);
+                }
+            }
+            return byPre;
+        };
+
+        const addUnlockedDownstreamToRemoveSet = (removeIds, unlockedIds, dependentsByPrereq) => {
+            const unlockedSet = new Set((unlockedIds || []).map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean));
+            const q = Array.from(removeIds);
+            while (q.length > 0) {
+                const id = q.pop();
+                const deps = dependentsByPrereq.get(id);
+                if (!deps) continue;
+                for (const depId of deps) {
+                    if (removeIds.has(depId)) continue;
+                    if (!unlockedSet.has(depId)) continue;
+                    removeIds.add(depId);
+                    q.push(depId);
+                }
+            }
+        };
+
+        const attunement = typeof profile?.armory?.attunement === "string" ? profile.armory.attunement : null;
+
+        const prettyId = (id) => {
+            const s = String(id || "");
+            return s.replace(/^[a-z]+_[0-9]+_/, "").replaceAll("_", " ");
+        };
+
+        const setAttunement = (attrId) => {
+            if (!metaEnabled) return;
+            profile.armory.attunement = attrId;
+            saveProfile();
+            try {
+                Game.profile = profile;
+                if (Game.p) Game.p.metaAttunement = attrId;
+                Game.syncMetaToPlayer?.();
+            } catch {
+                // ignore
+            }
+            this.dirty = true;
+            this.playChoiceConfirm(panel.querySelector(`[data-attune="${attrId}"]`), c("player.core", 0.75) || "p2");
+            this.renderMasteryTreeModal();
+        };
+
+        const purchaseNode = (attrId, nodeId) => {
+            if (!metaEnabled) {
+                this.toast("Meta progression disabled");
+                return;
+            }
+            const treeDef = ATTRIBUTE_MASTERY_TREES?.[attrId];
+            const nodeDefs = Array.isArray(treeDef?.nodes) ? treeDef.nodes : [];
+            const node = nodeDefs.find((n) => n.id === nodeId);
+            if (!node) return;
+
+            const st = getTreeState(attrId);
+            const unlockedSet = new Set(st.unlocked.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean));
+            if (unlockedSet.has(nodeId)) return;
+
+            const lvl = masteryLevel(attrId);
+            if (node.tier > lvl) {
+                this.toast(`Requires ${attrId} mastery level ${node.tier}`);
+                return;
+            }
+            const prereqs = Array.isArray(node.prereqs) ? node.prereqs : [];
+            if (!prereqs.every((pre) => unlockedSet.has(pre))) {
+                this.toast("Prerequisites not met");
+                return;
+            }
+
+            const groupId = node.exclusiveGroup;
+            if (groupId) {
+                const groupMembers = nodeDefs.filter((n) => n.exclusiveGroup === groupId).map((n) => n.id);
+                const unlockedInGroup = groupMembers.filter((id) => unlockedSet.has(id));
+                if (unlockedInGroup.some((id) => id !== nodeId)) {
+                    this.toast("Exclusive choice already made");
+                    return;
+                }
+            }
+
+            const cost = nodeCostForTier(node.tier);
+            if (profile.wallet.souls < cost) {
+                this.toast(`Not enough souls (need ${cost})`);
+                return;
+            }
+
+            profile.wallet.souls = Math.max(0, profile.wallet.souls - cost);
+            unlockedSet.add(nodeId);
+            setTreeState(attrId, {
+                unlocked: Array.from(unlockedSet),
+                selectedExclusive: { ...(st.selectedExclusive || {}) },
+                spentByNodeId: { ...(st.spentByNodeId || {}), [nodeId]: cost },
+            });
+
+            saveProfile();
+            this.renderMasteryTreeModal();
+        };
+
+        const paidCostForNode = (attrId, nodeId, spentByNodeId) => {
+            const v = Math.max(0, Number(spentByNodeId?.[nodeId] || 0) || 0);
+            if (v > 0) return v;
+            const def = ATTRIBUTE_MASTERY_TREES?.[attrId];
+            const node = (def?.nodes || []).find((n) => n?.id === nodeId);
+            if (!node) return 0;
+            return nodeCostForTier(node.tier);
+        };
+
+        const refundNode = (attrId, nodeId) => {
+            if (!metaEnabled) return;
+            const treeDef = ATTRIBUTE_MASTERY_TREES?.[attrId];
+            const nodeDefs = Array.isArray(treeDef?.nodes) ? treeDef.nodes : [];
+
+            const st = getTreeState(attrId);
+            const unlockedSet = new Set(st.unlocked.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean));
+            if (!unlockedSet.has(nodeId)) return;
+
+            const dependents = buildDependentsIndex(nodeDefs);
+            const removeIds = new Set([nodeId]);
+            addUnlockedDownstreamToRemoveSet(removeIds, Array.from(unlockedSet), dependents);
+
+            let refund = 0;
+            for (const id of removeIds) refund += paidCostForNode(attrId, id, st.spentByNodeId);
+
+            if (removeIds.size > 1) {
+                const ok = window.confirm(`Refund ${prettyId(nodeId)} and ${removeIds.size - 1} dependent node(s) for ${refund} souls?`);
+                if (!ok) return;
+            }
+
+            const nextUnlocked = Array.from(unlockedSet).filter((id) => !removeIds.has(id));
+            const nextSpent = { ...(st.spentByNodeId || {}) };
+            for (const id of removeIds) delete nextSpent[id];
+
+            profile.wallet.souls = Math.max(0, profile.wallet.souls + refund);
+            setTreeState(attrId, { unlocked: nextUnlocked, selectedExclusive: { ...(st.selectedExclusive || {}) }, spentByNodeId: nextSpent });
+            saveProfile();
+            this.renderMasteryTreeModal();
+        };
+
+        const respecAll = () => {
+            if (!metaEnabled) return;
+            if (!window.confirm("Respec ALL attribute mastery nodes? This fully refunds spent souls.")) return;
+
+            let refund = 0;
+            for (const attrId of attrs) {
+                const st = getTreeState(attrId);
+                const unlocked = Array.isArray(st.unlocked) ? st.unlocked : [];
+                for (const nodeId of unlocked) refund += paidCostForNode(attrId, nodeId, st.spentByNodeId);
+                setTreeState(attrId, { unlocked: [], selectedExclusive: {}, spentByNodeId: {} });
+            }
+            profile.wallet.souls = Math.max(0, profile.wallet.souls + refund);
+            saveProfile();
+            this.toast(`Refunded ${refund} souls`);
+            this.renderMasteryTreeModal();
+        };
+
+        const attunementLabel = attunement ? getAttunementLabel(attunement) : "—";
+        const attuneEl = document.getElementById("mastery-tree-attunement");
+        if (attuneEl) attuneEl.textContent = `Attunement: ${attunementLabel}${metaEnabled ? "" : " (meta disabled)"}`;
+
+        const budgetEl = document.getElementById("mastery-tree-budget");
+        if (budgetEl) budgetEl.innerHTML = `Wallet: <b>${Math.floor(profile.wallet.souls)}</b> souls`;
+
+        const weaponPrimaryEl = document.getElementById("mastery-tree-weapon-primary");
+        if (weaponPrimaryEl) weaponPrimaryEl.textContent = weaponPrimaryText;
+
+        const btnAll = document.getElementById("btn-mastery-tree-respec-all");
+        if (btnAll) {
+            btnAll.disabled = !metaEnabled;
+            btnAll.onclick = () => respecAll();
+        }
+        const btnEx = document.getElementById("btn-mastery-tree-respec-exclusives");
+        if (btnEx) btnEx.style.display = "none";
+        const btnApply = document.getElementById("btn-mastery-tree-apply");
+        if (btnApply) btnApply.style.display = "none";
+        const btnCancel = document.getElementById("btn-mastery-tree-cancel");
+        if (btnCancel) btnCancel.style.display = "none";
+
+        const levelsHtml = attrs
+            .map((attrId) => {
+                const lvl = masteryLevel(attrId);
+                const tip = formatMetaMasteryTierTooltip(attrId, lvl);
+                const pal = getMasteryPaletteByAttribute(attrId);
+                const col = c(pal?.fill || "player.core", 0.9) || "p2";
+                return `<div class="hud-chip" title="${tip}"><span style="color:${col};font-weight:900">${attrId}</span> <b>${lvl}</b></div>`;
+            })
+            .join("");
+
+        const isNodeActiveForAttunement = (node) => {
+            const mode = node?.activationMode || "Always";
+            if (mode === "Always") return true;
+            if (mode === "Hybrid") return true;
+            if (mode === "Attuned") return !!attunement && attunement === node.attributeId;
+            return false;
+        };
+
+        const purchasedListHtml = attrs
+            .map((attrId) => {
+                const st = getTreeState(attrId);
+                const unlocked = Array.isArray(st.unlocked) ? st.unlocked.slice() : [];
+                const nodes = unlocked
+                    .map((id) => {
+                        const meta = (ATTRIBUTE_MASTERY_TREES?.[attrId]?.nodes || []).find((n) => n?.id === id) || null;
+                        if (!meta) return null;
+                        const label = (typeof meta.name === "string" && meta.name.trim()) ? meta.name.trim() : prettyId(id);
+                        const cost = paidCostForNode(attrId, id, st.spentByNodeId);
+                        const active = isNodeActiveForAttunement(meta);
+                        const state = meta.activationMode === "Attuned" ? (active ? "Active" : "Inactive") : "Active";
+                        return `<div class="hud-chip" title="${label}" style="gap:10px">
+                            <span style="opacity:0.9">${label}</span>
+                            <span style="color:rgba(var(--parchment-rgb),0.55)">${meta.tier}</span>
+                            <b>${state}</b>
+                            <span style="color:rgba(var(--parchment-rgb),0.55)">${cost}</span>
+                        </div>`;
+                    })
+                    .filter(Boolean)
+                    .join("");
+
+                const pal = getMasteryPaletteByAttribute(attrId);
+                const col = c(pal?.fill || "player.core", 0.9) || "p2";
+                return `
+                    <div class="stat-row" style="border-color:rgba(var(--parchment-rgb),0.14);flex-direction:column;align-items:stretch;gap:8px">
+                        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+                            <div style="font-weight:900;color:${col}">${attrId}</div>
+                            <div style="color:var(--muted);font-size:11px">Owned: <b>${unlocked.length}</b></div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            ${nodes || `<div style="color:var(--muted);font-size:12px">No nodes purchased.</div>`}
+                        </div>
+                    </div>
+                `;
+            })
+            .join("");
+
+        panel.innerHTML = `
+            <div style="color:var(--muted);font-size:12px;line-height:1.5">
+                Unlock nodes by spending <b>wallet souls</b>. Nodes become eligible when your attribute mastery level reaches their tier.
+                <br><span style="opacity:0.85">Hover nodes for details • Click to buy • Right-click to refund (also refunds dependents).</span>
+                ${metaEnabled ? "" : "<br><b>Meta progression is currently disabled.</b>"}
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${levelsHtml}</div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+                ${attrs.map((a) => `<button class="${attunement === a ? "btn primary" : "btn"}" data-attune="${a}" ${metaEnabled ? "" : "disabled"}>Attune ${a}</button>`).join("")}
+            </div>
+            <div style="margin-top:12px;display:grid;grid-template-columns:1fr;gap:10px">
+                ${purchasedListHtml}
+            </div>
+        `;
+
+        panel.querySelectorAll("[data-attune]").forEach((btn) => {
+            btn.onclick = (e) => {
+                const attrId = e.currentTarget.getAttribute("data-attune");
+                if (!attrId) return;
+                setAttunement(attrId);
+            };
+        });
+
+        const setTooltip = (node, screen) => {
+            const tip = document.getElementById("mastery-tree-tooltip");
+            if (!tip) return;
+            if (!node || !screen) {
+                tip.style.display = "none";
+                tip.innerHTML = "";
+                return;
+            }
+
+            const meta = node.meta || {};
+            const label = (typeof meta.name === "string" && meta.name.trim()) ? meta.name.trim() : prettyId(node.id);
+            const summary = (typeof meta.summary === "string" && meta.summary.trim()) ? meta.summary.trim() : "";
+            const cost = Number(node.cost || 0) || 0;
+            const prereqs = Array.isArray(meta.prereqs) ? meta.prereqs : [];
+            const prereqText = prereqs.length ? prereqs.map(prettyId).join(", ") : "—";
+            const mode = meta.activationMode || "Always";
+            const ex = meta.exclusiveGroup ? " • Exclusive" : "";
+
+            const state = node.unlocked
+                ? (node.active ? "Unlocked • Active" : "Unlocked • Inactive")
+                : node.available
+                  ? `Available • Cost ${cost}`
+                  : node.reason || "Locked";
+
+            tip.innerHTML = `
+                <div class="title">${label}</div>
+                <div class="meta">Tier ${meta.tier || node.tier}${ex} • ${state} • ${mode}</div>
+                <div class="desc">${summary || "—"}</div>
+                <div class="desc" style="margin-top:8px;color:rgba(var(--parchment-rgb),0.60);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">Prereqs: ${prereqText}</div>
+            `;
+
+            const pad = 14;
+            const x = Math.max(pad, Math.min(window.innerWidth - pad, screen.clientX + 16));
+            const y = Math.max(pad, Math.min(window.innerHeight - pad, screen.clientY + 16));
+            tip.style.left = `${x}px`;
+            tip.style.top = `${y}px`;
+            tip.style.display = "block";
+        };
+
+        this._renderMasteryTreeCanvas(
+            {
+                profile,
+                metaEnabled,
+                trees: profile.mastery.attributeTrees,
+                attunement,
+                weaponPrimaryAttr,
+                nodeCostForTier,
+            },
+            {
+                onPurchase: purchaseNode,
+                onRefund: refundNode,
+                onHover: setTooltip,
+            }
+        );
+    },
+    _ensureMasteryTreeView() {
+        const canvas = document.getElementById("mastery-tree-canvas");
+        if (!canvas) return null;
+
+        if (this._masteryTreeView?.canvas === canvas) return this._masteryTreeView;
+
+        const view = {
+            canvas,
+            ctx: canvas.getContext("2d"),
+            scale: 0.9,
+            offsetX: 0,
+            offsetY: 0,
+            dragging: false,
+            dragStartX: 0,
+            dragStartY: 0,
+            dragBaseX: 0,
+            dragBaseY: 0,
+            model: null,
+            onSelectNode: null,
+            onSecondaryNode: null,
+            onHoverNode: null,
+            hasPointer: false,
+        };
+
+        const resize = () => {
+            const rect = canvas.getBoundingClientRect();
+            const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+            const w = Math.max(1, Math.floor(rect.width));
+            const h = Math.max(1, Math.floor(rect.height));
+            const nextW = w * dpr;
+            const nextH = h * dpr;
+            if (canvas.width !== nextW) canvas.width = nextW;
+            if (canvas.height !== nextH) canvas.height = nextH;
+            view.dpr = dpr;
+            view.w = w;
+            view.h = h;
+            this._drawMasteryTreeCanvas();
+        };
+
+        view._onResize = resize;
+        window.addEventListener("resize", resize);
+
+        const screenToWorld = (sx, sy) => {
+            return {
+                x: (sx - view.w / 2 - view.offsetX) / view.scale,
+                y: (sy - view.h / 2 - view.offsetY) / view.scale,
+            };
+        };
+
+        const worldToScreen = (wx, wy) => {
+            return {
+                x: view.w / 2 + view.offsetX + wx * view.scale,
+                y: view.h / 2 + view.offsetY + wy * view.scale,
+            };
+        };
+
+        const hitTestNode = (sx, sy) => {
+            const model = view.model;
+            if (!model) return null;
+            const p = screenToWorld(sx, sy);
+            let best = null;
+            let bestDist = Infinity;
+            for (const n of model.nodes) {
+                const dx = p.x - n.point.x;
+                const dy = p.y - n.point.y;
+                const d = Math.hypot(dx, dy);
+                if (d <= n.radius && d < bestDist) {
+                    best = n;
+                    bestDist = d;
+                }
+            }
+            return best;
+        };
+
+        canvas.addEventListener("pointerdown", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            view.dragging = true;
+            view.dragStartX = sx;
+            view.dragStartY = sy;
+            view.dragBaseX = view.offsetX;
+            view.dragBaseY = view.offsetY;
+            view._moved = false;
+            view._button = e.button;
+            canvas.classList.add("dragging");
+            canvas.setPointerCapture?.(e.pointerId);
+            e.preventDefault();
+        });
+
+        canvas.addEventListener("pointermove", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            if (view.dragging) {
+                const dx = sx - view.dragStartX;
+                const dy = sy - view.dragStartY;
+                if (Math.abs(dx) + Math.abs(dy) > 3) view._moved = true;
+                view.offsetX = view.dragBaseX + dx;
+                view.offsetY = view.dragBaseY + dy;
+                this._drawMasteryTreeCanvas();
+                return;
+            }
+
+            const node = hitTestNode(sx, sy);
+            const nextHoverId = node?.id || null;
+            view._hoverId = nextHoverId;
+            if (typeof view.onHoverNode === "function") view.onHoverNode(node, { x: sx, y: sy, clientX: e.clientX, clientY: e.clientY });
+        });
+
+        canvas.addEventListener("pointerup", (e) => {
+            if (!view.dragging) return;
+            view.dragging = false;
+            canvas.classList.remove("dragging");
+            canvas.releasePointerCapture?.(e.pointerId);
+
+            if (!view._moved) {
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                const node = hitTestNode(sx, sy);
+                if (!node) return;
+                if (view._button === 2) {
+                    if (typeof view.onSecondaryNode === "function") view.onSecondaryNode(node);
+                } else if (typeof view.onSelectNode === "function") {
+                    view.onSelectNode(node);
+                }
+            }
+        });
+
+        canvas.addEventListener("wheel", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            const before = screenToWorld(sx, sy);
+
+            const nextScale = Math.max(0.35, Math.min(2.8, view.scale * Math.exp(-e.deltaY * 0.001)));
+            view.scale = nextScale;
+
+            const afterScreen = worldToScreen(before.x, before.y);
+            view.offsetX += sx - afterScreen.x;
+            view.offsetY += sy - afterScreen.y;
+
+            this._drawMasteryTreeCanvas();
+            e.preventDefault();
+        }, { passive: false });
+
+        canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+        canvas.addEventListener("pointerleave", () => {
+            view._hoverId = null;
+            if (typeof view.onHoverNode === "function") view.onHoverNode(null, null);
+        });
+
+        this._masteryTreeView = view;
+        resize();
+        return view;
+    },
+    _renderMasteryTreeCanvas(status, { onPurchase = null, onRefund = null, onHover = null } = {}) {
+        const view = this._ensureMasteryTreeView();
+        if (!view?.ctx) return;
+
+        const attunement = status?.attunement || null;
+        const metaEnabled = !!status?.metaEnabled;
+        const nodeCostForTier = typeof status?.nodeCostForTier === "function" ? status.nodeCostForTier : (() => 0);
+
+        const trees = status?.trees || {};
+        const unlockedByAttr = {};
+        for (const attrId of Object.values(AttributeId)) {
+            const raw = trees?.[attrId]?.unlocked;
+            const set = new Set();
+            if (Array.isArray(raw)) for (const id of raw) if (typeof id === "string" && id.trim()) set.add(id.trim());
+            unlockedByAttr[attrId] = set;
+        }
+
+        const metaById = new Map();
+        for (const attrId of Object.values(AttributeId)) {
+            const def = ATTRIBUTE_MASTERY_TREES?.[attrId] || { nodes: [] };
+            for (const n of (def.nodes || [])) {
+                if (!n?.id) continue;
+                metaById.set(n.id, n);
+            }
+        }
+
+        const nodes = (ATTRIBUTE_MASTERY_LAYOUT?.nodes || []).map((n) => {
+            const meta = metaById.get(n.id);
+            const unlocked = unlockedByAttr[n.attributeId]?.has(n.id) || false;
+            const activationMode = meta?.activationMode || "Always";
+            const active = unlocked && (activationMode === "Always" || activationMode === "Hybrid" || (activationMode === "Attuned" && attunement === n.attributeId));
+            const palette = getMasteryPaletteByAttribute(n.attributeId);
+            const cost = metaEnabled ? nodeCostForTier(meta?.tier ?? n.tier) : 0;
+
+            const lvl = metaEnabled ? Math.max(0, Math.floor(Number(status?.profile?.mastery?.attributes?.[n.attributeId]?.level || 0))) : 0;
+            const tierMet = (meta?.tier ?? n.tier) <= lvl;
+            const prereqs = Array.isArray(meta?.prereqs) ? meta.prereqs : [];
+            const prereqsMet = prereqs.every((pre) => unlockedByAttr[n.attributeId]?.has(pre) || false);
+
+            const groupId = meta?.exclusiveGroup || null;
+            let hasSiblingUnlocked = false;
+            if (groupId) {
+                for (const other of (ATTRIBUTE_MASTERY_TREES?.[n.attributeId]?.nodes || [])) {
+                    if (!other?.id || other.id === n.id) continue;
+                    if (other.exclusiveGroup !== groupId) continue;
+                    if (unlockedByAttr[n.attributeId]?.has(other.id)) { hasSiblingUnlocked = true; break; }
+                }
+            }
+
+            const walletSouls = Math.max(0, Number(status?.profile?.wallet?.souls || 0) || 0);
+            const affordable = walletSouls >= cost;
+            const available = metaEnabled && !unlocked && tierMet && prereqsMet && !hasSiblingUnlocked && affordable;
+
+            let reason = "";
+            if (!metaEnabled) reason = "Meta progression disabled";
+            else if (unlocked) reason = "Unlocked";
+            else if (hasSiblingUnlocked) reason = "Exclusive already chosen";
+            else if (!tierMet) reason = `Requires mastery level ${(meta?.tier ?? n.tier)}`;
+            else if (!prereqsMet) reason = "Requires prerequisites";
+            else if (!affordable) reason = `Need ${cost} souls`;
+            else reason = "Locked";
+
+            return {
+                id: n.id,
+                attributeId: n.attributeId,
+                tier: n.tier,
+                point: n.point,
+                radius: n.radius,
+                prereqs: Array.isArray(n.prereqs) ? n.prereqs : [],
+                unlocked,
+                active,
+                palette,
+                available,
+                cost,
+                reason,
+                meta,
+            };
+        });
+
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        const edges = [];
+        for (const n of nodes) {
+            for (const pre of n.prereqs) {
+                const src = byId.get(pre);
+                if (!src) continue;
+                edges.push({ a: src, b: n });
+            }
+        }
+
+        view.model = { nodes, edges, hybridSpokes: [], metaEnabled };
+        view.onSelectNode = (node) => {
+            if (!node?.id || !node?.attributeId) return;
+            if (typeof onPurchase === "function") onPurchase(node.attributeId, node.id);
+        };
+        view.onSecondaryNode = (node) => {
+            if (!node?.id || !node?.attributeId) return;
+            if (typeof onRefund === "function") onRefund(node.attributeId, node.id);
+        };
+        view.onHoverNode = (node, screen) => {
+            if (typeof onHover === "function") onHover(node, screen);
+        };
+
+        this._drawMasteryTreeCanvas();
+    },
+    _drawMasteryTreeCanvas() {
+        const view = this._masteryTreeView;
+        if (!view?.ctx) return;
+        const ctx = view.ctx;
+        const dpr = view.dpr || 1;
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, view.w, view.h);
+
+        const model = view.model;
+        if (!model) return;
+
+        const toScreen = (p) => ({
+            x: view.w / 2 + view.offsetX + p.x * view.scale,
+            y: view.h / 2 + view.offsetY + p.y * view.scale,
+        });
+
+        // Grid
+        ctx.save();
+        const grid = 60 * view.scale;
+        const ox = (view.w / 2 + view.offsetX) % grid;
+        const oy = (view.h / 2 + view.offsetY) % grid;
+        ctx.strokeStyle = `rgba(239,230,216,0.05)`;
+        ctx.lineWidth = 1;
+        for (let x = ox; x < view.w; x += grid) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, view.h);
+            ctx.stroke();
+        }
+        for (let y = oy; y < view.h; y += grid) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(view.w, y);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Connectors
+        ctx.save();
+        ctx.lineWidth = Math.max(1, 2 * view.scale * 0.25);
+        for (const e of model.edges) {
+            const a = toScreen(e.a.point);
+            const b = toScreen(e.b.point);
+            const alpha = (e.a.unlocked && e.b.unlocked) ? 0.38 : 0.16;
+            const stroke = c(e.b.palette?.deep || "fx.uiText", alpha) || `rgba(239,230,216,${alpha})`;
+            ctx.strokeStyle = stroke;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Hybrid spokes (dashed)
+        ctx.save();
+        // Intentionally disabled: hybrid topology is not part of the current Attribute Mastery tree UX.
+        ctx.restore();
+
+        // Nodes
+        for (const n of model.nodes) {
+            const p = toScreen(n.point);
+            const r = Math.max(2, n.radius * view.scale);
+
+            const fill = n.unlocked
+                ? (c(n.palette?.fill || "fx.uiAccent", n.active ? 0.78 : 0.42) || `rgba(239,230,216,0.42)`)
+                : (n.available ? `rgba(239,230,216,0.10)` : `rgba(239,230,216,0.06)`);
+            const stroke = n.unlocked
+                ? (c(n.palette?.deep || "fx.uiText", n.active ? 0.85 : 0.45) || `rgba(239,230,216,0.45)`)
+                : (n.available ? `rgba(239,230,216,0.30)` : `rgba(239,230,216,0.18)`);
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = fill;
+            ctx.fill();
+
+            ctx.lineWidth = Math.max(1, 2 * view.scale * 0.35);
+            ctx.strokeStyle = stroke;
+            ctx.stroke();
+
+            if (n.active) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r + Math.max(1, 5 * view.scale * 0.35), 0, Math.PI * 2);
+                ctx.lineWidth = Math.max(1, 2 * view.scale * 0.22);
+                ctx.strokeStyle = c(n.palette?.fill || "fx.uiAccent", 0.22) || `rgba(239,230,216,0.22)`;
+                ctx.stroke();
+            }
+
+            // Available glow
+            if (!n.unlocked && n.available) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r + Math.max(1, 8 * view.scale * 0.25), 0, Math.PI * 2);
+                ctx.lineWidth = Math.max(1, 2 * view.scale * 0.18);
+                ctx.strokeStyle = `rgba(239,230,216,0.16)`;
+                ctx.stroke();
+            }
+        }
     },
     identifyItem(item) {
         if (!item || item.identified !== false) return;

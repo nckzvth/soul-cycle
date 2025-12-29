@@ -165,6 +165,10 @@ export const BALANCE = {
             // Level curves (xp required increases per level)
             attributeCurve: { reqBase: 120, reqGrowth: 1.25 },
             weaponCurve: { reqBase: 160, reqGrowth: 1.28 },
+
+            // Attribute mastery tree purchase cost (wallet souls).
+            // Cost is based on the node tier (1..10), not the specific node id.
+            attributeNodeSoulCost: { base: 40, growth: 1.75 },
         },
 
         // Tier scaling: data-driven modifiers you can attach to any spawn spec.

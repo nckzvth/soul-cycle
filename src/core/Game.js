@@ -198,6 +198,26 @@ const Game = {
         // Always record minimal run history (tuning/telemetry). Mastery XP only applies when enabled.
         try {
             const profile = this.profile || ProfileStore.load();
+
+            // Convert run souls into the meta wallet on successful completion.
+            try {
+                profile.wallet = (profile.wallet && typeof profile.wallet === "object") ? profile.wallet : {};
+                const reason = String(runResult?.endReason || endReason || "");
+                const completed = reason === "fieldComplete" || reason === "dungeonComplete";
+                if (completed) {
+                    const delta = Math.max(0, Number(runResult?.soulsDelta || 0) || 0);
+                    profile.wallet.souls = Math.max(0, Number(profile.wallet.souls || 0) || 0) + delta;
+                    // Banked souls should no longer remain as in-run currency after a completed run.
+                    try {
+                        if (p?.runStart && typeof p.runStart.souls === "number") p.souls = p.runStart.souls;
+                    } catch {
+                        // ignore
+                    }
+                }
+            } catch {
+                // ignore wallet errors
+            }
+
             if (FeatureFlags.isOn("progression.metaMasteryEnabled")) {
                 applyMetaProgression(profile, runResult);
             } else {

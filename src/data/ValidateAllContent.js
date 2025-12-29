@@ -4,6 +4,7 @@ import { validateTaggedDef, validateWeaponDef } from "./ContentValidation.js";
 import { getWeaponConfigByCls } from "./Weapons.js";
 import { validateAttributeMasteryTrees } from "./ValidateAttributeMasteryTrees.js";
 import { validateAttributeMasteryEffects } from "./ValidateAttributeMasteryEffects.js";
+import { validateAttributeMasteryLayout } from "./ValidateAttributeMasteryLayout.js";
 
 function safeId(def) {
   return def?.id || def?.weaponId || null;
@@ -39,6 +40,7 @@ export function validateAllContent({ strict = false } = {}) {
   // Attribute mastery: validate structure + Effects bindings.
   validateAttributeMasteryTrees();
   validateAttributeMasteryEffects();
+  validateAttributeMasteryLayout();
 
   return true;
 }
