@@ -1203,6 +1203,7 @@ export class MasteryWhirlpool {
         this.life -= dt;
         this._vfxTimer -= dt;
 
+        const t = BALANCE?.mastery?.entities?.masteryWhirlpool || {};
         const enemies = this.state?.enemies || [];
         for (const e of enemies) {
             if (!e || e.dead) continue;
@@ -1212,8 +1213,10 @@ export class MasteryWhirlpool {
             const dx = this.x - e.x;
             const dy = this.y - e.y;
             const d = Math.hypot(dx, dy) || 1;
-            const resist = (StatusSystem.hasStatus(e, StatusId.Soaked) ? 0.85 : 1.0) * (e.isElite || e.isBoss ? 1.35 : 1.0);
-            const s = (this.pullStrength / resist) * dt;
+            const soaked = StatusSystem.hasStatus(e, StatusId.Soaked);
+            const resist = (soaked ? (Number(t.soakedResistMult) || 1.0) : 1.0) * (e.isElite || e.isBoss ? (Number(t.eliteResistMult) || 1.0) : 1.0);
+            const mult = soaked ? Math.max(0, Number(this.player?._mastery?.pullMultOnSoaked) || 1.0) : 1.0;
+            const s = ((this.pullStrength * mult) / resist) * dt;
             e.vx += (dx / d) * s * 60;
             e.vy += (dy / d) * s * 60;
         }
@@ -1262,7 +1265,8 @@ export class MasteryTentacleSlam {
 
     update(dt) {
         this.life -= dt;
-        if (!this._didHit && this.life <= 0.45) {
+        const t = BALANCE?.mastery?.entities?.masteryTentacleSlam || {};
+        if (!this._didHit && this.life <= (Number(t.impactAtLifeSec) || 0.45)) {
             this._didHit = true;
             const enemies = this.state?.enemies || [];
             for (const e of enemies) {
@@ -1272,7 +1276,7 @@ export class MasteryTentacleSlam {
                 // Root-lite: freeze by dropping speed; restore via StatusSystem expire hook.
                 const baseSpeed = typeof e._masteryBaseSpeed === "number" ? e._masteryBaseSpeed : e.speed;
                 if (typeof e._masteryBaseSpeed !== "number") e._masteryBaseSpeed = baseSpeed;
-                const dur = e.isElite || e.isBoss ? 0.35 : 0.65;
+                const dur = e.isElite || e.isBoss ? (Number(t.rootDurationEliteSec) || 0.35) : (Number(t.rootDurationSec) || 0.65);
                 e.speed = 0;
                 StatusSystem.applyStatus(e, "mastery:tentacleRoot", {
                     source: this.player,
@@ -1295,7 +1299,7 @@ export class MasteryTentacleSlam {
                     StatusSystem.applyStatus(e, StatusId.Soaked, {
                         source: this.player,
                         stacks: 1,
-                        duration: 2.2,
+                        duration: Number(t.soakedDurationUpgradedSec) || 2.2,
                         tickInterval: 9999,
                         spec: null,
                         snapshotPolicy: "snapshot",
@@ -1342,8 +1346,9 @@ export class MasteryConsecrateZone {
     update(dt) {
         this.life -= dt;
         this._tickTimer -= dt;
+        const t = BALANCE?.mastery?.entities?.masteryConsecrateZone || {};
         if (this._tickTimer <= 0) {
-            this._tickTimer = 0.35;
+            this._tickTimer = Number(t.tickIntervalSec) || 0.35;
             const enemies = this.state?.enemies || [];
             for (const e of enemies) {
                 if (!e || e.dead) continue;
@@ -1351,12 +1356,12 @@ export class MasteryConsecrateZone {
                 StatusSystem.applyStatus(e, StatusId.Ignited, {
                     source: this.player,
                     stacks: 1,
-                    duration: 1.8,
-                    tickInterval: 1.0,
+                    duration: Number(t.igniteDurationSec) || 1.8,
+                    tickInterval: Number(t.igniteTickIntervalSec) || 1.0,
                     spec: { id: "mastery:consecrateIgnite", base: 0, coeff: this.igniteCoeff, flat: 0, canCrit: false, tags: ["dot"], snapshot: true },
                     snapshotPolicy: "snapshot",
                     stackMode: "add",
-                    maxStacks: 12,
+                    maxStacks: Math.floor(Number(t.igniteMaxStacks) || 12),
                     triggerOnHit: false,
                     dotTextMode: "aggregate",
                 });
@@ -1367,17 +1372,18 @@ export class MasteryConsecrateZone {
 
     draw(ctx, s) {
         const p = s(this.x, this.y);
-        const alpha = Math.max(0, Math.min(1, this.life / 1.8));
+        const t = BALANCE?.mastery?.entities?.masteryConsecrateZone || {};
+        const alpha = Math.max(0, Math.min(1, this.life / (Number(t.alphaDurationDivisorSec) || 1.8)));
         ctx.save();
         ctx.globalAlpha = 0.55 * alpha;
         const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, this.radius);
-        g.addColorStop(0, tc("fx.ember", 0.16) || "rgba(192,106,58,0.16)");
+        g.addColorStop(0, tc("fx.ember", Number(t.fillAlpha) || 0.16) || "rgba(192,106,58,0.16)");
         g.addColorStop(1, "transparent");
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = tc("fx.ink", 0.22) || "rgba(12,13,18,0.22)";
+        ctx.strokeStyle = tc("fx.ink", Number(t.rimAlpha) || 0.22) || "rgba(12,13,18,0.22)";
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(p.x, p.y, this.radius * 0.9, 0, Math.PI * 2);

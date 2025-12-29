@@ -26,10 +26,23 @@ import { LevelToSocketLevel, getUnlockedSkillIdsForSocket } from "../data/PerkSo
 import { SKILLS } from "../data/Skills.js";
 import { StatusId } from "../data/Vocabulary.js";
 import { GolemMinion } from "./Minions.js";
+import { buildAttributeMasteryEffectSources, isMasteryGameplayActive } from "../systems/AttributeMasterySystem.js";
 
 function triggerActivePhialEffects(player, trigger, ctx, { shadow } = {}) {
     try {
-        const mastery = Array.isArray(player?._attributeMasteryEffectSources) ? player._attributeMasteryEffectSources : [];
+        let mastery = [];
+        if (isMasteryGameplayActive(ctx?.state)) {
+            // Runs build mastery sources once at run start; training arena needs them live-updated.
+            if (ctx?.state?.isTrainingArena) {
+                if (!Game.profile) {
+                    try { Game.profile = ProfileStore.load(); } catch { /* ignore */ }
+                }
+                mastery = buildAttributeMasteryEffectSources(player, Game.profile, ctx.state);
+                player._attributeMasteryEffectSources = mastery;
+            } else if (Array.isArray(player?._attributeMasteryEffectSources)) {
+                mastery = player._attributeMasteryEffectSources;
+            }
+        }
         EffectSystem.setActiveSources([...buildActivePhialEffectSources(player), ...mastery]);
         EffectSystem.trigger(trigger, ctx, { shadow: !!shadow });
     } catch {
@@ -192,9 +205,9 @@ export default class PlayerObj {
         this.combatBuffTimers = { powerMult: 0 };
         this._masteryDamageTakenMultFactor = 1.0;
 
-        // Weapon state (run-reset). Used for "class" mechanics like pistol windup/cyclone.
+        // Weapon state (run-reset). Used for "class" mechanics like repeater windup/cyclone.
         this.weaponState = {
-            pistol: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
+            repeater: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
             staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
             hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 },
             scythe: { comboStep: 0, comboTimer: 0 }
@@ -266,7 +279,7 @@ export default class PlayerObj {
         this.skills.clear();
         this.skillMeta = { exclusive: new Map(), flags: new Set() };
         this.weaponState = {
-            pistol: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
+            repeater: { windup: 0, gustCounter: 0, vortexBudget: 0, vortexBudgetTimer: 0, cycloneProcCd: 0, cycloneWindowTime: 0 },
             staff: { currentTime: 0, voltage: 0, currentVfxTimer: 0, voltageVfxTimer: 0, currentJustGained: false, circuitNext: "relay" },
             hammer: { heat: 0, igniteCd: 0, heatVfxTimer: 0 },
             scythe: { comboStep: 0, comboTimer: 0 }
@@ -609,9 +622,9 @@ export default class PlayerObj {
     }
 
     updateWeaponStates(dt, scene) {
-        const pistolState = this.weaponState?.pistol;
-        if (pistolState && pistolState.cycloneProcCd > 0) pistolState.cycloneProcCd = Math.max(0, pistolState.cycloneProcCd - dt);
-        if (pistolState && pistolState.cycloneWindowTime > 0) pistolState.cycloneWindowTime = Math.max(0, pistolState.cycloneWindowTime - dt);
+        const repeaterState = this.weaponState?.repeater;
+        if (repeaterState && repeaterState.cycloneProcCd > 0) repeaterState.cycloneProcCd = Math.max(0, repeaterState.cycloneProcCd - dt);
+        if (repeaterState && repeaterState.cycloneWindowTime > 0) repeaterState.cycloneWindowTime = Math.max(0, repeaterState.cycloneWindowTime - dt);
 
         // Hammer forge heat (keystone): build heat while any enemy is burning from hammer.
         const hammerState = this.weaponState?.hammer;
@@ -808,33 +821,33 @@ export default class PlayerObj {
         const scytheState = this.weaponState?.scythe;
         if (scytheState && scytheState.comboTimer > 0) scytheState.comboTimer = Math.max(0, scytheState.comboTimer - dt);
 
-        // --- Pistol windup/cyclone base kit ---
-        const pistolState = this.weaponState?.pistol;
+        // --- Repeater windup/cyclone base kit ---
+        const repeaterState = this.weaponState?.repeater;
         const usingRepeater = weaponCls === "repeater";
         const firingRepeater = usingRepeater && mouse.down && this.dashTimer <= 0;
-        if (pistolState) {
-            const skillsCfg = BALANCE.skills?.pistol || {};
+        if (repeaterState) {
+            const skillsCfg = BALANCE.skills?.repeater || {};
             const gainBase = skillsCfg.windupGainPerSecond ?? 0.8;
             const decayBase = skillsCfg.windupDecayPerSecond ?? 1.2;
 
-            const gainMult = 1 + (this.stats.pistolWindupGainMult || 0);
-            const decayMult = Math.max(0.05, 1 + (this.stats.pistolWindupDecayMult || 0));
+            const gainMult = 1 + (this.stats.repeaterWindupGainMult || 0);
+            const decayMult = Math.max(0.05, 1 + (this.stats.repeaterWindupDecayMult || 0));
 
-            if (firingRepeater) pistolState.windup = Math.min(1, pistolState.windup + dt * gainBase * gainMult);
-            else pistolState.windup = Math.max(0, pistolState.windup - dt * decayBase * decayMult);
+            if (firingRepeater) repeaterState.windup = Math.min(1, repeaterState.windup + dt * gainBase * gainMult);
+            else repeaterState.windup = Math.max(0, repeaterState.windup - dt * decayBase * decayMult);
 
             // Reaper's Vortex chaining budget (occult keystone limiter).
-            if ((this.stats.pistolReapersVortexEnable || 0) > 0) {
+            if ((this.stats.repeaterReapersVortexEnable || 0) > 0) {
                 const budgetMax = skillsCfg.vortexChainBudget ?? 2;
                 const regen = skillsCfg.vortexBudgetRegenPerSecond ?? 1.0;
-                pistolState.vortexBudgetTimer += dt;
-                while (pistolState.vortexBudgetTimer >= 1.0) {
-                    pistolState.vortexBudgetTimer -= 1.0;
-                    pistolState.vortexBudget = Math.min(budgetMax, pistolState.vortexBudget + regen);
+                repeaterState.vortexBudgetTimer += dt;
+                while (repeaterState.vortexBudgetTimer >= 1.0) {
+                    repeaterState.vortexBudgetTimer -= 1.0;
+                    repeaterState.vortexBudget = Math.min(budgetMax, repeaterState.vortexBudget + regen);
                 }
             } else {
-                pistolState.vortexBudget = 0;
-                pistolState.vortexBudgetTimer = 0;
+                repeaterState.vortexBudget = 0;
+                repeaterState.vortexBudgetTimer = 0;
             }
         }
 
@@ -975,21 +988,21 @@ export default class PlayerObj {
             }
         }
 
-        // Shooting (Pistol/Staff) - Don't shoot while dashing
+        // Shooting (Repeater/Staff) - Don't shoot while dashing
         if (mouse.down && this.atkCd <= 0 && this.dashTimer <= 0) {
             let attackSpeed = this.stats.attackSpeed || (1 + this.stats.spd);
             const atkBuff = this.combatBuffs?.attackSpeedMult;
             if (typeof atkBuff === "number" && Number.isFinite(atkBuff)) attackSpeed *= atkBuff;
-            if (usingRepeater && pistolState) {
-                const skillsCfg = BALANCE.skills?.pistol || {};
+            if (usingRepeater && repeaterState) {
+                const skillsCfg = BALANCE.skills?.repeater || {};
                 const windupBonus = skillsCfg.windupAttackSpeedBonus ?? 2.0; // at full windup: +200%
-                const mult = (1 + pistolState.windup * windupBonus);
+                const mult = (1 + repeaterState.windup * windupBonus);
                 attackSpeed *= mult;
             }
-            let rate = BALANCE.player.pistolBaseRate / attackSpeed;
+            let rate = BALANCE.player.repeaterBaseRate / attackSpeed;
             
             if (weaponCls === "repeater") {
-                scene.combatSystem.firePistol(this, scene);
+                scene.combatSystem.fireRepeater(this, scene);
                 this.atkCd = rate;
                 this._triggerRangedShotAnim(rate);
                 this.onAttack(scene, { weaponCls: "repeater" });
@@ -1006,7 +1019,7 @@ export default class PlayerObj {
         const sp = this._sprite;
         if (!sp?.enabled) return;
         const interval = Math.max(0.03, Number(shotIntervalSec) || 0.12);
-        // Clamp so very fast pistols don't look like a seizure strobe.
+        // Clamp so very fast repeaters don't look like a seizure strobe.
         const hold = Math.max(0.08, Math.min(0.22, interval * 0.9));
         sp.shot.since = 0;
         sp.shot.hold = hold;
@@ -1299,31 +1312,31 @@ export default class PlayerObj {
         // --- Weapon upgrade hooks (keep phials independent) ---
         const weapon = this.gear.weapon;
         if (normalizeWeaponCls(weapon?.cls) === "repeater") {
-            const skillsCfg = BALANCE.skills?.pistol || {};
-            const pistolState = this.weaponState?.pistol;
+            const skillsCfg = BALANCE.skills?.repeater || {};
+            const repeaterState = this.weaponState?.repeater;
             const spec = hit?.spec;
             const meta = hit?.meta || {};
 
-            // Cyclone proc: chance on pistol bullet hits (not from Cyclone-burst bullets).
-            const isPistolBullet =
+            // Cyclone proc: chance on repeater bullet hits (not from Cyclone-burst bullets).
+            const isRepeaterBullet =
                 !!spec &&
                 Array.isArray(spec.tags) &&
-                spec.tags.includes("pistol") &&
+                spec.tags.includes("repeater") &&
                 spec.tags.includes("projectile");
-            if (isPistolBullet && meta.procSource !== "pistol:cycloneBurst" && pistolState && pistolState.cycloneProcCd <= 0) {
+            if (isRepeaterBullet && meta.procSource !== "repeater:cycloneBurst" && repeaterState && repeaterState.cycloneProcCd <= 0) {
                 const base = skillsCfg.cycloneProcChanceBase ?? 0.01;
-                const add = this.stats.pistolCycloneProcChanceAdd || 0;
-                const mult = 1 + (this.stats.pistolCycloneProcChanceMult || 0);
+                const add = this.stats.repeaterCycloneProcChanceAdd || 0;
+                const mult = 1 + (this.stats.repeaterCycloneProcChanceMult || 0);
                 const windupBonus = skillsCfg.cycloneProcWindupBonus ?? 1.5; // at full windup: +150% chance
 
                 let chance = (base + add) * mult;
-                chance *= (1 + (pistolState.windup || 0) * windupBonus);
+                chance *= (1 + (repeaterState.windup || 0) * windupBonus);
                 chance = Math.max(0, Math.min(1, chance));
 
                 if (Math.random() < chance) {
                     const icd = skillsCfg.cycloneProcIcd ?? 0.2;
-                    pistolState.cycloneProcCd = icd;
-                    pistolState.cycloneWindowTime = skillsCfg.cycloneProcWindow ?? 0.5;
+                    repeaterState.cycloneProcCd = icd;
+                    repeaterState.cycloneWindowTime = skillsCfg.cycloneProcWindow ?? 0.5;
 
 	                    // Burst VFX
 	                    const vfx = skillsCfg.vfx || {};
@@ -1331,12 +1344,12 @@ export default class PlayerObj {
 	                    ParticleSystem.emitText(this.x, this.y - this.r - 16, "CYCLONE", { color: vfx.cycloneTextColor || { token: "p1", alpha: 0.95 }, size: 14, life: 0.7 });
 
                     // Spawn the 360° spray.
-                    state?.combatSystem?.firePistolCycloneBurst?.(this, state);
+                    state?.combatSystem?.fireRepeaterCycloneBurst?.(this, state);
 
                     // Gust Spray (upgrade): cyclone bursts also emit a gust hit.
-                    if ((this.stats.pistolGustEnable || 0) > 0) {
-                        const gustSpecBase = DamageSpecs.pistolGust();
-                        const coeffMult2 = 1 + (this.stats.pistolGustRateMult || 0);
+                    if ((this.stats.repeaterGustEnable || 0) > 0) {
+                        const gustSpecBase = DamageSpecs.repeaterGust();
+                        const coeffMult2 = 1 + (this.stats.repeaterGustRateMult || 0);
                         const gustSpec = { ...gustSpecBase, coeff: gustSpecBase.coeff * coeffMult2 };
                         const gustSnapshot = DamageSystem.snapshotOutgoing(this, gustSpec);
                         const radius = skillsCfg.gustRadius ?? 70;
@@ -1350,20 +1363,20 @@ export default class PlayerObj {
                 }
             }
 
-            // Apply Hex on pistol hits.
-            if ((this.stats.pistolHexEnable || 0) > 0) {
-                const duration = (skillsCfg.hexDuration ?? 3.0) * (1 + (this.stats.pistolHexDurationMult || 0));
+            // Apply Hex on repeater hits.
+            if ((this.stats.repeaterHexEnable || 0) > 0) {
+                const duration = (skillsCfg.hexDuration ?? 3.0) * (1 + (this.stats.repeaterHexDurationMult || 0));
                 const maxStacks = (skillsCfg.hexMaxStacks ?? 5);
-                const debtPopEnabled = (this.stats.pistolDebtPopEnable || 0) > 0;
-                const debtCoeffMult = 1 + (this.stats.pistolDebtPopCoeffMult || 0);
-                const vortexEnabled = (this.stats.pistolReapersVortexEnable || 0) > 0;
+                const debtPopEnabled = (this.stats.repeaterDebtPopEnable || 0) > 0;
+                const debtCoeffMult = 1 + (this.stats.repeaterDebtPopCoeffMult || 0);
+                const vortexEnabled = (this.stats.repeaterReapersVortexEnable || 0) > 0;
 
                 const makePopSpec = () => {
-                    const base = DamageSpecs.pistolDebtPop();
+                    const base = DamageSpecs.repeaterDebtPop();
                     return { ...base, coeff: base.coeff * debtCoeffMult };
                 };
 
-	                StatusSystem.applyStatus(target, "pistol:hex", {
+                StatusSystem.applyStatus(target, "repeater:hex", {
                     source: this,
                     stacks: 1,
                     duration,
@@ -1396,19 +1409,19 @@ export default class PlayerObj {
                         });
 
                         // Vortex: chain one additional pop to a nearby hexed enemy (budget-limited).
-                        if (vortexEnabled && pistolState && pistolState.cycloneWindowTime > 0 && pistolState.vortexBudget > 0) {
+                        if (vortexEnabled && repeaterState && repeaterState.cycloneWindowTime > 0 && repeaterState.vortexBudget > 0) {
                             const chainRadius = skillsCfg.vortexChainRadius ?? 220;
                             let best = null, bestD2 = chainRadius * chainRadius;
                             stState?.enemies?.forEach(e => {
                                 if (e.dead || e === tgt) return;
-                                if (!StatusSystem.hasStatus(e, "pistol:hex")) return;
+                                if (!StatusSystem.hasStatus(e, "repeater:hex")) return;
                                 const d2 = dist2(tgt.x, tgt.y, e.x, e.y);
                                 if (d2 < bestD2) { bestD2 = d2; best = e; }
                             });
                             if (best) {
-                                pistolState.vortexBudget = Math.max(0, pistolState.vortexBudget - 1);
+                                repeaterState.vortexBudget = Math.max(0, repeaterState.vortexBudget - 1);
                                 // Consume the chained hex to prevent double-pop later.
-                                if (best.statuses) best.statuses.delete("pistol:hex");
+                                if (best.statuses) best.statuses.delete("repeater:hex");
                                 stState?.enemies?.forEach(e => {
                                     if (e.dead) return;
                                     if (dist2(best.x, best.y, e.x, e.y) < radius * radius) {
@@ -1422,12 +1435,12 @@ export default class PlayerObj {
             }
 
             // Soul Pressure: hitting hexed targets sustains windup / extends the post-proc window.
-            if ((this.stats.pistolSoulPressureEnable || 0) > 0 && pistolState && StatusSystem.hasStatus(target, "pistol:hex")) {
-                const sustainMult = 1 + (this.stats.pistolCycloneSustainMult || 0);
+            if ((this.stats.repeaterSoulPressureEnable || 0) > 0 && repeaterState && StatusSystem.hasStatus(target, "repeater:hex")) {
+                const sustainMult = 1 + (this.stats.repeaterCycloneSustainMult || 0);
                 const windupGain = (skillsCfg.soulPressureWindupOnHit ?? 0.08) * sustainMult;
                 const windowExtend = (skillsCfg.soulPressureCycloneExtend ?? 0.08) * sustainMult;
-                pistolState.windup = Math.min(1, pistolState.windup + windupGain);
-                if (pistolState.cycloneWindowTime > 0) pistolState.cycloneWindowTime += windowExtend;
+                repeaterState.windup = Math.min(1, repeaterState.windup + windupGain);
+                if (repeaterState.cycloneWindowTime > 0) repeaterState.cycloneWindowTime += windowExtend;
             }
         }
 

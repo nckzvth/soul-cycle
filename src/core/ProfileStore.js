@@ -1,9 +1,11 @@
 // Versioned profile persistence for Soul-Cycle.
 // Phase 2: scaffolding only (meta progression not implemented yet).
 
+import { ATTRIBUTE_MASTERY_TREES } from "../data/AttributeMasteryTrees.js";
+
 const PROFILE_STORAGE_KEY = "soulcycle:profile";
 const PROFILE_BACKUP_KEY = "soulcycle:profile:backup";
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
 function normalizeWeaponCls(cls) {
   const c = String(cls || "").toLowerCase();
@@ -73,7 +75,8 @@ export function createDefaultProfile() {
       },
 
       // Phase 3+: attribute mastery tree unlocks (data-driven).
-      // `selectedExclusive` is reserved for exclusiveGroup resolution; unlock UX will define exact semantics.
+      // `selectedExclusive` is legacy and is kept only for forward/backward compatibility;
+      // the authoritative representation is `unlocked`.
       attributeTrees: {
         Might: { unlocked: [], selectedExclusive: {} },
         Will: { unlocked: [], selectedExclusive: {} },
@@ -129,6 +132,52 @@ function sanitizeStringMap(value) {
     out[k] = v;
   }
   return out;
+}
+
+function normalizeAttributeTreeExclusives(attributeId, tree) {
+  const def = ATTRIBUTE_MASTERY_TREES?.[attributeId];
+  const nodes = Array.isArray(def?.nodes) ? def.nodes : [];
+
+  const next = isProfileObject(tree) ? { ...tree } : {};
+  const unlocked = sanitizeStringArray(next.unlocked);
+  const selectedExclusive = sanitizeStringMap(next.selectedExclusive);
+
+  const unlockedSet = new Set(unlocked);
+
+  const byGroup = new Map();
+  for (const n of nodes) {
+    const g = typeof n?.exclusiveGroup === "string" && n.exclusiveGroup.trim() ? n.exclusiveGroup : null;
+    if (!g) continue;
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(n.id);
+  }
+
+  // Prune selectedExclusive keys that no longer exist in data.
+  for (const k of Object.keys(selectedExclusive)) {
+    if (!byGroup.has(k)) delete selectedExclusive[k];
+  }
+
+  // Enforce: at most one unlocked node per exclusive group.
+  for (const [groupId, members] of byGroup.entries()) {
+    const unlockedMembers = members.filter((id) => unlockedSet.has(id));
+    if (unlockedMembers.length === 0) {
+      delete selectedExclusive[groupId];
+      continue;
+    }
+
+    let pick = selectedExclusive[groupId];
+    if (typeof pick !== "string" || !unlockedSet.has(pick) || !members.includes(pick)) pick = unlockedMembers[0];
+
+    for (const id of unlockedMembers) {
+      if (id !== pick) unlockedSet.delete(id);
+    }
+    selectedExclusive[groupId] = pick;
+  }
+
+  // Preserve original unlocked ordering where possible.
+  next.unlocked = unlocked.filter((id) => unlockedSet.has(id));
+  next.selectedExclusive = selectedExclusive;
+  return next;
 }
 
 function migrate0to1(raw) {
@@ -212,13 +261,31 @@ function migrate2to3(raw) {
   return next;
 }
 
+function migrate3to4(raw) {
+  const next = isProfileObject(raw) ? { ...raw } : migrate2to3(raw);
+
+  next.mastery = isProfileObject(next.mastery) ? { ...next.mastery } : {};
+  const trees = isProfileObject(next.mastery.attributeTrees) ? { ...next.mastery.attributeTrees } : {};
+
+  for (const attrId of ["Might", "Will", "Alacrity", "Constitution"]) {
+    trees[attrId] = normalizeAttributeTreeExclusives(attrId, trees[attrId]);
+  }
+
+  next.mastery.attributeTrees = trees;
+
+  next.schemaVersion = 4;
+  next.updatedAt = nowIso();
+  return next;
+}
+
 function migrateProfile(raw) {
   const v = Number(raw?.schemaVersion || 0);
   if (v === CURRENT_SCHEMA_VERSION) return raw;
 
-  if (v <= 0) return migrate2to3(migrate1to2(migrate0to1(raw)));
-  if (v === 1) return migrate2to3(migrate1to2(raw));
-  if (v === 2) return migrate2to3(raw);
+  if (v <= 0) return migrate3to4(migrate2to3(migrate1to2(migrate0to1(raw))));
+  if (v === 1) return migrate3to4(migrate2to3(migrate1to2(raw)));
+  if (v === 2) return migrate3to4(migrate2to3(raw));
+  if (v === 3) return migrate3to4(raw);
 
   // Unknown future version: do not attempt destructive migration.
   return raw;

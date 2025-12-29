@@ -5,6 +5,7 @@ class State {
         this.game = game;
         this.uiFlags = { canOpenInv: false, canSwapGear: false, canOpenAppraise: false };
         this.isRun = false;
+        this.isTrainingArena = false;
     }
 
     enter() {

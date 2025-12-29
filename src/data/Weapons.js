@@ -14,9 +14,8 @@ const RAW_WEAPON_CONFIGS = Object.freeze({
   hammer: { weaponId: WeaponId.Hammer, primaryAttribute: AttributeId.Might },
   staff: { weaponId: WeaponId.Staff, primaryAttribute: AttributeId.Will },
 
-  // Canonical weapon is Repeater; "pistol" remains a legacy runtime cls until renamed in gameplay/UI.
+  // Canonical weapon is Repeater; legacy saves may still say "pistol" and are normalized.
   repeater: { weaponId: WeaponId.Repeater, primaryAttribute: AttributeId.Alacrity },
-  pistol: { weaponId: WeaponId.Repeater, primaryAttribute: AttributeId.Alacrity },
 
   scythe: { weaponId: WeaponId.Scythe, primaryAttribute: AttributeId.Constitution },
 });

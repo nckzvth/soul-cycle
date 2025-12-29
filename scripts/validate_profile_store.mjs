@@ -15,7 +15,7 @@ globalThis.window.localStorage = {
 
 // Default profile sanity
 const d = createDefaultProfile();
-invariant(d.schemaVersion === 3, "default schemaVersion should be 3");
+invariant(d.schemaVersion === 4, "default schemaVersion should be 4");
 invariant(!!d.mastery?.attributes?.Constitution, "Constitution mastery scaffold missing");
 invariant(!!d.mastery?.attributeTrees?.Might, "attributeTrees scaffold missing");
 invariant(d.armory?.attunement === null, "default attunement should be null");
@@ -24,6 +24,6 @@ invariant(Array.isArray(d.history?.recentRuns), "recentRuns should exist");
 // Save/load roundtrip
 ProfileStore.save(d);
 const loaded = ProfileStore.load();
-invariant(loaded.schemaVersion === 3, "loaded schemaVersion should be 3");
+invariant(loaded.schemaVersion === 4, "loaded schemaVersion should be 4");
 
 console.log("validate_profile_store: OK");

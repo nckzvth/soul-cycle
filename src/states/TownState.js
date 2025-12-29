@@ -12,6 +12,7 @@ import SpriteSheet from "../render/SpriteSheet.js";
 import Animation from "../render/Animation.js";
 import AnimatedProp from "../entities/AnimatedProp.js";
 import InteractableSprite from "../entities/InteractableSprite.js";
+import { TrainingDummy } from "../entities/TrainingDummy.js";
 
 const CAMPFIRE_POS = Object.freeze({ x: 400, y: 180 });
 const WEAPON_ICON_ARC = Object.freeze({
@@ -27,6 +28,8 @@ class TownState extends State {
         this.weaponIcons = null;
         this._campfireTune = false;
         this._campfireTuneHeld = false;
+        this._trainingHeld = false;
+        this.enemies = [];
         this.gate = new Interactable(350, 500, 100, 50, () => {
             this.game.stateManager.switchState(new FieldState(this.game));
         });
@@ -40,6 +43,9 @@ class TownState extends State {
         this.appraiser = new Interactable(520, 360, 95, 55, () => {
             UI.toggle('appraise');
         });
+        this.trainingPost = new Interactable(680, 440, 95, 55, () => {
+            this.toggleTrainingArena();
+        });
         // Empty array for safety if perks trigger
         this.shots = []; 
         this.showKillCounter = false;
@@ -50,6 +56,9 @@ class TownState extends State {
         console.log("Entering Town State");
         const p = this.game.p;
         this.game?.decals?.clear?.();
+        this.isTrainingArena = false;
+        this.enemies = [];
+        this.shots = [];
         
         // Encapsulated Reset
         p.teleport(400, 300);
@@ -70,6 +79,31 @@ class TownState extends State {
         console.log(`Lifetime kills: ${p.killStats.lifetime}`);
         this.showKillCounter = false;
         UI.updateLevelUpPrompt();
+    }
+
+    toggleTrainingArena() {
+        const next = !this.isTrainingArena;
+        this.isTrainingArena = next;
+        this.shots = [];
+        if (next) {
+            // Place a few dummies in a small "arena" on the right side of town.
+            this.enemies = [
+                new TrainingDummy(610, 270, { r: 18, hpMax: 1200 }),
+                new TrainingDummy(660, 310, { r: 18, hpMax: 1200 }),
+                new TrainingDummy(720, 270, { r: 20, hpMax: 2500, isElite: true }),
+            ];
+            UI.toast("Training Arena: ON");
+        } else {
+            this.enemies = [];
+            UI.toast("Training Arena: OFF");
+        }
+    }
+
+    respawnDummies() {
+        for (const e of this.enemies || []) {
+            if (e && e.isTrainingDummy && typeof e.revive === "function") e.revive();
+        }
+        UI.toast("Dummies reset");
     }
 
     ensureCampfire() {
@@ -104,10 +138,10 @@ class TownState extends State {
     ensureWeaponIcons() {
         if (this.weaponIcons) return;
         const imgHammer = Assets.getImage("hammerIcon");
-        const imgPistol = Assets.getImage("pistolIcon");
+        const imgRepeater = Assets.getImage("repeaterIcon");
         const imgStaff = Assets.getImage("staffIcon");
         const imgScythe = Assets.getImage("scytheIcon") || imgStaff;
-        if (!imgHammer || !imgPistol || !imgStaff || !imgScythe) return;
+        if (!imgHammer || !imgRepeater || !imgStaff || !imgScythe) return;
 
         const mkIcon = (img, label, auraColor, auraStroke) => {
             const sheet = new SpriteSheet(img, {
@@ -135,11 +169,11 @@ class TownState extends State {
             });
         };
 
-        // Order matches arc angles: Hammer, Staff, Repeater (legacy pistol), Scythe.
+        // Order matches arc angles: Hammer, Staff, Repeater, Scythe.
         this.weaponIcons = [
             mkIcon(imgHammer, "hammer", c("town.weaponIconAura.hammer") || c("fx.uiAccent", 0.18) || "ember", c("town.weaponIconAura.hammerStroke") || c("fx.uiAccent", 0.30) || "ember"),
             mkIcon(imgStaff, "staff", c("town.weaponIconAura.staff") || c("player.support", 0.16) || "p3", c("town.weaponIconAura.staffStroke") || c("player.support", 0.28) || "p3"),
-            mkIcon(imgPistol, "repeater", c("town.weaponIconAura.pistol") || c("player.core", 0.16) || "p2", c("town.weaponIconAura.pistolStroke") || c("player.core", 0.28) || "p2"),
+            mkIcon(imgRepeater, "repeater", c("town.weaponIconAura.repeater") || c("player.core", 0.16) || "p2", c("town.weaponIconAura.repeaterStroke") || c("player.core", 0.28) || "p2"),
             mkIcon(imgScythe, "scythe", c("player.guard", 0.16) || "p4", c("player.guard", 0.28) || "p4"),
         ];
 
@@ -157,8 +191,8 @@ class TownState extends State {
     update(dt) {
         const p = this.game.p;
         
-        // Update Player (False = No Combat)
-        p.update(dt, this, false);
+        // Update Player (combat enabled only in training arena).
+        p.update(dt, this, !!this.isTrainingArena);
         this.ensureCampfire();
         this.ensureWeaponIcons();
         this.campfire?.update(dt);
@@ -190,19 +224,29 @@ class TownState extends State {
         const canUseAppraiser = this.appraiser.checkInteraction(p);
         this.uiFlags.canOpenAppraise = canUseAppraiser;
 
+        // Training arena: update dummies and allow quick reset.
+        if (this.isTrainingArena) {
+            for (const e of this.enemies || []) e?.update?.(dt, this);
+            const resetDown = !!keys["KeyR"];
+            if (resetDown && !this._trainingHeld) this.respawnDummies();
+            this._trainingHeld = resetDown;
+        } else {
+            this._trainingHeld = false;
+        }
+
         // Interaction
         const fDown = !!keys['KeyF'];
         if (fDown && !this._fHeld) {
             // Weapon selection near the campfire.
             const icons = this.weaponIcons || [];
             for (const w of icons) {
-                if (w.tryInteract(p, true)) {
-                    const current = p.gear?.weapon?.cls;
-                    const normCurrent = current === "pistol" ? "repeater" : current;
-                    if (normCurrent !== w.label) {
-                        this.game?.equipStartingWeapon?.(w.label);
-                        UI.toast(`Equipped ${String(w.label).toUpperCase()}`);
-                    }
+	                if (w.tryInteract(p, true)) {
+	                    const current = p.gear?.weapon?.cls;
+	                    const normCurrent = current;
+	                    if (normCurrent !== w.label) {
+	                        this.game?.equipStartingWeapon?.(w.label);
+	                        UI.toast(`Equipped ${String(w.label).toUpperCase()}`);
+	                    }
                     this._fHeld = true;
                     return;
                 }
@@ -215,6 +259,9 @@ class TownState extends State {
                     return;
                 }
                 this.gate.onInteract();
+            }
+            if (this.trainingPost.checkInteraction(p)) {
+                this.trainingPost.onInteract();
             }
             // TODO: Remove this temporary portal for testing
             if (this.dungeonPortal.checkInteraction(p)) {
@@ -284,16 +331,16 @@ class TownState extends State {
 
         // Weapon icons (starting weapon selection).
         const icons = this.weaponIcons || [];
-        for (const wpn of icons) {
-            const targetHeight = (p.r * 2) * 1.9;
-            const fh = wpn.sheet?.frameHeight || 1;
-            wpn.scale = Math.max(0.65, targetHeight / fh);
-            const current = p.gear?.weapon?.cls;
-            const normCurrent = current === "pistol" ? "repeater" : current;
-            const equipped = normCurrent === wpn.label;
-            wpn.prompt = equipped ? "Equipped" : `Equip ${String(wpn.label).charAt(0).toUpperCase() + String(wpn.label).slice(1)} [F]`;
-            wpn.draw(ctx, s, { showPrompt: false, drawSprite: true });
-        }
+	        for (const wpn of icons) {
+	            const targetHeight = (p.r * 2) * 1.9;
+	            const fh = wpn.sheet?.frameHeight || 1;
+	            wpn.scale = Math.max(0.65, targetHeight / fh);
+	            const current = p.gear?.weapon?.cls;
+	            const normCurrent = current;
+	            const equipped = normCurrent === wpn.label;
+	            wpn.prompt = equipped ? "Equipped" : `Equip ${String(wpn.label).charAt(0).toUpperCase() + String(wpn.label).slice(1)} [F]`;
+	            wpn.draw(ctx, s, { showPrompt: false, drawSprite: true });
+	        }
         // Prompts render in a separate pass so they always appear above the icons.
         for (const wpn of icons) {
             wpn.draw(ctx, s, { showPrompt: true, drawSprite: false });
@@ -331,6 +378,20 @@ class TownState extends State {
         ctx.font = '16px sans-serif';
         ctx.fillText('Appraiser', appraiserPos.x + 10, appraiserPos.y + 32);
 
+        // Draw Training Post / Arena toggle
+        const tPos = s(this.trainingPost.x, this.trainingPost.y);
+        ctx.fillStyle = this.isTrainingArena ? (c("player.core", 0.35) || "rgba(120,220,220,0.35)") : (c("fx.uiMuted") || "dust");
+        ctx.fillRect(tPos.x, tPos.y, this.trainingPost.width, this.trainingPost.height);
+        ctx.fillStyle = c("fx.uiText") || "parchment";
+        ctx.font = '16px sans-serif';
+        ctx.fillText('Training', tPos.x + 8, tPos.y + 32);
+
+        // Training arena content (dummies + projectiles/effects).
+        if (this.isTrainingArena) {
+            for (const s0 of this.shots || []) s0?.draw?.(ctx, s);
+            for (const e of this.enemies || []) e?.draw?.(ctx, s);
+        }
+
         p.draw(ctx, s);
         ParticleSystem.render(ctx, s);
 
@@ -356,6 +417,14 @@ class TownState extends State {
         if (this.appraiser.checkInteraction(p)) {
             ctx.font = '24px sans-serif';
             ctx.fillText("[F] Appraiser", w / 2, h - 110);
+        }
+        if (this.trainingPost.checkInteraction(p)) {
+            ctx.font = '24px sans-serif';
+            ctx.fillText(this.isTrainingArena ? "[F] Training Arena OFF" : "[F] Training Arena ON", w / 2, h - 140);
+        }
+        if (this.isTrainingArena) {
+            ctx.font = '18px sans-serif';
+            ctx.fillText("[R] Reset Dummies", w / 2, h - 170);
         }
         // TODO: Remove this temporary portal for testing
         if (this.dungeonPortal.checkInteraction(p)) {

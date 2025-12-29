@@ -113,15 +113,15 @@ export const COLOR_TUNING = Object.freeze({
             body: "arcaneDeep",
             label: "parchment",
         }),
-        weaponIconAura: Object.freeze({
-            hammer: Object.freeze({ token: "ember", alpha: 0.18 }),
-            hammerStroke: Object.freeze({ token: "ember", alpha: 0.30 }),
-            staff: Object.freeze({ token: "arcaneDeep", alpha: 0.16 }),
-            staffStroke: Object.freeze({ token: "arcaneDeep", alpha: 0.28 }),
-            pistol: Object.freeze({ token: "p2", alpha: 0.16 }),
-            pistolStroke: Object.freeze({ token: "p2", alpha: 0.28 }),
-        }),
-    }),
+	        weaponIconAura: Object.freeze({
+	            hammer: Object.freeze({ token: "ember", alpha: 0.18 }),
+	            hammerStroke: Object.freeze({ token: "ember", alpha: 0.30 }),
+	            staff: Object.freeze({ token: "arcaneDeep", alpha: 0.16 }),
+	            staffStroke: Object.freeze({ token: "arcaneDeep", alpha: 0.28 }),
+	            repeater: Object.freeze({ token: "p2", alpha: 0.16 }),
+	            repeaterStroke: Object.freeze({ token: "p2", alpha: 0.28 }),
+	        }),
+	    }),
 
     ui: Object.freeze({
         xp: "p3",

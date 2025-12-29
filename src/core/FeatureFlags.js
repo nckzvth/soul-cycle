@@ -14,8 +14,8 @@ const DEFAULTS = Object.freeze({
   "progression.metaMasteryEnabled": true,
 
   // Phase 2+: weapon identity migration (default off; reversible)
-  // Stage 5: Repeater is canonical; still accepts legacy "pistol" saves/items via normalization.
-  "content.weaponIdRepeaterEnabled": true,
+	  // Stage 5: Repeater is canonical; legacy saves normalize automatically.
+	  "content.weaponIdRepeaterEnabled": true,
 
   // Phase 3: shared EffectSystem (shadow mode first)
   "progression.effectSystemShadow": false,

@@ -17,6 +17,7 @@ import { ATTRIBUTE_MASTERY_TREES } from "../data/AttributeMasteryTrees.js";
 import { formatMetaMasteryTierTooltip, getAttributeTier } from "./MasteryHelpers.js";
 import WardSystem from "./WardSystem.js";
 import { getAttunementLabel, getMasteryPaletteByAttribute } from "../vfx/MasteryVfx.js";
+import EffectSystem from "./EffectSystem.js";
 
 const UI = {
     dirty: true,
@@ -1057,17 +1058,63 @@ const UI = {
             return g.startsWith("t5_") || g.startsWith("t10_");
         };
 
+        const buildDependentsIndex = (nodeDefs) => {
+            const byPre = new Map();
+            for (const n of nodeDefs || []) {
+                const prereqs = Array.isArray(n?.prereqs) ? n.prereqs : [];
+                for (const pre of prereqs) {
+                    const p = typeof pre === "string" ? pre.trim() : "";
+                    if (!p) continue;
+                    if (!byPre.has(p)) byPre.set(p, new Set());
+                    byPre.get(p).add(n.id);
+                }
+            }
+            return byPre;
+        };
+
+        const addUnlockedDownstreamToRemoveSet = (removeIds, unlockedIds, dependentsByPrereq) => {
+            const unlockedSet = new Set((unlockedIds || []).map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean));
+            const q = Array.from(removeIds);
+            while (q.length > 0) {
+                const id = q.pop();
+                const deps = dependentsByPrereq.get(id);
+                if (!deps) continue;
+                for (const depId of deps) {
+                    if (removeIds.has(depId)) continue;
+                    if (!unlockedSet.has(depId)) continue;
+                    removeIds.add(depId);
+                    q.push(depId);
+                }
+            }
+        };
+
+        const getUnlockedExclusivePick = (groupId) => {
+            const g = String(groupId || "");
+            if (!g) return null;
+
+            let picked = null;
+            for (const attrId of attrs) {
+                const def = ATTRIBUTE_MASTERY_TREES?.[attrId] || { nodes: [] };
+                const nodes = Array.isArray(def.nodes) ? def.nodes : [];
+                const st = getTreeState(attrId);
+                const unlockedSet = new Set(st.unlocked.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean));
+                for (const n of nodes) {
+                    if (!n?.id || n.exclusiveGroup !== g) continue;
+                    if (!unlockedSet.has(n.id)) continue;
+                    if (picked && picked !== n.id) return "__multiple__";
+                    picked = n.id;
+                }
+            }
+            return picked;
+        };
+
         const canApplyDraft = () => {
             if (!draftActive) return true;
             for (const groupId of requiredGroups) {
                 const g = String(groupId || "");
                 if (!g) return false;
-                let selected = null;
-                for (const attrId of attrs) {
-                    const st = getTreeState(attrId);
-                    if (st.selectedExclusive && st.selectedExclusive[g]) selected = st.selectedExclusive[g];
-                }
-                if (!selected) return false;
+                const pick = getUnlockedExclusivePick(g);
+                if (!pick || pick === "__multiple__") return false;
             }
             return true;
         };
@@ -1104,12 +1151,6 @@ const UI = {
 
                 const current = base?.[attrId] || {};
                 const curUnlocked = Array.isArray(current.unlocked) ? current.unlocked : [];
-                const curSel = (current.selectedExclusive && typeof current.selectedExclusive === "object") ? current.selectedExclusive : {};
-
-                for (const [groupId, nodeId] of Object.entries(curSel)) {
-                    if (!isExclusiveRespecGroup(groupId)) continue;
-                    if (typeof nodeId === "string" && nodeId.trim()) required.add(groupId);
-                }
                 for (const n of nodeDefs) {
                     if (!n?.exclusiveGroup || !isExclusiveRespecGroup(n.exclusiveGroup)) continue;
                     if (curUnlocked.includes(n.id)) required.add(n.exclusiveGroup);
@@ -1124,6 +1165,9 @@ const UI = {
                         .filter((n) => (n?.tier === 5 || n?.tier === 10) && n?.exclusiveGroup && isExclusiveRespecGroup(n.exclusiveGroup))
                         .map((n) => n.id)
                 );
+
+                // Downstream safety: if an unlocked node depends on a removed exclusive pick, clear it too.
+                addUnlockedDownstreamToRemoveSet(removeIds, nextUnlocked, buildDependentsIndex(nodeDefs));
 
                 const filtered = nextUnlocked.filter((id) => !removeIds.has(id));
                 for (const groupId of Object.keys(nextSel)) {
@@ -1183,16 +1227,18 @@ const UI = {
 
             const groupId = node.exclusiveGroup;
             const groupMembers = groupId ? nodeDefs.filter((n) => n.exclusiveGroup === groupId).map((n) => n.id) : [];
-            const hasOtherInGroup = groupId ? groupMembers.some((id) => unlockedSet.has(id)) : false;
+            const unlockedInGroup = groupId ? groupMembers.filter((id) => unlockedSet.has(id)) : [];
+            const hasSiblingUnlocked = groupId ? unlockedInGroup.some((id) => id !== nodeId) : false;
 
-            if (available <= 0 && !hasOtherInGroup) return;
+            if (available <= 0) return;
+            if (groupId && hasSiblingUnlocked) {
+                this.toast("Exclusive choice already made. Use Respec Exclusives to change it.");
+                return;
+            }
 
             if (groupId) {
-                for (const otherId of groupMembers) unlockedSet.delete(otherId);
                 unlockedSet.add(nodeId);
-                const nextSelected = { ...(st.selectedExclusive || {}) };
-                nextSelected[groupId] = nodeId;
-                setTreeState(attrId, { unlocked: Array.from(unlockedSet), selectedExclusive: nextSelected });
+                setTreeState(attrId, { unlocked: Array.from(unlockedSet), selectedExclusive: { ...(st.selectedExclusive || {}) } });
             } else {
                 unlockedSet.add(nodeId);
                 setTreeState(attrId, { unlocked: Array.from(unlockedSet), selectedExclusive: { ...(st.selectedExclusive || {}) } });
@@ -1224,7 +1270,7 @@ const UI = {
             if (!metaEnabled) return;
             if (
                 !window.confirm(
-                    "Respec tier 5/10 exclusive choices? You must re-select your exclusive picks and then click Apply, or changes will be discarded."
+                    "Respec tier 5/10 exclusive choices? This will also remove any downstream nodes that depend on them. You must re-select your exclusive picks and then click Apply, or changes will be discarded."
                 )
             ) {
                 return;
@@ -1249,6 +1295,10 @@ const UI = {
             const nodes = Array.isArray(def.nodes) ? def.nodes.slice() : [];
             nodes.sort((a, b) => (a.tier - b.tier) || String(a.id).localeCompare(String(b.id)));
 
+            const showDev = this.game?.debug || FeatureFlags.isOn("progression.effectSystemShadow");
+            const debug = showDev ? (EffectSystem.getDebugStats?.() || {}) : null;
+            const wouldRunBySource = debug?.wouldRunBySource || {};
+
             const nodeButtons = nodes.map((n) => {
                 const isUnlocked = unlockedSet.has(n.id);
                 const prereqs = Array.isArray(n.prereqs) ? n.prereqs : [];
@@ -1257,16 +1307,22 @@ const UI = {
 
                 const groupId = n.exclusiveGroup;
                 const groupMembers = groupId ? nodes.filter((x) => x.exclusiveGroup === groupId).map((x) => x.id) : [];
-                const hasOtherInGroup = groupId ? groupMembers.some((id) => unlockedSet.has(id)) : false;
-                const canSpend = available > 0 || hasOtherInGroup;
+                const unlockedInGroup = groupId ? groupMembers.filter((id) => unlockedSet.has(id)) : [];
+                const hasSiblingUnlocked = groupId ? unlockedInGroup.some((id) => id !== n.id) : false;
+                const canSpend = available > 0;
 
-                const canUnlock = metaEnabled && !isUnlocked && prereqsMet && tierMet && canSpend;
+                const canUnlock = metaEnabled && !isUnlocked && prereqsMet && tierMet && canSpend && !hasSiblingUnlocked;
                 const disabledAttr = canUnlock ? "" : "disabled";
+
+                const label = (typeof n.name === "string" && n.name.trim()) ? n.name.trim() : prettyId(n.id);
+                const summaryText = (typeof n.summary === "string" && n.summary.trim()) ? n.summary.trim() : "";
 
                 const reason = !metaEnabled
                     ? "Meta progression disabled"
                     : isUnlocked
                       ? "Unlocked"
+                      : hasSiblingUnlocked
+                        ? `Exclusive already chosen (${prettyId(unlockedInGroup.find((id) => id !== n.id) || "—")}); respec exclusives to change`
                       : !tierMet
                         ? `Requires tier ${n.tier}`
                         : !prereqsMet
@@ -1276,13 +1332,23 @@ const UI = {
                             : "Locked";
 
                 const mode = n.activationMode || "—";
-                const ex = groupId ? ` • Exclusive (${groupId})` : "";
-                const title = `${prettyId(n.id)}`;
-                const small = `Tier ${n.tier} • ${mode}${ex}`;
+                const isActive = !isUnlocked
+                    ? false
+                    : (mode === "Always" || mode === "Hybrid" || (mode === "Attuned" && attunement === attrId));
+                const activeLabel = isUnlocked ? (isActive ? "Active" : "Inactive") : null;
+                const devRuns = showDev ? (wouldRunBySource[`mastery:${n.id}`] || 0) : 0;
+
+                const chooseOne = groupId && (n.tier === 5 || n.tier === 10) ? " • Choose 1" : "";
+                const ex = groupId ? ` • Exclusive${chooseOne}` : "";
+                const prereqNote = prereqs.length ? ` • Req: ${prereqs.map(prettyId).join(", ")}` : "";
+                const title = `${label}${summaryText ? ` — ${summaryText}` : ""}\n${reason}`;
+                const small = `Tier ${n.tier} • ${mode}${ex}${prereqNote}`;
 
                 const cls = isUnlocked ? "btn-upgrade selected" : "btn-upgrade";
-                const activeText = isUnlocked ? "Unlocked" : (canUnlock ? "Unlock" : "Locked");
-                return `<button class="${cls}" data-node-id="${n.id}" data-attr-id="${attrId}" title="${reason}" ${disabledAttr}>${title}<small>${small} • ${activeText}</small></button>`;
+                const actionText = isUnlocked ? "Unlocked" : (canUnlock ? "Unlock" : "Locked");
+                const stateText = activeLabel ? `${actionText} • ${activeLabel}` : actionText;
+                const devText = showDev ? `<small style="opacity:0.55;line-height:1.2">dev: wouldRun ${devRuns}</small>` : "";
+                return `<button class="${cls}" data-node-id="${n.id}" data-attr-id="${attrId}" title="${title}" ${disabledAttr}>${label}<small>${small} • ${stateText}</small>${summaryText ? `<small style="opacity:0.75;line-height:1.2">${summaryText}</small>` : ""}${devText}</button>`;
             }).join("");
 
             const attuned = attunement === attrId;

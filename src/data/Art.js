@@ -1,7 +1,7 @@
 export const IMAGE_ASSETS = Object.freeze({
     campfireSheet: "notes/references/campfire-sheet.png",
     hammerIcon: "notes/references/hammer_icon.png",
-    pistolIcon: "notes/references/pistol_icon.png",
+    repeaterIcon: "notes/references/pistol_icon.png",
     staffIcon: "notes/references/staff_icon.png",
     scytheIcon: "notes/references/scythe_icon.png",
     fieldForestGroundDraft: "notes/references/GRASS.png",

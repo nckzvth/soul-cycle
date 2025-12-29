@@ -18,12 +18,11 @@ const CombatSystem = {
         player.rooted = Math.max(player.rooted, duration);
     },
 
-    firePistol(player, state) {
+    fireRepeater(player, state) {
         const w = state.game.screenToWorld(mouse.x, mouse.y);
         const aimAngle = Math.atan2(w.y - player.y, w.x - player.x);
-        const spec = DamageSpecs.pistolShot();
+        const spec = DamageSpecs.repeaterShot();
 
-        const pistolState = player.weaponState?.pistol;
         const pierce = (player.stats.pierce ?? player.stats.hexPierce ?? 0);
         const bounce = (player.stats.bounce ?? player.stats.hexBounce ?? 0);
 
@@ -32,8 +31,8 @@ const CombatSystem = {
         state.shots.push(new Proj(state, player,
             player.x,
             player.y,
-            Math.cos(aimAngle) * BALANCE.player.pistolSpeed,
-            Math.sin(aimAngle) * BALANCE.player.pistolSpeed,
+            Math.cos(aimAngle) * BALANCE.player.repeaterSpeed,
+            Math.sin(aimAngle) * BALANCE.player.repeaterSpeed,
             1.5,
             spec,
             snapshot,
@@ -48,8 +47,8 @@ const CombatSystem = {
                 state.shots.push(new Proj(state, player,
                     player.x,
                     player.y,
-                    Math.cos(a2) * BALANCE.player.pistolSpeed,
-                    Math.sin(a2) * BALANCE.player.pistolSpeed,
+                    Math.cos(a2) * BALANCE.player.repeaterSpeed,
+                    Math.sin(a2) * BALANCE.player.repeaterSpeed,
                     1.5,
                     spec,
                     snapshot,
@@ -61,14 +60,14 @@ const CombatSystem = {
         }
     },
 
-    firePistolCycloneBurst(player, state) {
-        const cfg = BALANCE.skills?.pistol || {};
+    fireRepeaterCycloneBurst(player, state) {
+        const cfg = BALANCE.skills?.repeater || {};
         const count = Math.max(3, cfg.cycloneShotCount ?? 8);
-        const spec = DamageSpecs.pistolShot();
+        const spec = DamageSpecs.repeaterShot();
         const snapshot = DamageSystem.snapshotOutgoing(player, spec);
 
-        const extraPierce = (player.stats.pistolAirLanceEnable || 0) > 0 ? 2 : 0;
-        const extraBounce = (player.stats.pistolPinballEnable || 0) > 0 ? 1 : 0;
+        const extraPierce = (player.stats.repeaterAirLanceEnable || 0) > 0 ? 2 : 0;
+        const extraBounce = (player.stats.repeaterPinballEnable || 0) > 0 ? 1 : 0;
         const pierce = (player.stats.pierce ?? player.stats.hexPierce ?? 0) + extraPierce;
         const bounce = (player.stats.bounce ?? player.stats.hexBounce ?? 0) + extraBounce;
 
@@ -76,18 +75,18 @@ const CombatSystem = {
         const base = Math.random() * Math.PI * 2;
         for (let i = 0; i < count; i++) {
             const shotAngle = base + (i / count) * Math.PI * 2;
-            state.shots.push(new Proj(state, player,
-                player.x,
-                player.y,
-                Math.cos(shotAngle) * BALANCE.player.pistolSpeed,
-                Math.sin(shotAngle) * BALANCE.player.pistolSpeed,
-                1.5,
-                spec,
-                snapshot,
-                pierce,
-                bounce,
-                false,
-                { procSource: "pistol:cycloneBurst" }
+                state.shots.push(new Proj(state, player,
+                    player.x,
+                    player.y,
+                    Math.cos(shotAngle) * BALANCE.player.repeaterSpeed,
+                    Math.sin(shotAngle) * BALANCE.player.repeaterSpeed,
+                    1.5,
+                    spec,
+                    snapshot,
+                    pierce,
+                    bounce,
+                    false,
+                { procSource: "repeater:cycloneBurst" }
             ));
         }
     },

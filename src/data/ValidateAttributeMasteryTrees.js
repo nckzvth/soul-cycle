@@ -25,6 +25,11 @@ function validateNodeShape(node, { treeAttrId } = {}) {
   invariant(isPlainObject(node), "Attribute mastery node must be an object", { node, treeAttrId });
 
   invariant(typeof node.id === "string" && node.id.trim(), "Node.id must be a non-empty string", { node });
+  invariant(typeof node.name === "string" && node.name.trim(), "Node.name must be a non-empty string", { nodeId: node.id });
+  invariant(typeof node.summary === "string" && node.summary.trim(), "Node.summary must be a non-empty string", { nodeId: node.id });
+  invariant(node.details == null || (typeof node.details === "string" && node.details.trim()), "Node.details must be a non-empty string when present", {
+    nodeId: node.id,
+  });
   invariant(VALID_ATTR.has(node.attributeId), "Node.attributeId must be a valid AttributeId", { node });
   invariant(node.attributeId === treeAttrId, "Node.attributeId must match its tree attribute", { node, treeAttrId });
 
@@ -48,6 +53,9 @@ function validateNodeShape(node, { treeAttrId } = {}) {
     valid: [...VALID_ACTIVATION],
   });
 
+  invariant(typeof node.effectGroupId === "string" && node.effectGroupId.trim(), "Node.effectGroupId must be a non-empty string", { nodeId: node.id });
+  invariant(node.effectGroupId === node.id, "Node.effectGroupId must equal node.id", { nodeId: node.id, effectGroupId: node.effectGroupId });
+
   invariant(node.tags != null, "Node.tags is required", { node });
   const { normalized } = validateTagSet(node.tags, { context: { kind: "attributeMasteryNode", id: node.id } });
   invariant(!!normalized?.attributeTag, "Node.tags.attributeTag is required", { nodeId: node.id });
@@ -56,9 +64,7 @@ function validateNodeShape(node, { treeAttrId } = {}) {
     attributeId: treeAttrId,
     attributeTag: normalized.attributeTag,
   });
-
-  const effects = node.effects == null ? [] : node.effects;
-  invariant(Array.isArray(effects), "Node.effects must be an array", { node });
+  invariant(node.effects == null, "Node.effects is deprecated; use effectGroupId + EffectDefs binding instead", { nodeId: node.id });
 
   return {
     ok: true,
@@ -68,7 +74,6 @@ function validateNodeShape(node, { treeAttrId } = {}) {
       prereqs,
       exclusiveGroup: node.exclusiveGroup || null,
       tags: normalized,
-      effects,
     },
   };
 }
@@ -162,4 +167,3 @@ export function validateAttributeMasteryTrees(opts = {}) {
 
   return { ok: true, normalized: validated };
 }
-

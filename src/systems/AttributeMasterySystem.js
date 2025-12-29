@@ -35,14 +35,30 @@ export function getUnlockedAttributeNodes(profile) {
     const unlocked = getUnlockedSet(profile, attrId);
     const selectedExclusive = getSelectedExclusive(profile, attrId);
 
+    // Exclusives: unlock = select, so in a valid profile there will be at most one unlocked member per group.
+    // For legacy/buggy profiles, deterministically pick a single member per group to activate.
+    const pickedByGroup = {};
+    for (const [groupId, nodeId] of Object.entries(selectedExclusive)) {
+      const g = toStringOrNull(groupId);
+      const n = toStringOrNull(nodeId);
+      if (!g || !n) continue;
+      if (!unlocked.has(n)) continue;
+      pickedByGroup[g] = n;
+    }
+    for (const node of nodes) {
+      const groupId = toStringOrNull(node?.exclusiveGroup);
+      if (!groupId) continue;
+      if (pickedByGroup[groupId]) continue;
+      if (node?.id && unlocked.has(node.id)) pickedByGroup[groupId] = node.id;
+    }
+
     for (const node of nodes) {
       if (!node?.id) continue;
       if (!unlocked.has(node.id)) continue;
 
-      // Enforce exclusives by selectedExclusive when present.
       const groupId = toStringOrNull(node.exclusiveGroup);
       if (groupId) {
-        const picked = toStringOrNull(selectedExclusive[groupId]);
+        const picked = toStringOrNull(pickedByGroup[groupId]);
         if (picked && picked !== node.id) continue;
       }
 
@@ -60,7 +76,14 @@ function isNodeActiveForAttunement(node, attunement) {
   return false;
 }
 
-export function buildAttributeMasteryEffectSources(player, profile) {
+export function isMasteryGameplayActive(state) {
+  // Mastery effects should run in real combat contexts (runs), and optionally in town
+  // when a training arena is active.
+  return !!(state?.isRun || state?.isTrainingArena);
+}
+
+export function buildAttributeMasteryEffectSources(player, profile, state = null) {
+  if (state && !isMasteryGameplayActive(state)) return [];
   const attunement = toStringOrNull(player?.metaAttunement) || toStringOrNull(profile?.armory?.attunement);
   const unlockedNodes = getUnlockedAttributeNodes(profile);
   const sources = [];
@@ -77,12 +100,12 @@ export function buildAttributeMasteryEffectSources(player, profile) {
   for (const node of unlockedNodes) {
     if (!isNodeActiveForAttunement(node, attunement)) continue;
 
-    // Phase 5: we only emit sources; node->real EffectDef bindings come later.
+    const effectGroupId = toStringOrNull(node?.effectGroupId) || node.id;
     sources.push({
       sourceId: `mastery:${node.id}`,
       kind: "mastery",
       stacks: 1,
-      effects: getAttributeMasteryEffectsByNodeId(node.id),
+      effects: getAttributeMasteryEffectsByNodeId(effectGroupId),
     });
   }
 

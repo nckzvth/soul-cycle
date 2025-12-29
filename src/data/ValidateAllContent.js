@@ -3,6 +3,7 @@ import { SKILLS } from "./Skills.js";
 import { validateTaggedDef, validateWeaponDef } from "./ContentValidation.js";
 import { getWeaponConfigByCls } from "./Weapons.js";
 import { validateAttributeMasteryTrees } from "./ValidateAttributeMasteryTrees.js";
+import { validateAttributeMasteryEffects } from "./ValidateAttributeMasteryEffects.js";
 
 function safeId(def) {
   return def?.id || def?.weaponId || null;
@@ -20,7 +21,7 @@ export function validateAllContent({ strict = false } = {}) {
   }
 
   // Weapons (validate known runtime classes)
-  for (const weaponCls of ["hammer", "staff", "pistol", "repeater", "scythe"]) {
+  for (const weaponCls of ["hammer", "staff", "repeater", "scythe"]) {
     const cfg = getWeaponConfigByCls(weaponCls);
     if (!cfg) throw new Error(`Missing WeaponConfig for cls: ${weaponCls}`);
     validateWeaponDef(cfg, { strict: true });
@@ -35,9 +36,9 @@ export function validateAllContent({ strict = false } = {}) {
     seen.add(id);
   }
 
-  // Attribute mastery trees (Phase 2): validate structure + tags at boot when strict is enabled.
-  // (Currently empty; validator keeps the integration ship-safe as trees are populated.)
+  // Attribute mastery: validate structure + Effects bindings.
   validateAttributeMasteryTrees();
+  validateAttributeMasteryEffects();
 
   return true;
 }

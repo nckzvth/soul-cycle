@@ -6,6 +6,10 @@ import { AttributeId, StatusId } from "./Vocabulary.js";
 import { BALANCE } from "./Balance.js";
 import { emitMasteryBurst, emitMasteryProcText, shouldProc } from "../vfx/MasteryVfx.js";
 
+const MASTERY_TUNING = BALANCE?.mastery || {};
+const MASTERY_SHARED = MASTERY_TUNING.shared || {};
+const MASTERY_ATTR = MASTERY_TUNING.attributes || {};
+
 function toNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -48,29 +52,32 @@ function tickCooldown(player, dt) {
   }
 }
 
-function applySoaked(enemy, source, { duration = 2.4, slowMult = 0.85 } = {}) {
+function applySoaked(enemy, source, { duration = null, slowMult = null } = {}) {
+  const t = MASTERY_SHARED.soaked || {};
   if (!enemy || enemy.dead) return;
   const baseSpeed = typeof enemy._masteryBaseSpeed === "number" ? enemy._masteryBaseSpeed : enemy.speed;
   if (typeof enemy._masteryBaseSpeed !== "number") enemy._masteryBaseSpeed = baseSpeed;
 
-  enemy.speed = Math.max(0, baseSpeed * clamp(slowMult, 0.1, 1));
+  const dur = duration ?? t.durationDefault;
+  const slow = slowMult ?? t.slowMultDefault;
+  enemy.speed = Math.max(0, baseSpeed * clamp(slow, toNumber(t.slowMultClampMin), toNumber(t.slowMultClampMax)));
 
   StatusSystem.applyStatus(enemy, StatusId.Soaked, {
     source,
     stacks: 1,
-    duration,
+    duration: Math.max(toNumber(t.minDurationSec), toNumber(dur)),
     tickInterval: 9999,
     spec: null,
     snapshotPolicy: "snapshot",
     stackMode: "max",
     maxStacks: 1,
     vfx: {
-      interval: 0.35,
-      color: { token: "fx.uiAccent", alpha: 0.32 },
-      count: 1,
-      size: 2.2,
-      life: 0.22,
-      radiusAdd: 10,
+      interval: toNumber(t?.vfx?.interval),
+      color: { token: "fx.uiAccent", alpha: toNumber(t?.vfx?.alpha) },
+      count: toNumber(t?.vfx?.count),
+      size: toNumber(t?.vfx?.size),
+      life: toNumber(t?.vfx?.life),
+      radiusAdd: toNumber(t?.vfx?.radiusAdd),
     },
     onExpire: (tgt) => {
       if (!tgt) return;
@@ -81,27 +88,29 @@ function applySoaked(enemy, source, { duration = 2.4, slowMult = 0.85 } = {}) {
   });
 }
 
-function applyIgnite(enemy, source, { duration = 3.0, stacks = 1, coeff = 0.05 } = {}) {
+function applyIgnite(enemy, source, { duration = null, stacks = null, coeff = null } = {}) {
+  const t = MASTERY_SHARED.ignite || {};
   if (!enemy || enemy.dead) return;
-  const spec = { id: "mastery:ignite", base: 0, coeff: Math.max(0, coeff), flat: 0, canCrit: false, tags: ["dot"], snapshot: true };
+  const c = toNumber(coeff ?? t.coeffDefault);
+  const spec = { id: "mastery:ignite", base: 0, coeff: Math.max(0, c), flat: 0, canCrit: false, tags: ["dot"], snapshot: true };
   StatusSystem.applyStatus(enemy, StatusId.Ignited, {
     source,
-    stacks: Math.max(1, Math.floor(stacks)),
-    duration: Math.max(0.1, duration),
-    tickInterval: 1.0,
+    stacks: Math.max(1, Math.floor(toNumber(stacks ?? t.stacksDefault))),
+    duration: Math.max(toNumber(t.minDurationSec), toNumber(duration ?? t.durationDefault)),
+    tickInterval: toNumber(t.tickInterval),
     spec,
     snapshotPolicy: "snapshot",
     stackMode: "add",
-    maxStacks: 20,
+    maxStacks: toNumber(t.maxStacks),
     triggerOnHit: false,
     dotTextMode: "aggregate",
     vfx: {
-      interval: 0.45,
-      color: { token: "fx.ember", alpha: 0.35 },
-      count: 1,
-      size: 2.2,
-      life: 0.22,
-      radiusAdd: 12,
+      interval: toNumber(t?.vfx?.interval),
+      color: { token: "fx.ember", alpha: toNumber(t?.vfx?.alpha) },
+      count: toNumber(t?.vfx?.count),
+      size: toNumber(t?.vfx?.size),
+      life: toNumber(t?.vfx?.life),
+      radiusAdd: toNumber(t?.vfx?.radiusAdd),
     },
   });
 }
@@ -116,12 +125,16 @@ function pushAway(player, enemy, strength) {
   enemy.vy += (dy / d) * s;
 }
 
-function pullToward(point, enemy, strength) {
+function pullToward(point, enemy, strength, player = null) {
   if (!enemy || enemy.dead) return;
   const dx = point.x - enemy.x;
   const dy = point.y - enemy.y;
   const d = Math.hypot(dx, dy) || 1;
-  const s = Math.max(0, strength);
+  let s = Math.max(0, strength);
+  if (player && StatusSystem.hasStatus(enemy, StatusId.Soaked)) {
+    const mult = toNumber(player?._mastery?.pullMultOnSoaked);
+    if (mult > 0) s *= mult;
+  }
   enemy.vx += (dx / d) * s;
   enemy.vy += (dy / d) * s;
 }
@@ -164,14 +177,15 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "hit",
       when: (ctx) => !!ctx?.player && !!ctx?.target && !ctx.target.dead,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_01_kindling || {};
         const m = ensureMastery(ctx.player);
-        const coeff = toNumber(m.igniteCoeff) || 0.05;
-        const stacks = Math.max(1, Math.floor(toNumber(m.igniteStacks) || 1));
-        const dur = Math.max(0.5, toNumber(m.igniteDuration) || 3.0);
+        const coeff = toNumber(m.igniteCoeff) || toNumber(MASTERY_SHARED?.ignite?.coeffDefault);
+        const stacks = Math.max(1, Math.floor(toNumber(m.igniteStacks) || toNumber(MASTERY_SHARED?.ignite?.stacksDefault)));
+        const dur = Math.max(0.5, toNumber(m.igniteDuration) || toNumber(MASTERY_SHARED?.ignite?.durationDefault));
         const wasIgnited = StatusSystem.hasStatus(ctx.target, StatusId.Ignited);
         applyIgnite(ctx.target, ctx.player, { duration: dur, stacks, coeff });
         const now = ctx?.game?.time || 0;
-        if (!wasIgnited && shouldProc(ctx.target, "mastery:igniteText", 0.7, now)) {
+        if (!wasIgnited && Math.random() < toNumber(t.igniteTextChance) && shouldProc(ctx.target, "mastery:igniteText", toNumber(t.igniteTextIcd), now)) {
           emitMasteryBurst({ x: ctx.target.x, y: ctx.target.y, colorToken: { token: "fx.ember", alpha: 0.9 }, count: 7, speed: 140, size: 2.6, life: 0.28 });
           emitMasteryProcText({ x: ctx.target.x, y: ctx.target.y - (ctx.target.r || 12) - 12, text: "IGNITE", colorToken: { token: "fx.ember", alpha: 0.95 }, size: 13, life: 0.55 });
         }
@@ -184,8 +198,10 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_02_deepen_ignite || {};
         const m = ensureMastery(ctx.player);
-        m.igniteCoeff = Math.max(0, (toNumber(m.igniteCoeff) || 0.05) * 1.35);
+        const base = toNumber(m.igniteCoeff) || toNumber(MASTERY_SHARED?.ignite?.coeffDefault);
+        m.igniteCoeff = Math.max(0, base * toNumber(t.igniteCoeffMult));
       },
     },
   ],
@@ -195,6 +211,7 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_03_hearth_regen || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         if (dt <= 0) return;
@@ -203,7 +220,7 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
         m.hearth = m.hearth || { stacks: 0, decayTimer: 0 };
 
         // Count ignited enemies nearby as "heat".
-        const range = 210;
+        const range = toNumber(t.heatRadius);
         let count = 0;
         for (const e of ctx.state.enemies || []) {
           if (!e || e.dead) continue;
@@ -211,25 +228,26 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
           if (dist2(p.x, p.y, e.x, e.y) <= range * range) count++;
         }
 
-        const capBase = 10;
-        const cap = isAttuned(ctx, AttributeId.Might) ? capBase + 4 : capBase;
+        const capBase = toNumber(t.hearthCapBase);
+        const cap = isAttuned(ctx, AttributeId.Might) ? capBase + toNumber(t.hearthCapAttunedBonus) : capBase;
 
         // Add a bit of inertia so stacks don't jitter as enemies cross the radius.
         if (count > 0) {
           m.hearth.stacks = Math.min(cap, Math.max(m.hearth.stacks || 0, count));
-          m.hearth.decayTimer = 1.2;
+          m.hearth.decayTimer = toNumber(t.decayHoldSeconds);
         } else {
           m.hearth.decayTimer = Math.max(0, (m.hearth.decayTimer || 0) - dt);
           if (m.hearth.decayTimer <= 0) {
-            const decay = isAttuned(ctx, AttributeId.Might) ? 0.65 : 0.9;
-            m.hearth.stacks = Math.max(0, (m.hearth.stacks || 0) - dt * decay);
+            const decay = isAttuned(ctx, AttributeId.Might) ? toNumber(t.decayPerSecAttuned) : toNumber(t.decayPerSec);
+            const decayMult = Math.max(0, toNumber(m.hearthDecayMult) || 1.0);
+            m.hearth.stacks = Math.max(0, (m.hearth.stacks || 0) - dt * decay * decayMult);
           }
         }
 
         // Regen: small and capped.
         const stacks = Math.max(0, Math.floor(m.hearth.stacks || 0));
         if (stacks <= 0) return;
-        const healPerSec = 0.18 * stacks;
+        const healPerSec = toNumber(t.healPerSecPerStack) * stacks;
         p.hp = Math.min(p.hpMax, p.hp + healPerSec * dt);
       },
     },
@@ -240,17 +258,18 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "hit",
       when: (ctx) => !!ctx?.player && !!ctx?.target && StatusSystem.hasStatus(ctx.target, StatusId.Ignited),
       act: (ctx) => {
+        const tn = MASTERY_ATTR?.Might?.might_04_press_the_burn || {};
         // On-hit accelerant: add an extra ignite stack (ICD per target).
         const p = ctx.player;
         const t = ctx.target;
         const now = toNumber(ctx?.state?.game?.time) || 0;
         t._masteryIgniteHitCdUntil = t._masteryIgniteHitCdUntil || 0;
         if (now < t._masteryIgniteHitCdUntil) return;
-        t._masteryIgniteHitCdUntil = now + 0.6;
+        t._masteryIgniteHitCdUntil = now + toNumber(tn.perTargetIcdSec);
 
         const m = ensureMastery(p);
-        const coeff = toNumber(m.igniteCoeff) || 0.05;
-        applyIgnite(t, p, { duration: 2.2, stacks: 1, coeff });
+        const coeff = toNumber(m.igniteCoeff) || toNumber(MASTERY_SHARED?.ignite?.coeffDefault);
+        applyIgnite(t, p, { duration: toNumber(tn.durationSec), stacks: 1, coeff });
       },
     },
   ],
@@ -260,16 +279,20 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "kill",
       when: (ctx) => !!ctx?.player && !!ctx?.enemy && StatusSystem.hasStatus(ctx.enemy, StatusId.Ignited),
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_05a_phoenix_covenant || {};
         const p = ctx.player;
         const cd = ensureCooldown(p, "phoenix");
         if ((cd.phoenix || 0) > 0) return;
-        cd.phoenix = 4.0;
+        cd.phoenix = toNumber(t.cdSec);
 
-        const heal = (ctx.enemy?.isElite ? 14 : 8) + (ctx.enemy?.isBoss ? 10 : 0);
+        const heal =
+          toNumber(t.healNonElite) +
+          (ctx.enemy?.isElite ? toNumber(t.healEliteBonus) : 0) +
+          (ctx.enemy?.isBoss ? toNumber(t.healBossBonus) : 0);
         p.hp = Math.min(p.hpMax, p.hp + heal);
         const m = ensureMastery(p);
-        m.phoenixRegenTimer = Math.max(m.phoenixRegenTimer || 0, 2.5);
-        m.phoenixMoveTimer = Math.max(m.phoenixMoveTimer || 0, 2.5);
+        m.phoenixRegenTimer = Math.max(m.phoenixRegenTimer || 0, toNumber(t.buffDurationSec));
+        m.phoenixMoveTimer = Math.max(m.phoenixMoveTimer || 0, toNumber(t.buffDurationSec));
       },
     },
     {
@@ -277,16 +300,17 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_05a_phoenix_covenant || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
         if ((m.phoenixRegenTimer || 0) > 0) {
           m.phoenixRegenTimer = Math.max(0, m.phoenixRegenTimer - dt);
-          p.hp = Math.min(p.hpMax, p.hp + 1.4 * dt);
+          p.hp = Math.min(p.hpMax, p.hp + toNumber(t.regenPerSec) * dt);
         }
         if ((m.phoenixMoveTimer || 0) > 0) {
           m.phoenixMoveTimer = Math.max(0, m.phoenixMoveTimer - dt);
-          p.combatBuffs.moveSpeedMult *= 1.12;
+          p.combatBuffs.moveSpeedMult *= toNumber(t.moveSpeedMult);
         }
       },
     },
@@ -297,12 +321,13 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "dash",
       when: (ctx) => ctx?.dash?.phase === "end" && !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_05b_sanctified_hearth || {};
         const p = ctx.player;
         const cd = ensureCooldown(p, "consecrate");
         if ((cd.consecrate || 0) > 0) return;
-        cd.consecrate = 3.0;
+        cd.consecrate = toNumber(t.cdSec);
         ctx.state.shots = Array.isArray(ctx.state.shots) ? ctx.state.shots : [];
-        ctx.state.shots.push(new MasteryConsecrateZone(ctx.state, p, p.x, p.y, { radius: 70, life: 1.8, igniteCoeff: 0.035 }));
+        ctx.state.shots.push(new MasteryConsecrateZone(ctx.state, p, p.x, p.y, { radius: toNumber(t.zoneRadius), life: toNumber(t.zoneLifeSec), igniteCoeff: toNumber(t.zoneIgniteCoeff) }));
       },
     },
   ],
@@ -312,19 +337,20 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "kill",
       when: (ctx) => !!ctx?.player && !!ctx?.enemy && StatusSystem.hasStatus(ctx.enemy, StatusId.Ignited),
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_06_ember_spread || {};
         const p = ctx.player;
         const cd = ensureCooldown(p, "emberSpread");
         if ((cd.emberSpread || 0) > 0) return;
-        cd.emberSpread = 1.2;
+        cd.emberSpread = toNumber(t.cdSec);
 
-        const radius = isAttuned(ctx, AttributeId.Might) ? 120 : 95;
-        const coeff = toNumber(ensureMastery(p).igniteCoeff) || 0.05;
+        const radius = isAttuned(ctx, AttributeId.Might) ? toNumber(t.radiusAttuned) : toNumber(t.radius);
+        const coeff = toNumber(ensureMastery(p).igniteCoeff) || toNumber(MASTERY_SHARED?.ignite?.coeffDefault);
         for (const e of ctx.state?.enemies || []) {
           if (!e || e.dead) continue;
           if (e === ctx.enemy) continue;
           if (StatusSystem.hasStatus(e, StatusId.Ignited)) continue;
           if (dist2(ctx.enemy.x, ctx.enemy.y, e.x, e.y) <= radius * radius) {
-            applyIgnite(e, p, { duration: 2.0, stacks: 1, coeff: coeff * 0.75 });
+            applyIgnite(e, p, { duration: toNumber(t.durationSec), stacks: 1, coeff: coeff * toNumber(t.coeffMult) });
           }
         }
       },
@@ -336,8 +362,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_07_flames_of_hearth || {};
         const m = ensureMastery(ctx.player);
-        m.hearthDecayMult = 0.6;
+        m.hearthDecayMult = toNumber(t.hearthDecayMult);
       },
     },
   ],
@@ -347,8 +374,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_08_ignite_mastery || {};
         const m = ensureMastery(ctx.player);
-        m.igniteStacks = (toNumber(m.igniteStacks) || 1) + 1;
+        m.igniteStacks = (toNumber(m.igniteStacks) || toNumber(MASTERY_SHARED?.ignite?.stacksDefault)) + toNumber(t.igniteStacksAdd);
       },
     },
   ],
@@ -358,17 +386,18 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "kill",
       when: (ctx) => !!ctx?.player && !!ctx?.enemy && (ctx.enemy.isElite || ctx.enemy.isBoss),
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_10a_cinderstorm_moment || {};
         const p = ctx.player;
         const cd = ensureCooldown(p, "cinderstorm");
         if ((cd.cinderstorm || 0) > 0) return;
-        cd.cinderstorm = 10.0;
+        cd.cinderstorm = toNumber(t.cdSec);
 
-        const radius = 160;
-        const coeff = (toNumber(ensureMastery(p).igniteCoeff) || 0.05) * 1.15;
+        const radius = toNumber(t.radius);
+        const coeff = (toNumber(ensureMastery(p).igniteCoeff) || toNumber(MASTERY_SHARED?.ignite?.coeffDefault)) * toNumber(t.coeffMult);
         for (const e of ctx.state?.enemies || []) {
           if (!e || e.dead) continue;
           if (dist2(ctx.enemy.x, ctx.enemy.y, e.x, e.y) <= radius * radius) {
-            applyIgnite(e, p, { duration: 3.5, stacks: 3, coeff });
+            applyIgnite(e, p, { duration: toNumber(t.durationSec), stacks: toNumber(t.stacks), coeff });
           }
         }
       },
@@ -380,6 +409,7 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Might?.might_10b_phoenix_rebirth || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
@@ -388,18 +418,18 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
         if ((m._rebirthDrTimer || 0) > 0) m._rebirthDrTimer = Math.max(0, m._rebirthDrTimer - dt);
 
         const pct = p.hpMax > 0 ? p.hp / p.hpMax : 1;
-        if (pct > 0.3) return;
+        if (pct > toNumber(t.hpPctThreshold)) return;
         if ((cd.phoenixRebirth || 0) > 0) return;
 
         // Consume hearth stacks as a one-shot rescue.
         const hearth = Math.max(0, Math.floor(m.hearth?.stacks || 0));
         if (hearth <= 0) return;
-        cd.phoenixRebirth = 30.0;
+        cd.phoenixRebirth = toNumber(t.cdSec);
 
-        const heal = 8 + hearth * 2;
+        const heal = toNumber(t.healBase) + hearth * toNumber(t.healPerHearth);
         p.hp = Math.min(p.hpMax, p.hp + heal);
-        m._rebirthDrTimer = 2.0;
-        m._rebirthDrMult = 0.75;
+        m._rebirthDrTimer = toNumber(t.drDurationSec);
+        m._rebirthDrMult = toNumber(t.drMult);
       },
     },
     {
@@ -423,14 +453,15 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "hit",
       when: (ctx) => !!ctx?.player && !!ctx?.target && !ctx.target.dead,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_01_soak || {};
         const p = ctx.player;
         const m = ensureMastery(p);
-        const slowMult = (m.soakSlowMult != null) ? m.soakSlowMult : 0.86;
-        const dur = (m.soakDuration != null) ? m.soakDuration : 2.4;
+        const slowMult = (m.soakSlowMult != null) ? m.soakSlowMult : toNumber(t.slowMultDefault);
+        const dur = (m.soakDuration != null) ? m.soakDuration : toNumber(t.durationDefault);
         const wasSoaked = StatusSystem.hasStatus(ctx.target, StatusId.Soaked);
         applySoaked(ctx.target, p, { duration: dur, slowMult });
         const now = ctx?.game?.time || 0;
-        if (!wasSoaked && shouldProc(ctx.target, "mastery:soakText", 0.7, now)) {
+        if (!wasSoaked && Math.random() < toNumber(t.soakTextChance) && shouldProc(ctx.target, "mastery:soakText", toNumber(t.soakTextIcd), now)) {
           emitMasteryBurst({ x: ctx.target.x, y: ctx.target.y, colorToken: { token: "fx.uiAccent", alpha: 0.9 }, count: 7, speed: 130, size: 2.6, life: 0.28 });
           emitMasteryProcText({ x: ctx.target.x, y: ctx.target.y - (ctx.target.r || 12) - 12, text: "SOAKED", colorToken: { token: "fx.uiText", alpha: 0.95 }, size: 13, life: 0.55 });
         }
@@ -443,8 +474,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_02_undertow_drag || {};
         const m = ensureMastery(ctx.player);
-        m.pullMultOnSoaked = 1.35;
+        m.pullMultOnSoaked = toNumber(t.pullMultOnSoaked);
       },
     },
   ],
@@ -454,12 +486,13 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_03_lunar_tide || {};
         const p = ctx.player;
         const m = ensureMastery(p);
         // Modest "drift": add magnetism while active.
         if (typeof m._baseMagnetism !== "number") m._baseMagnetism = toNumber(p.stats?.magnetism);
         const base = toNumber(m._baseMagnetism);
-        const bonus = isAttuned(ctx, AttributeId.Will) ? 80 : 55;
+        const bonus = isAttuned(ctx, AttributeId.Will) ? toNumber(t.magnetismBonusAttuned) : toNumber(t.magnetismBonus);
         if (p.stats) p.stats.magnetism = base + bonus;
       },
     },
@@ -470,15 +503,16 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "hit",
       when: (ctx) => !!ctx?.player && !!ctx?.target && StatusSystem.hasStatus(ctx.target, StatusId.Soaked),
       act: (ctx) => {
-        const t = ctx.target;
-        t._masteryConductiveHits = (t._masteryConductiveHits || 0) + 1;
-        if (t._masteryConductiveHits < 3) return;
-        t._masteryConductiveHits = 0;
-        const was = StatusSystem.hasStatus(t, StatusId.Conductive);
-        StatusSystem.applyStatus(t, StatusId.Conductive, {
+        const tn = MASTERY_ATTR?.Will?.will_04_conductive_water || {};
+        const tgt = ctx.target;
+        tgt._masteryConductiveHits = (tgt._masteryConductiveHits || 0) + 1;
+        if (tgt._masteryConductiveHits < toNumber(tn.hitsRequired)) return;
+        tgt._masteryConductiveHits = 0;
+        const was = StatusSystem.hasStatus(tgt, StatusId.Conductive);
+        StatusSystem.applyStatus(tgt, StatusId.Conductive, {
           source: ctx.player,
           stacks: 1,
-          duration: 4.0,
+          duration: toNumber(tn.durationSec),
           tickInterval: 9999,
           spec: null,
           snapshotPolicy: "snapshot",
@@ -494,9 +528,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
           },
         });
         const now = ctx?.game?.time || 0;
-        if (!was && shouldProc(t, "mastery:conductiveText", 0.9, now)) {
-          emitMasteryBurst({ x: t.x, y: t.y, colorToken: { token: "fx.uiText", alpha: 0.95 }, count: 9, speed: 150, size: 2.6, life: 0.28 });
-          emitMasteryProcText({ x: t.x, y: t.y - (t.r || 12) - 12, text: "CONDUCTIVE", colorToken: { token: "fx.uiText", alpha: 0.95 }, size: 12, life: 0.55 });
+        if (!was && Math.random() < toNumber(tn.conductiveTextChance) && shouldProc(tgt, "mastery:conductiveText", toNumber(tn.conductiveTextIcd), now)) {
+          emitMasteryBurst({ x: tgt.x, y: tgt.y, colorToken: { token: "fx.uiText", alpha: 0.95 }, count: 9, speed: 150, size: 2.6, life: 0.28 });
+          emitMasteryProcText({ x: tgt.x, y: tgt.y - (tgt.r || 12) - 12, text: "CONDUCTIVE", colorToken: { token: "fx.uiText", alpha: 0.95 }, size: 12, life: 0.55 });
         }
       },
     },
@@ -507,15 +541,17 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "kill",
       when: (ctx) => !!ctx?.player && !!ctx?.state && !!ctx?.enemy,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_05a_whirlpool_curse || {};
         const p = ctx.player;
         const cd = ensureCooldown(p, "whirlpool");
         if ((cd.whirlpool || 0) > 0) return;
-        cd.whirlpool = 2.0;
+        cd.whirlpool = toNumber(t.cdSec);
 
         const major = isAttuned(ctx, AttributeId.Will) && ctx.player?._masteryHasWillCapstoneMaelstrom;
-        const max = major ? 1 : 2;
-        const radius = major ? 135 : 95;
-        const pull = major ? 70 : 42;
+        const max = major ? toNumber(t.maxMajor) : toNumber(t.max);
+        const radius = major ? toNumber(t.radiusMajor) : toNumber(t.radius);
+        const pull = major ? toNumber(t.pullStrengthMajor) : toNumber(t.pullStrength);
+        const life = major ? toNumber(t.lifeSecMajor) : toNumber(t.lifeSec);
 
         ctx.state.shots = Array.isArray(ctx.state.shots) ? ctx.state.shots : [];
         const existing = ctx.state.shots.filter((s) => s && s.isMasteryWhirlpool);
@@ -525,7 +561,7 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
           const idx = ctx.state.shots.indexOf(oldest);
           if (idx >= 0) ctx.state.shots.splice(idx, 1);
         }
-        ctx.state.shots.push(new MasteryWhirlpool(ctx.state, p, ctx.enemy.x, ctx.enemy.y, { radius, pullStrength: pull, life: major ? 3.5 : 2.6 }));
+        ctx.state.shots.push(new MasteryWhirlpool(ctx.state, p, ctx.enemy.x, ctx.enemy.y, { radius, pullStrength: pull, life }));
       },
     },
   ],
@@ -535,16 +571,17 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_05b_abyssal_tentacle || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const cd = ensureCooldown(p, "tentacle");
         tickCooldown(p, dt);
         if ((cd.tentacle || 0) > 0) return;
-        cd.tentacle = 6.0;
+        cd.tentacle = toNumber(t.cdSec);
 
         // Find a small cluster: closest enemy to player.
         let best = null;
-        let bestD2 = 220 * 220;
+        let bestD2 = toNumber(t.clusterRadius) * toNumber(t.clusterRadius);
         for (const e of ctx.state.enemies || []) {
           if (!e || e.dead) continue;
           const d2 = dist2(p.x, p.y, e.x, e.y);
@@ -553,9 +590,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
         if (!best) return;
 
         const upgraded = isAttuned(ctx, AttributeId.Will) && p._masteryHasWillCapstoneDeep;
-        const radius = upgraded ? 115 : 95;
+        const radius = upgraded ? toNumber(t.radiusUpgraded) : toNumber(t.radius);
         ctx.state.shots = Array.isArray(ctx.state.shots) ? ctx.state.shots : [];
-        ctx.state.shots.push(new MasteryTentacleSlam(ctx.state, p, best.x, best.y, { radius, life: 0.65, upgraded }));
+        ctx.state.shots.push(new MasteryTentacleSlam(ctx.state, p, best.x, best.y, { radius, life: toNumber(t.lifeSec), upgraded }));
       },
     },
   ],
@@ -565,9 +602,10 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_06_high_tide_window || {};
         const m = ensureMastery(ctx.player);
-        m.soakDuration = 3.0;
-        m.soakSlowMult = 0.82;
+        m.soakDuration = toNumber(t.soakDuration);
+        m.soakSlowMult = toNumber(t.soakSlowMult);
       },
     },
   ],
@@ -577,20 +615,21 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_07_tempest_conductor || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         tickCooldown(p, dt);
         const cd = ensureCooldown(p, "conductiveArc");
         if ((cd.conductiveArc || 0) > 0) return;
-        cd.conductiveArc = 1.0;
+        cd.conductiveArc = toNumber(t.cdSec);
 
         const enemies = ctx.state.enemies || [];
         for (const e of enemies) {
           if (!e || e.dead) continue;
           if (!StatusSystem.hasStatus(e, StatusId.Conductive)) continue;
           // Micro-pull: nudge toward player.
-          pullToward({ x: p.x, y: p.y }, e, 26);
-          applySoaked(e, p, { duration: 1.4, slowMult: 0.9 });
+          pullToward({ x: p.x, y: p.y }, e, toNumber(t.microPullStrength), p);
+          applySoaked(e, p, { duration: toNumber(t.soakedDuration), slowMult: toNumber(t.soakedSlowMult) });
           break;
         }
       },
@@ -602,19 +641,20 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Will?.will_08_moonbound_current || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
         if (typeof m._lastSouls !== "number") m._lastSouls = toNumber(p.souls);
         const now = toNumber(p.souls);
         if (now > m._lastSouls) {
-          m._moonboundTimer = 2.5;
+          m._moonboundTimer = toNumber(t.buffDurationSec);
         }
         m._lastSouls = now;
         if ((m._moonboundTimer || 0) > 0) {
           m._moonboundTimer = Math.max(0, m._moonboundTimer - dt);
-          m.soakDuration = 3.4;
-          m.soakSlowMult = 0.78;
+          m.soakDuration = toNumber(t.soakDuration);
+          m.soakSlowMult = toNumber(t.soakSlowMult);
         }
       },
     },
@@ -647,8 +687,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_01_windstep || {};
         if (!ctx.player.stats) return;
-        ctx.player.stats.moveSpeedMult *= 1.03;
+        ctx.player.stats.moveSpeedMult *= toNumber(t.moveSpeedMult);
       },
     },
   ],
@@ -658,8 +699,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_02_quickhands || {};
         if (!ctx.player.stats) return;
-        ctx.player.stats.attackSpeed *= 1.04;
+        ctx.player.stats.attackSpeed *= toNumber(t.attackSpeedMult);
       },
     },
   ],
@@ -669,9 +711,10 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "dash",
       when: (ctx) => ctx?.dash?.phase === "end" && !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_03_gust_spacing || {};
         const p = ctx.player;
-        const strength = isAttuned(ctx, AttributeId.Alacrity) ? 90 : 70;
-        const r = 110;
+        const strength = isAttuned(ctx, AttributeId.Alacrity) ? toNumber(t.strengthAttuned) : toNumber(t.strength);
+        const r = toNumber(t.radius);
         for (const e of ctx.state.enemies || []) {
           if (!e || e.dead) continue;
           if (dist2(p.x, p.y, e.x, e.y) <= r * r) pushAway(p, e, strength);
@@ -685,8 +728,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_04_guided_projectiles || {};
         if (!ctx.player.stats) return;
-        ctx.player.stats.masteryProjectileGuidance = Math.max(ctx.player.stats.masteryProjectileGuidance || 0, 1);
+        ctx.player.stats.masteryProjectileGuidance = Math.max(ctx.player.stats.masteryProjectileGuidance || 0, toNumber(t.guidanceLevel));
       },
     },
   ],
@@ -696,6 +740,7 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "dash",
       when: (ctx) => ctx?.dash?.phase === "end" && !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_05a_pinball_dash || {};
         const p = ctx.player;
         const m = ensureMastery(p);
         m.pinball = m.pinball || { remaining: 0 };
@@ -706,10 +751,10 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
           return;
         }
 
-        if (m.pinball.remaining <= 0) m.pinball.remaining = 3;
+        if (m.pinball.remaining <= 0) m.pinball.remaining = Math.floor(toNumber(t.chainCount));
         if (m.pinball.remaining <= 0) return;
 
-        const radius = 220;
+        const radius = toNumber(t.targetRadius);
         let best = null;
         let bestD2 = radius * radius;
         for (const e of ctx.state.enemies || []) {
@@ -719,8 +764,8 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
         }
         if (!best || p.dashCharges <= 0) {
           // End wave.
-          const strength = 120;
-          const r = 130;
+          const strength = toNumber(t.endWaveStrength);
+          const r = toNumber(t.endWaveRadius);
           for (const e of ctx.state.enemies || []) {
             if (!e || e.dead) continue;
             if (dist2(p.x, p.y, e.x, e.y) <= r * r) pushAway(p, e, strength);
@@ -735,7 +780,7 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
         const dy = best.y - p.y;
         const d = Math.hypot(dx, dy) || 1;
         p.dashVec = { x: dx / d, y: dy / d };
-        p.dashTimer = 0.12;
+        p.dashTimer = toNumber(t.dashTimerSec);
         m.pinball.remaining -= 1;
       },
     },
@@ -746,12 +791,13 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "dash",
       when: (ctx) => ctx?.dash?.phase === "end" && !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_05b_gale_dancer || {};
         const p = ctx.player;
         if (!isAttuned(ctx, AttributeId.Alacrity)) return;
         const m = ensureMastery(p);
         m.momentum = m.momentum || { stacks: 0, timer: 0 };
-        m.momentum.stacks = Math.min(6, (m.momentum.stacks || 0) + 1);
-        m.momentum.timer = 2.0;
+        m.momentum.stacks = Math.min(Math.floor(toNumber(t.maxStacks)), (m.momentum.stacks || 0) + 1);
+        m.momentum.timer = toNumber(t.durationSec);
       },
     },
     {
@@ -759,16 +805,17 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_05b_gale_dancer || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
         const mm = m.momentum;
         if (!mm) return;
         mm.timer = Math.max(0, (mm.timer || 0) - dt);
-        if (mm.timer <= 0) mm.stacks = Math.max(0, (mm.stacks || 0) - dt * 3);
+        if (mm.timer <= 0) mm.stacks = Math.max(0, (mm.stacks || 0) - dt * toNumber(t.decayPerSec));
         const stacks = Math.max(0, Math.floor(mm.stacks || 0));
-        p.combatBuffs.moveSpeedMult *= 1 + stacks * 0.02;
-        p.combatBuffs.attackSpeedMult *= 1 + stacks * 0.02;
+        p.combatBuffs.moveSpeedMult *= 1 + stacks * toNumber(t.moveSpeedPerStack);
+        p.combatBuffs.attackSpeedMult *= 1 + stacks * toNumber(t.attackSpeedPerStack);
       },
     },
   ],
@@ -778,9 +825,10 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_06_extra_charge || {};
         const p = ctx.player;
         const base = toNumber(p.maxDashCharges) || 0;
-        p.maxDashCharges = Math.max(base, 1) + 1;
+        p.maxDashCharges = Math.max(base, 1) + Math.floor(toNumber(t.extraCharges));
         p.dashCharges = Math.min(p.maxDashCharges, Math.max(p.dashCharges, p.maxDashCharges));
       },
     },
@@ -789,8 +837,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_06_extra_charge || {};
         const p = ctx.player;
-        if (isAttuned(ctx, AttributeId.Alacrity)) p._masteryDashRechargeMult *= 1.12;
+        if (isAttuned(ctx, AttributeId.Alacrity)) p._masteryDashRechargeMult *= toNumber(t.rechargeMultAttuned);
       },
     },
   ],
@@ -800,16 +849,17 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_07_slipstream || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
         m.slipstream = m.slipstream || { stacks: 0 };
         const mv = p._sprite?.move || { x: 0, y: 0 };
-        const moving = Math.abs(mv.x) + Math.abs(mv.y) > 0.01 && (p.dashTimer || 0) <= 0;
-        if (moving) m.slipstream.stacks = Math.min(10, (m.slipstream.stacks || 0) + dt * 4);
-        else m.slipstream.stacks = Math.max(0, (m.slipstream.stacks || 0) - dt * 6);
+        const moving = Math.abs(mv.x) + Math.abs(mv.y) > toNumber(t.movingThreshold) && (p.dashTimer || 0) <= 0;
+        if (moving) m.slipstream.stacks = Math.min(Math.floor(toNumber(t.maxStacks)), (m.slipstream.stacks || 0) + dt * toNumber(t.buildPerSec));
+        else m.slipstream.stacks = Math.max(0, (m.slipstream.stacks || 0) - dt * toNumber(t.decayPerSec));
         const stacks = Math.max(0, Math.floor(m.slipstream.stacks || 0));
-        p.combatBuffs.moveSpeedMult *= (1 + stacks * 0.008);
+        p.combatBuffs.moveSpeedMult *= (1 + stacks * toNumber(t.moveSpeedPerStack));
       },
     },
   ],
@@ -820,7 +870,8 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       when: (ctx) => ctx?.dash?.phase === "end" && !!ctx?.player,
       act: (ctx) => {
         const m = ensureMastery(ctx.player);
-        m.windguard = 0.9;
+        const t = MASTERY_ATTR?.Alacrity?.alac_08_windguard || {};
+        m.windguard = toNumber(t.durationSec);
       },
     },
     {
@@ -828,11 +879,12 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_08_windguard || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
         if ((m.windguard || 0) > 0) m.windguard = Math.max(0, m.windguard - dt);
-        if ((m.windguard || 0) > 0) p._masteryDamageTakenMultFactor = Math.min(p._masteryDamageTakenMultFactor || 1.0, 0.85);
+        if ((m.windguard || 0) > 0) p._masteryDamageTakenMultFactor = Math.min(p._masteryDamageTakenMultFactor || 1.0, toNumber(t.damageTakenMult));
       },
     },
   ],
@@ -842,17 +894,18 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "dash",
       when: (ctx) => ctx?.dash?.phase === "end" && !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_10a_cyclone_break || {};
         if (!isAttuned(ctx, AttributeId.Alacrity)) return;
         const p = ctx.player;
         const m = ensureMastery(p);
         const stacks = Math.floor(m?.momentum?.stacks || 0);
-        if (stacks < 5) return;
-        const r = 150;
+        if (stacks < Math.floor(toNumber(t.requiredMomentumStacks))) return;
+        const r = toNumber(t.radius);
         for (const e of ctx.state.enemies || []) {
           if (!e || e.dead) continue;
           if (dist2(p.x, p.y, e.x, e.y) <= r * r) {
-            pushAway(p, e, 140);
-            applySoaked(e, p, { duration: 1.6, slowMult: 0.9 });
+            pushAway(p, e, toNumber(t.pushStrength));
+            applySoaked(e, p, { duration: toNumber(t.soakedDuration), slowMult: toNumber(t.soakedSlowMult) });
           }
         }
       },
@@ -864,9 +917,10 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "dash",
       when: (ctx) => ctx?.dash?.phase === "end" && !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_10b_perfect_cadence || {};
         if (!isAttuned(ctx, AttributeId.Alacrity)) return;
         const m = ensureMastery(ctx.player);
-        m.cadence = { ready: true, timer: 2.0 };
+        m.cadence = { ready: true, timer: toNumber(t.windowSec) };
       },
     },
     {
@@ -887,12 +941,13 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "hit",
       when: (ctx) => !!ctx?.player && !!ctx?.target,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Alacrity?.alac_10b_perfect_cadence || {};
         const p = ctx.player;
         const m = ensureMastery(p);
         if (!m.cadence?.ready) return;
         if (!isAttuned(ctx, AttributeId.Alacrity)) return;
         m.cadence.ready = false;
-        const spec = { id: "mastery:cadence", base: 2, coeff: 0.25, flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
+        const spec = { id: "mastery:cadence", base: toNumber(t.damageBase), coeff: toNumber(t.damageCoeff), flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
         const snap = DamageSystem.snapshotOutgoing(p, spec);
         DamageSystem.dealDamage(p, ctx.target, spec, { state: ctx.state, snapshot: snap });
       },
@@ -906,13 +961,14 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_01_ward_seed || {};
         const p = ctx.player;
         p._wardEnabled = true;
-        p.wardMax = Math.max(0, toNumber(p.wardMax) || 0) + 18;
+        p.wardMax = Math.max(0, toNumber(p.wardMax) || 0) + toNumber(t.wardMaxAdd);
         p.ward = Math.max(toNumber(p.wardMax) || 0, Math.max(0, toNumber(p.ward) || 0));
 
         const now = ctx?.game?.time || 0;
-        if (shouldProc(p, "mastery:wardOnline", 4.0, now)) {
+        if (shouldProc(p, "mastery:wardOnline", toNumber(t.wardOnlineIcd), now)) {
           emitMasteryBurst({ x: p.x, y: p.y, colorToken: { token: "player.guard", alpha: 0.95 }, count: 16, speed: 190, size: 3.0, life: 0.35 });
           emitMasteryProcText({ x: p.x, y: p.y - (p.r || 12) - 18, text: "WARD ACTIVE", colorToken: { token: "player.guard", alpha: 0.95 }, size: 13, life: 0.8 });
         }
@@ -925,7 +981,8 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player && !!ctx.player.stats,
       act: (ctx) => {
-        ctx.player._masteryDamageTakenMultPersistent = (ctx.player._masteryDamageTakenMultPersistent || 1.0) * 0.92;
+        const t = MASTERY_ATTR?.Constitution?.con_02_stonehide || {};
+        ctx.player._masteryDamageTakenMultPersistent = (ctx.player._masteryDamageTakenMultPersistent || 1.0) * toNumber(t.damageTakenMult);
       },
     },
   ],
@@ -935,19 +992,19 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "damageTaken",
       when: (ctx) => !!ctx?.player && !!ctx?.source,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_03_thorn_marrow || {};
         const p = ctx.player;
-        const dt = 0;
         const cd = ensureCooldown(p, "thorns");
         if ((cd.thorns || 0) > 0) return;
-        cd.thorns = 0.6;
-        const mult = isAttuned(ctx, AttributeId.Constitution) ? 1.25 : 1.0;
-        const spec = { id: "mastery:thorns", base: 1, coeff: 0.12 * mult, flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
+        cd.thorns = toNumber(t.cdSec);
+        const mult = isAttuned(ctx, AttributeId.Constitution) ? toNumber(t.multAttuned) : 1.0;
+        const spec = { id: "mastery:thorns", base: toNumber(t.damageBase), coeff: toNumber(t.damageCoeff) * mult, flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
         const snap = DamageSystem.snapshotOutgoing(p, spec);
         // Retaliate vs nearest enemy to the damage source location.
         const state = ctx.state;
         if (state?.enemies) {
           let best = null;
-          let bestD2 = 140 * 140;
+          let bestD2 = toNumber(t.targetRadius) * toNumber(t.targetRadius);
           for (const e of state.enemies) {
             if (!e || e.dead) continue;
             const d2 = dist2(ctx.source.x || p.x, ctx.source.y || p.y, e.x, e.y);
@@ -964,12 +1021,13 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "damageTaken",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_04_bone_plating || {};
         const p = ctx.player;
         const m = ensureMastery(p);
         // Approximate "big hit": low HP moment.
         const pct = p.hpMax > 0 ? p.hp / p.hpMax : 1;
-        if (pct > 0.75) return;
-        m.boneShieldTimer = Math.max(m.boneShieldTimer || 0, 2.2);
+        if (pct > toNumber(t.hpPctThreshold)) return;
+        m.boneShieldTimer = Math.max(m.boneShieldTimer || 0, toNumber(t.durationSec));
       },
     },
     {
@@ -977,11 +1035,12 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_04_bone_plating || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
         if ((m.boneShieldTimer || 0) > 0) m.boneShieldTimer = Math.max(0, m.boneShieldTimer - dt);
-        if ((m.boneShieldTimer || 0) > 0) p._masteryDamageTakenMultFactor = Math.min(p._masteryDamageTakenMultFactor || 1.0, 0.88);
+        if ((m.boneShieldTimer || 0) > 0) p._masteryDamageTakenMultFactor = Math.min(p._masteryDamageTakenMultFactor || 1.0, toNumber(t.damageTakenMult));
       },
     },
   ],
@@ -991,13 +1050,14 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_05a_wardweaver || {};
         const p = ctx.player;
         const dt = Math.max(0, toNumber(ctx.dt) || 0);
         const m = ensureMastery(p);
         // Out of danger regen: if no damage taken recently.
         m.lastDamageTimer = Math.max(0, (m.lastDamageTimer || 0) - dt);
         if ((m.lastDamageTimer || 0) <= 0 && (p._wardEnabled || false)) {
-          p.ward = Math.min(toNumber(p.wardMax) || 0, (toNumber(p.ward) || 0) + 4.0 * dt);
+          p.ward = Math.min(toNumber(p.wardMax) || 0, (toNumber(p.ward) || 0) + toNumber(t.wardPerSec) * dt);
         }
       },
     },
@@ -1006,8 +1066,9 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "damageTaken",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_05a_wardweaver || {};
         const m = ensureMastery(ctx.player);
-        m.lastDamageTimer = 1.6;
+        m.lastDamageTimer = toNumber(t.outOfDangerDelaySec);
       },
     },
   ],
@@ -1017,16 +1078,17 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "damageTaken",
       when: (ctx) => !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_05b_bone_mirror || {};
         const p = ctx.player;
         const m = ensureMastery(p);
         if ((m.boneShieldTimer || 0) <= 0) return;
         // Reflect as a small shard burst (capped).
         const cd = ensureCooldown(p, "boneMirror");
         if ((cd.boneMirror || 0) > 0) return;
-        cd.boneMirror = 0.9;
-        const spec = { id: "mastery:boneMirror", base: 1, coeff: 0.10, flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
+        cd.boneMirror = toNumber(t.cdSec);
+        const spec = { id: "mastery:boneMirror", base: toNumber(t.damageBase), coeff: toNumber(t.damageCoeff), flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
         const snap = DamageSystem.snapshotOutgoing(p, spec);
-        const r = 95;
+        const r = toNumber(t.radius);
         for (const e of ctx.state.enemies || []) {
           if (!e || e.dead) continue;
           if (dist2(p.x, p.y, e.x, e.y) <= r * r) {
@@ -1042,7 +1104,8 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "runStart",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
-        ctx.player.wardMax = Math.max(0, toNumber(ctx.player.wardMax) || 0) + 12;
+        const t = MASTERY_ATTR?.Constitution?.con_06_more_ward || {};
+        ctx.player.wardMax = Math.max(0, toNumber(ctx.player.wardMax) || 0) + toNumber(t.wardMaxAdd);
       },
     },
   ],
@@ -1052,18 +1115,19 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "damageTaken",
       when: (ctx) => !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_07_splinterburst || {};
         const p = ctx.player;
         const cd = ensureCooldown(p, "splinterburst");
         if ((cd.splinterburst || 0) > 0) return;
-        cd.splinterburst = 1.0;
-        const spec = { id: "mastery:splinterburst", base: 1, coeff: 0.08, flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
+        cd.splinterburst = toNumber(t.cdSec);
+        const spec = { id: "mastery:splinterburst", base: toNumber(t.damageBase), coeff: toNumber(t.damageCoeff), flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
         const snap = DamageSystem.snapshotOutgoing(p, spec);
-        const r = 110;
+        const r = toNumber(t.radius);
         for (const e of ctx.state.enemies || []) {
           if (!e || e.dead) continue;
           if (dist2(p.x, p.y, e.x, e.y) <= r * r) {
             DamageSystem.dealDamage(p, e, spec, { state: ctx.state, snapshot: snap });
-            if (isAttuned(ctx, AttributeId.Constitution)) applySoaked(e, p, { duration: 1.2, slowMult: 0.92 });
+            if (isAttuned(ctx, AttributeId.Constitution)) applySoaked(e, p, { duration: toNumber(t.soakedDurationAttuned), slowMult: toNumber(t.soakedSlowMultAttuned) });
           }
         }
       },
@@ -1075,12 +1139,13 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "tick",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_08_granite_oath || {};
         const p = ctx.player;
         const max = toNumber(p.wardMax) || 0;
         const cur = toNumber(p.ward) || 0;
         if (max <= 0) return;
         const pct = cur / max;
-        if (pct >= 0.6) p._masteryDamageTakenMultFactor = Math.min(p._masteryDamageTakenMultFactor || 1.0, 0.9);
+        if (pct >= toNumber(t.wardPctThreshold)) p._masteryDamageTakenMultFactor = Math.min(p._masteryDamageTakenMultFactor || 1.0, toNumber(t.damageTakenMult));
       },
     },
   ],
@@ -1101,16 +1166,17 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "damageTaken",
       when: (ctx) => !!ctx?.player,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_10a_fortress_protocol || {};
         const p = ctx.player;
         if (!(p._wardEnabled || false)) return;
         const cd = ensureCooldown(p, "fortress");
         if ((cd.fortress || 0) > 0) return;
         const ward = toNumber(p.ward) || 0;
         if (ward > 0) return;
-        cd.fortress = 18.0;
-        p.ward = Math.min(toNumber(p.wardMax) || 0, (toNumber(p.wardMax) || 0) * 0.75);
+        cd.fortress = toNumber(t.cdSec);
+        p.ward = Math.min(toNumber(p.wardMax) || 0, (toNumber(p.wardMax) || 0) * toNumber(t.wardRefillPct));
         p.rooted = 0;
-        p.rootImmunity = Math.max(p.rootImmunity || 0, 1.2);
+        p.rootImmunity = Math.max(p.rootImmunity || 0, toNumber(t.rootImmunitySec));
       },
     },
   ],
@@ -1120,19 +1186,20 @@ const MASTERY_EFFECTS_BY_NODE_ID = {
       trigger: "damageTaken",
       when: (ctx) => !!ctx?.player && !!ctx?.state,
       act: (ctx) => {
+        const t = MASTERY_ATTR?.Constitution?.con_10b_break_upon_me || {};
         const p = ctx.player;
         if (!(p._wardEnabled || false)) return;
         if ((toNumber(p.ward) || 0) <= 0) return;
         // Stronger thorns against elites while ward holds.
         const cd = ensureCooldown(p, "breakUponMe");
         if ((cd.breakUponMe || 0) > 0) return;
-        cd.breakUponMe = 1.0;
-        const spec = { id: "mastery:breakUponMe", base: 1, coeff: 0.18, flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
+        cd.breakUponMe = toNumber(t.cdSec);
+        const spec = { id: "mastery:breakUponMe", base: toNumber(t.damageBase), coeff: toNumber(t.damageCoeff), flat: 0, canCrit: false, tags: ["aoe"], snapshot: true };
         const snap = DamageSystem.snapshotOutgoing(p, spec);
         for (const e of ctx.state.enemies || []) {
           if (!e || e.dead) continue;
           if (!e.isElite && !e.isBoss) continue;
-          if (dist2(p.x, p.y, e.x, e.y) <= 160 * 160) {
+          if (dist2(p.x, p.y, e.x, e.y) <= toNumber(t.radius) * toNumber(t.radius)) {
             DamageSystem.dealDamage(p, e, spec, { state: ctx.state, snapshot: snap });
           }
         }

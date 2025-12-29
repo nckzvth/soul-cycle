@@ -177,6 +177,143 @@ export const BALANCE = {
         },
     },
 
+    // Phase 6: attribute mastery tuning (node gameplay values).
+    // Keep all AttributeMasteryEffectDefs numbers here so logic stays behavior-only.
+    mastery: {
+        shared: {
+            soaked: {
+                minDurationSec: 0.05,
+                durationDefault: 2.4,
+                slowMultDefault: 0.85,
+                slowMultClampMin: 0.1,
+                slowMultClampMax: 1.0,
+                vfx: { interval: 0.35, alpha: 0.32, count: 1, size: 2.2, life: 0.22, radiusAdd: 10 },
+            },
+            ignite: {
+                minDurationSec: 0.1,
+                durationDefault: 3.0,
+                stacksDefault: 1,
+                coeffDefault: 0.05,
+                tickInterval: 1.0,
+                maxStacks: 20,
+                vfx: { interval: 0.45, alpha: 0.35, count: 1, size: 2.2, life: 0.22, radiusAdd: 12 },
+            },
+        },
+        entities: {
+            masteryWhirlpool: {
+                soakedResistMult: 0.85,
+                eliteResistMult: 1.35,
+            },
+            masteryTentacleSlam: {
+                // Impact timing relative to life timer.
+                impactAtLifeSec: 0.45,
+                // Root-lite durations.
+                rootDurationSec: 0.65,
+                rootDurationEliteSec: 0.35,
+                // Upgraded rider.
+                soakedDurationUpgradedSec: 2.2,
+            },
+            masteryConsecrateZone: {
+                // Gameplay
+                tickIntervalSec: 0.35,
+                igniteDurationSec: 1.8,
+                igniteTickIntervalSec: 1.0,
+                igniteMaxStacks: 12,
+                // Visuals
+                alphaDurationDivisorSec: 1.8,
+                fillAlpha: 0.16,
+                rimAlpha: 0.22,
+            },
+        },
+        attributes: {
+            Might: {
+                might_01_kindling: { igniteTextChance: 0.7, igniteTextIcd: 0.7 },
+                might_02_deepen_ignite: { igniteCoeffMult: 1.35 },
+                might_03_hearth_regen: {
+                    heatRadius: 210,
+                    hearthCapBase: 10,
+                    hearthCapAttunedBonus: 4,
+                    decayHoldSeconds: 1.2,
+                    decayPerSec: 0.9,
+                    decayPerSecAttuned: 0.65,
+                    healPerSecPerStack: 0.18,
+                },
+                might_04_press_the_burn: { perTargetIcdSec: 0.6, durationSec: 2.2 },
+                might_05a_phoenix_covenant: {
+                    cdSec: 4.0,
+                    healNonElite: 8,
+                    healEliteBonus: 6,
+                    healBossBonus: 10,
+                    buffDurationSec: 2.5,
+                    regenPerSec: 1.4,
+                    moveSpeedMult: 1.12,
+                },
+                might_05b_sanctified_hearth: { cdSec: 3.0, zoneRadius: 70, zoneLifeSec: 1.8, zoneIgniteCoeff: 0.035 },
+                might_06_ember_spread: { cdSec: 1.2, radius: 95, radiusAttuned: 120, durationSec: 2.0, coeffMult: 0.75 },
+                might_07_flames_of_hearth: { hearthDecayMult: 0.6 },
+                might_08_ignite_mastery: { igniteStacksAdd: 1 },
+                might_10a_cinderstorm_moment: { cdSec: 10.0, radius: 160, coeffMult: 1.15, durationSec: 3.5, stacks: 3 },
+                might_10b_phoenix_rebirth: {
+                    cdSec: 30.0,
+                    hpPctThreshold: 0.3,
+                    healBase: 8,
+                    healPerHearth: 2,
+                    drDurationSec: 2.0,
+                    drMult: 0.75,
+                },
+            },
+            Will: {
+                will_01_soak: { soakTextChance: 0.7, soakTextIcd: 0.7, slowMultDefault: 0.86, durationDefault: 2.4 },
+                will_02_undertow_drag: { pullMultOnSoaked: 1.35 },
+                will_03_lunar_tide: { magnetismBonus: 55, magnetismBonusAttuned: 80 },
+                will_04_conductive_water: { hitsRequired: 3, durationSec: 4.0, conductiveTextChance: 0.9, conductiveTextIcd: 0.9 },
+                will_05a_whirlpool_curse: {
+                    cdSec: 2.0,
+                    max: 2,
+                    maxMajor: 1,
+                    radius: 95,
+                    radiusMajor: 135,
+                    pullStrength: 42,
+                    pullStrengthMajor: 70,
+                    lifeSec: 2.6,
+                    lifeSecMajor: 3.5,
+                },
+                will_05b_abyssal_tentacle: { cdSec: 6.0, clusterRadius: 220, radius: 95, radiusUpgraded: 115, lifeSec: 0.65 },
+                will_06_high_tide_window: { soakDuration: 3.0, soakSlowMult: 0.82 },
+                will_07_tempest_conductor: { cdSec: 1.0, microPullStrength: 26, soakedDuration: 1.4, soakedSlowMult: 0.9 },
+                will_08_moonbound_current: { buffDurationSec: 2.5, soakDuration: 3.4, soakSlowMult: 0.78 },
+                will_10a_maelstrom: {},
+                will_10b_call_of_the_deep: {},
+            },
+            Alacrity: {
+                alac_01_windstep: { moveSpeedMult: 1.03 },
+                alac_02_quickhands: { attackSpeedMult: 1.04 },
+                alac_03_gust_spacing: { strength: 70, strengthAttuned: 90, radius: 110 },
+                alac_04_guided_projectiles: { guidanceLevel: 1 },
+                alac_05a_pinball_dash: { chainCount: 3, targetRadius: 220, dashTimerSec: 0.12, endWaveStrength: 120, endWaveRadius: 130 },
+                alac_05b_gale_dancer: { maxStacks: 6, durationSec: 2.0, decayPerSec: 3, moveSpeedPerStack: 0.02, attackSpeedPerStack: 0.02 },
+                alac_06_extra_charge: { extraCharges: 1, rechargeMultAttuned: 1.12 },
+                alac_07_slipstream: { maxStacks: 10, buildPerSec: 4, decayPerSec: 6, movingThreshold: 0.01, moveSpeedPerStack: 0.008 },
+                alac_08_windguard: { durationSec: 0.9, damageTakenMult: 0.85 },
+                alac_10a_cyclone_break: { requiredMomentumStacks: 5, radius: 150, pushStrength: 140, soakedDuration: 1.6, soakedSlowMult: 0.9 },
+                alac_10b_perfect_cadence: { windowSec: 2.0, damageBase: 2, damageCoeff: 0.25 },
+            },
+            Constitution: {
+                con_01_ward_seed: { wardMaxAdd: 18, wardOnlineIcd: 4.0 },
+                con_02_stonehide: { damageTakenMult: 0.92 },
+                con_03_thorn_marrow: { cdSec: 0.6, multAttuned: 1.25, damageBase: 1, damageCoeff: 0.12, targetRadius: 140 },
+                con_04_bone_plating: { hpPctThreshold: 0.75, durationSec: 2.2, damageTakenMult: 0.88 },
+                con_05a_wardweaver: { wardPerSec: 4.0, outOfDangerDelaySec: 1.6 },
+                con_05b_bone_mirror: { cdSec: 0.9, damageBase: 1, damageCoeff: 0.10, radius: 95 },
+                con_06_more_ward: { wardMaxAdd: 12 },
+                con_07_splinterburst: { cdSec: 1.0, damageBase: 1, damageCoeff: 0.08, radius: 110, soakedDurationAttuned: 1.2, soakedSlowMultAttuned: 0.92 },
+                con_08_granite_oath: { wardPctThreshold: 0.6, damageTakenMult: 0.9 },
+                con_10a_fortress_protocol: { cdSec: 18.0, wardRefillPct: 0.75, rootImmunitySec: 1.2 },
+                con_10b_break_upon_me: { cdSec: 1.0, damageBase: 1, damageCoeff: 0.18, radius: 160 },
+            },
+        },
+    },
+
     // Spawn specs: stable IDs for wave composition. Specs can include `{ tier: "tN" }`
     // to apply `BALANCE.progression.enemyTiers` scaling at spawn time.
     spawns: {
@@ -321,9 +458,9 @@ export const BALANCE = {
         baseRerollCost: 50,
         rerollCostMultiplier: 1.25,
 
-        // Weapon timings
-        pistolBaseRate: 0.4,
-        staffRateMult: 1.5,
+	        // Weapon timings
+	        repeaterBaseRate: 0.4,
+	        staffRateMult: 1.5,
 
         // Weapon configs
         hammer: {
@@ -337,12 +474,12 @@ export const BALANCE = {
             spinTime: 3.0,
             maxHammers: 3
         },
-        pistol: {
-            damageMult: 1.6
-        },
-        staff: {
-            damageMult: 1.6
-        },
+	        repeater: {
+	            damageMult: 1.6
+	        },
+	        staff: {
+	            damageMult: 1.6
+	        },
 
         scythe: {
             cooldown: 0.34,
@@ -352,9 +489,9 @@ export const BALANCE = {
             harvestCooldownExtraSec: 0.12,
         },
 
-        // Projectile speeds
-        pistolSpeed: 700,
-    },
+	        // Projectile speeds
+	        repeaterSpeed: 700,
+	    },
 
     combat: {
         // Global damage multipliers
@@ -673,11 +810,11 @@ export const BALANCE = {
     skills: {
         rarityWeights: { common: 70, uncommon: 23, rare: 6, epic: 1 },
 
-        pistol: {
+	        repeater: {
             windupGainPerSecond: 0.8,
             windupDecayPerSecond: 1.2,
             windupAttackSpeedBonus: 1.2,
-            // Cyclone is a proc: chance on pistol bullet hit to burst a 360° spray.
+            // Cyclone is a proc: chance on repeater bullet hit to burst a 360° spray.
             cycloneProcChanceBase: 0.01,
             cycloneProcWindupBonus: 1.5,
             cycloneProcIcd: 0.2,
@@ -712,8 +849,8 @@ export const BALANCE = {
                 hexApplyBurstCount: 3,
                 hexApplyBurstSpeed: 110,
             },
-        }
-        ,
+	        },
+	        
 	        hammer: {
             burnDuration: 2.0,
             burnTickInterval: 1.0,

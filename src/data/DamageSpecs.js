@@ -12,37 +12,37 @@ const ELEMENT = {
 // DamageSpec factories. These describe damage; DamageSystem computes/applies it.
 const DamageSpecs = {
   // --- Player weapons ---
-  pistolShot() {
+  repeaterShot() {
     return {
-      id: "player:pistolShot",
+      id: "player:repeaterShot",
       base: 0,
-      coeff: BALANCE.player.pistol.damageMult,
+      coeff: BALANCE.player.repeater.damageMult,
       canCrit: false, // keep disabled to avoid unintended rebalance; enable later
-      tags: ["weapon", "pistol", "projectile"],
+      tags: ["weapon", "repeater", "projectile"],
       element: ELEMENT.air,
       snapshot: true,
     };
   },
 
-  pistolGust() {
+  repeaterGust() {
     return {
-      id: "player:pistolGust",
+      id: "player:repeaterGust",
       base: 0,
-      coeff: BALANCE.player.pistol.damageMult * 0.25,
+      coeff: BALANCE.player.repeater.damageMult * 0.25,
       canCrit: false,
-      tags: ["weapon", "pistol", "aoe"],
+      tags: ["weapon", "repeater", "aoe"],
       element: ELEMENT.air,
       snapshot: true,
     };
   },
 
-  pistolDebtPop() {
+  repeaterDebtPop() {
     return {
-      id: "player:pistolDebtPop",
+      id: "player:repeaterDebtPop",
       base: 0,
-      coeff: BALANCE.player.pistol.damageMult * 0.6,
+      coeff: BALANCE.player.repeater.damageMult * 0.6,
       canCrit: false,
-      tags: ["weapon", "pistol", "occult", "aoe"],
+      tags: ["weapon", "repeater", "occult", "aoe"],
       element: ELEMENT.occult,
       snapshot: true,
     };

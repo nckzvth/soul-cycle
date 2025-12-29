@@ -161,7 +161,7 @@ const Game = {
         // Rebuild meta mirrors and mastery sources once per run start.
         try {
             this.syncMetaToPlayer();
-            p._attributeMasteryEffectSources = buildAttributeMasteryEffectSources(p, this.profile);
+            p._attributeMasteryEffectSources = buildAttributeMasteryEffectSources(p, this.profile, this.stateManager?.currentState);
         } catch {
             p._attributeMasteryEffectSources = [];
         }
@@ -270,13 +270,13 @@ const Game = {
 
         // Preload core art used immediately in Town (non-fatal if it fails).
         try {
-            await Assets.preload([
-                "campfireSheet",
-                "hammerIcon",
-                "pistolIcon",
-                "staffIcon",
-                "scytheIcon",
-                "fieldForestGroundDraft",
+	            await Assets.preload([
+	                "campfireSheet",
+	                "hammerIcon",
+	                "repeaterIcon",
+	                "staffIcon",
+	                "scytheIcon",
+	                "fieldForestGroundDraft",
 
                 // Player spritesheets (directional 8x15 @ 64x64)
                 "playerIdleSheet",
@@ -350,22 +350,20 @@ const Game = {
         this.paused = false;
     },
 
-    equipStartingWeapon(wepType) {
-        if (!this.p) return;
-        const t = normalizeWeaponCls(wepType);
-        const bases = { hammer: "Rusty Hammer", pistol: "Old Flintlock", repeater: "Old Repeater", staff: "Worn Staff", scythe: "Rusty Scythe" };
-        if (!bases[t]) return;
+	    equipStartingWeapon(wepType) {
+	        if (!this.p) return;
+	        const t = normalizeWeaponCls(wepType);
+	        const bases = { hammer: "Rusty Hammer", repeater: "Old Repeater", staff: "Worn Staff", scythe: "Rusty Scythe" };
+	        if (!bases[t]) return;
 
-        const w = this.loot("weapon");
-        w.name = bases[t];
-        // Stage 5: canonical runtime cls is now "repeater" (legacy saves/items may still say "pistol").
-        const repeaterEnabled = FeatureFlags.isOn("content.weaponIdRepeaterEnabled");
-        w.cls = (t === "repeater" && !repeaterEnabled) ? "pistol" : t;
-        w.stats = { dmg: 6 };
-        this.p.gear.weapon = w;
-        this.p.recalc();
-        UI.dirty = true;
-    },
+	        const w = this.loot("weapon");
+	        w.name = bases[t];
+	        w.cls = t;
+	        w.stats = { dmg: 6 };
+	        this.p.gear.weapon = w;
+	        this.p.recalc();
+	        UI.dirty = true;
+	    },
 
     loop(now) {
         try {
